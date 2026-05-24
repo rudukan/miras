@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+	font-family: 'JetBrains Mono', monospace;
+	background-color: #070a13;
+}
+
+/* CRT scanline overlay */
+.scanlines {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background:
+		radial-gradient(circle, transparent 60%, rgba(0, 0, 0, 0.4) 100%),
+		linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%);
+	background-size: 100% 100%, 100% 4px;
+	z-index: 9999;
+	pointer-events: none;
+}
+
+.crt-flicker {
+	animation: flicker 0.2s infinite;
+}
+
+@keyframes flicker {
+	0% { opacity: 0.98; }
+	50% { opacity: 1; }
+	100% { opacity: 0.99; }
+}
+
+.glow-text-green { text-shadow: 0 0 8px rgba(0, 255, 102, 0.6); }
+.glow-text-red   { text-shadow: 0 0 8px rgba(255, 51, 102, 0.6); }
+
+.glow-border-green {
+	box-shadow: 0 0 12px rgba(0, 255, 102, 0.2);
+	border-color: rgba(0, 255, 102, 0.5);
+}
+
+.cursor-blink::after {
+	content: '▋';
+	animation: blink 0.8s infinite;
+}
+
+@keyframes blink {
+	0%, 49%  { opacity: 1; }
+	50%, 100% { opacity: 0; }
+}
+
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #070a13; }
+::-webkit-scrollbar-thumb { background: #1f2d4d; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #00ff66; }
