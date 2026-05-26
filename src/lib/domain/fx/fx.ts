@@ -1,7 +1,7 @@
 import type { Money } from '../money';
 import { tryM } from '../money';
-import type { Scenario, UsdTryAnchor } from '../scenario/types';
-import { signedNoise } from './noise';
+import type { Scenario, UsdTryAnchor, StockSeed } from '../scenario/types';
+import { signedNoise, stringSeed } from './noise';
 
 /** Çapa noktaları arası lineer interpolasyon; aralık dışında uç değere sabitlenir. */
 export function interpolateAnchors(
@@ -25,10 +25,12 @@ export function interpolateAnchors(
 
 export interface FxEngine {
   usdTryForDay(day: number): Money;
+  stockPriceForDay(ticker: string, day: number): Money;
 }
 
 export function createFxEngine(scenario: Scenario, seed: number): FxEngine {
-  const { usdTryAnchors, usdTryVolatility } = scenario.data;
+  const { usdTryAnchors, usdTryVolatility, stocks } = scenario.data;
+  const stockMap = new Map<string, StockSeed>(stocks.map((s) => [s.ticker, s]));
 
   function usdTryForDay(day: number): Money {
     const base = interpolateAnchors(usdTryAnchors, day);
@@ -36,5 +38,13 @@ export function createFxEngine(scenario: Scenario, seed: number): FxEngine {
     return tryM(rate);
   }
 
-  return { usdTryForDay };
+  function stockPriceForDay(ticker: string, day: number): Money {
+    const stock = stockMap.get(ticker);
+    if (!stock) throw new Error(`Unknown ticker: ${ticker}`);
+    const trend = stock.startPrice * (1 + stock.annualDrift * (day / scenario.totalDays));
+    const price = trend * (1 + stock.volatility * signedNoise(seed, day, stringSeed(ticker)));
+    return tryM(price);
+  }
+
+  return { usdTryForDay, stockPriceForDay };
 }

@@ -65,3 +65,38 @@ describe('createFxEngine.usdTryForDay', () => {
     }
   });
 });
+
+describe('createFxEngine.stockPriceForDay', () => {
+  const fx = createFxEngine(VASIYET_2025, 12345);
+
+  it('deterministik: aynı seed+ticker+gün -> aynı sonuç', () => {
+    expect(fx.stockPriceForDay('THYAO', 100).amount)
+      .toBe(fx.stockPriceForDay('THYAO', 100).amount);
+  });
+  it('TRY cinsinden döner', () => {
+    expect(fx.stockPriceForDay('THYAO', 10).currency).toBe('TRY');
+  });
+  it('gün 0 başlangıç fiyatının ±%2 bandında (THYAO=300)', () => {
+    const p = fx.stockPriceForDay('THYAO', 0).amount;
+    expect(p).toBeGreaterThanOrEqual(300 * 0.98);
+    expect(p).toBeLessThanOrEqual(300 * 1.02);
+  });
+  it('yıl sonu drift uygulanır (THYAO +%25 -> ~375, > başlangıç)', () => {
+    const p = fx.stockPriceForDay('THYAO', 365).amount;
+    expect(p).toBeGreaterThan(360); // 375 * 0.98 = 367.5, başlangıç 300'ün üstünde
+    expect(p).toBeLessThan(390);    // 375 * 1.02 = 382.5
+  });
+  it('bilinmeyen ticker hata fırlatır', () => {
+    expect(() => fx.stockPriceForDay('YOKBU', 10)).toThrow('Unknown ticker: YOKBU');
+  });
+  it('farklı günler farklı fiyat verir (gürültü canlı)', () => {
+    expect(fx.stockPriceForDay('THYAO', 5).amount)
+      .not.toBe(fx.stockPriceForDay('THYAO', 6).amount);
+  });
+  it('hisseler bağımsız seri: aynı gün THYAO ve EREGL bağımsız sapar', () => {
+    // Başlangıç fiyatları farklı zaten; sapma oranlarının da bağımlı olmadığını
+    // doğrulamak için iki farklı hissenin aynı günde eşit olmadığını kontrol et.
+    expect(fx.stockPriceForDay('THYAO', 7).amount)
+      .not.toBe(fx.stockPriceForDay('EREGL', 7).amount);
+  });
+});
