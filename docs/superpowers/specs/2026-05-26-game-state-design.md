@@ -157,8 +157,8 @@ Model roster boyutundan bağımsız çalışır; bu bir **veri** kararıdır.
 | Kategori | İçerik | Not |
 |----------|--------|-----|
 | `bist` | Hedef **BIST100** (mevcut 9 dahil) | gerçek 2025 baş+son fiyatı → drift otomatik çıkar |
-| `crypto` | BTC | yüksek volatilite |
-| `commodity` | gram altın (XAUGRAM) | orta-yüksek drift |
+| `crypto` | BTC, ETH | yüksek volatilite |
+| `commodity` | gram altın (XAUGRAM), gram gümüş (XAGGRAM) | orta-yüksek drift |
 | `fx` | EUR | düşük volatilite (USD zaten base) |
 
 > **Veri sourcing = quant-analyst görevi (Task 5'i bloklamaz, paralel).** Şu anki `macro2025` değerleri knowledge-cutoff tahmini; gerçek 2025 verisi (BIST100 bileşenleri baş+son fiyat, BTC/altın/EUR eğrileri) çekilip kalibre edilecek. Motor herhangi bir değerle çalışır; Task 5 testleri *bütünlük* doğrular, kesin sayı değil. Drift, baş+son fiyattan türetilir (uydurma yok); volatilite kategori-default + balance sim ile kalibre.
@@ -224,5 +224,5 @@ Emlak yeniden yazmadan eklenir:
 ## 13. Açık Veri Kalemleri (quant — Task 5'i bloklamaz)
 
 - [ ] BIST100 roster + gerçek 2025 baş+son fiyatları (→ drift)
-- [ ] BTC / gram altın / EUR 2025 eğrileri
+- [ ] BTC / ETH / gram altın / gram gümüş / EUR 2025 eğrileri
 - [ ] Volatilite kategori-default'ları + enflasyon parametresinin balance kalibrasyonu (kazanılabilirlik %30-70)
