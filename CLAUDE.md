@@ -1,6 +1,6 @@
 # Miras Oyunu
 
-Türkiye'nin 2024 makro koşullarında 1M USD mirası 365 günde işletme finansal simülasyonu.
+Türkiye'nin 2025 makro koşullarında 1M USD mirası 365 günde işletme finansal simülasyonu.
 Detaylı proje hafızası için `memory.md`. Sprint planı için `.claude/plans/` dizinine bak.
 
 ## Tech Stack
@@ -14,7 +14,7 @@ src/lib/stores/    — Svelte stores (sistemler arası iletişim buradan)
 src/lib/components/— Svelte component'lar (panels/, chart/, ui/)
 src/lib/api/       — Dış API client'ları (yahoo.ts, binance.ts, firebase.ts)
 src/lib/audio/     — Web Audio sentezleyici
-src/lib/data/      — Statik makro veri (macro2024.ts)
+src/lib/data/      — Statik makro veri (macro2025.ts)
 src/routes/        — Sayfalar + API endpoint'leri (/api/yahoo, /api/crypto)
 legacy/            — v3.1.0 referans (build'den hariç, silinmeyecek)
 ```
@@ -47,7 +47,7 @@ Delegasyon için `subagent-driven-development` ve `dispatching-parallel-agents` 
 ## Ekonomi Kanonları
 - Başlangıç: $1,000,000 USD
 - USD enflasyon: %0.01/gün → yıl sonu hedef: **$1,037,172**
-- USD/TRY 2024 eğrisi: ₺29.90 → ₺35.30
+- USD/TRY 2025 eğrisi: ₺35.30 → ₺42.50 (başlangıç değerleri — quant doğrulayacak)
 - 9 BIST hissesi: THYAO, EREGL, ASELS, GUBRF, KCHOL, TUPRS, SASA, YKBNK, BIMAS
 - 6 emlak: tapu süresi 5-18 gün, rüşvet emlak bedelinin %8'i, kira getirileri 2.0x optimize
 - Vergi: stopaj %7.5, kira vergisi 50-günde dilimli %15-30, fırsatçı ceza ₺100K-350K
@@ -61,7 +61,7 @@ Delegasyon için `subagent-driven-development` ve `dispatching-parallel-agents` 
 ## 4 Oyun Modu (Feature Parity)
 | Mod | Süre | Zorluk |
 |-----|------|--------|
-| VASİYET SEFERİ | 365 gün | Orta (2024 gerçek verileri) |
+| VASİYET SEFERİ | 365 gün | Orta (2025 gerçek verileri) |
 | CANLI SEANS | 90 gün | Dinamik (canlı API) |
 | 2001 KRİZİ | 30 gün | Çok Zor (%7500 faiz şoku) |
 | 2018 KUR ŞOKU | 45 gün | Zor (Trump tweet saldırıları) |
