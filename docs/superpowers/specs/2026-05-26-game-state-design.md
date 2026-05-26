@@ -15,6 +15,7 @@
 3. **Moddan bağımsız.** State + reducer'lar fiyatın kaynağını (`seeded` 2025 / `live` 2026) bilmez; `FxEngine` soyutlar. VASİYET ve CANLI aynı çekirdeği kullanır.
 4. **Buluta hazır.** State düz JSON (Money = `{amount,currency}`, fonksiyon/Date/circular ref yok) → localStorage bugün, Firestore/Supabase yarın; sadece persistence adapter değişir.
 5. **Geleceğe açık.** Emlak (Task 5b) state'e, zaman ilerletmeye ve net servete **yeniden yazmadan** eklenebilecek şekilde şekillendirilir.
+6. **Ayna, kazan/kaybet değil.** Miras USD'de tutulur — USD değer saklayan zemindir, kolay erimez → oyuncu kolay batmaz. Oyun bir hayatta-kalma sınavı değil, *"eline 1M USD geçse nasıl değerlendirirdin?"* aynasıdır. Sert bir "kazandın" yoktur; ödül, kendi para-yönetimini benchmark'larla karşılaştırmalı görmektir. Skor bu yüzden **eşik değil, kıyas** üzerine kurulur (§7).
 
 ---
 
@@ -54,7 +55,7 @@ Oyuncu evreninde borsa (BIST), kripto (BTC), emtia (gram altın), döviz (EUR) o
 ```ts
 interface AssetHolding {
   assetId: string;      // 'THYAO' | 'BTC' | 'XAUGRAM' | 'EUR' ...
-  units: number;        // adet (pozitif)
+  units: number;        // adet (pozitif, KESİRLİ olabilir — 0.05 BTC, 12.5 gram altın; BIST gelenekçe tam-lot)
   avgCost: Money;       // TRY, birim başı ortalama alış (postmortem K/Z için)
 }
 
@@ -130,7 +131,7 @@ nextEventDay(state): number | null
 
 ---
 
-## 7. Skor — Net Servet + Kâr Oranı
+## 7. Skor — Ayna (Kazan/Kaybet Değil)
 
 ```ts
 netWorthUsd(state, fx): Money
@@ -140,13 +141,14 @@ netWorthUsd(state, fx): Money
 //   + Σ holding (units × fx.assetPriceForDay(assetId, day)) → USD
 // hepsi state.clock.day'de değerlenir, USD döner
 
-profitRate(state, fx): number   // netWorthUsd.amount ÷ 1_000_000  (1.25 = +%25) — tabelaya girecek puan
-hasWon(state, fx): boolean      // netWorthUsd ≥ WIN_TARGET_USD ($1,037,172)
+profitRate(state, fx): number     // netWorthUsd.amount ÷ 1_000_000  (1.25 = +%25) — tabelaya girecek puan
+beatInflation(state, fx): boolean // netWorthUsd ≥ INFLATION_TARGET_USD — "real değerini korudun mu" REFERANS çizgisi, sert kazanma DEĞİL
 ```
 
 - Mevduatın bugünkü değeri = `closeDeposit(bugün)` → vadesi dolmadıysa principal (erken çıkış faizi sıfır), dolduysa principal + net faiz = bugün nakde çevrilebilir gerçek değer.
-- `profitRate` = skor primitifi. Tabela (global, **opt-in**) ve tek-kişilik benchmark'lar (USD-tut / all-in / optimal) **aynı sayıyı** yer; ikisi de ayrı görev.
-- `WIN_TARGET_USD = 1_037_172` modül sabiti (USD enflasyon hedefi, yıldan bağımsız).
+- `profitRate` = skor primitifi. Tabela (global, **opt-in**) ve tek-kişilik benchmark'lar (USD-tut / all-in / optimal) **aynı sayıyı** yer; ikisi de ayrı görev. Oyunun asıl ödülü bu **kıyas** — "sen vs. hiçbir şey yapmamak vs. optimal".
+- `beatInflation` sert bir kazanma kapısı **değil**, postmortem'de bir referans çizgisi ("mirasın reel değerini en azından korudun mu"). USD zemini erimesi zor olduğundan oyuncu kolay batmaz; gerçek mesele *ne kadar büyüttüğün* ve onu kendi davranışının aynası olarak görmen.
+- `INFLATION_TARGET_USD = 1_037_172` modül sabiti (USD enflasyon hedefi, yıldan bağımsız).
 
 ---
 
@@ -214,7 +216,7 @@ Emlak yeniden yazmadan eklenir:
 - **advanceTime:** gün ilerler; vadesi dolan mevduat otomatik nakde döner; totalDays aşılmaz.
 - **nextEventDay:** en yakın mevduat vadesi veya son gün.
 - **netWorthUsd:** gün 1 pozisyonsuz = tam $1.000.000; karışık portföy bilinen seed/günde doğru toplam.
-- **profitRate / hasWon:** eşik davranışı ($1,037,172).
+- **profitRate / beatInflation:** referans çizgisi davranışı ($1,037,172).
 - **Determinizm:** aynı seed + aynı aksiyon dizisi → aynı net servet.
 
 `npm run test` + `npm run check` + `npm run build` geçmeden "tamam" denmez (verification-before-completion).
