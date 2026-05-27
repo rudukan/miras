@@ -1,5 +1,5 @@
 import type { Money } from '../domain/money';
-import { usd, tryM, add, subtract, toTRY, toUSD, gte } from '../domain/money';
+import { usd, tryM, add, subtract, multiply, toTRY, toUSD, gte } from '../domain/money';
 import type { GameMode } from '../domain/types';
 import type { GameClock } from '../domain/time/clock';
 import { createClock } from '../domain/time/clock';
@@ -75,4 +75,38 @@ export function convertTryToUsd(state: GameState, fx: FxEngine, tryAmount: Money
     tryBalance: subtract(state.tryBalance, tryAmount),
     usdBalance: add(state.usdBalance, toUSD(tryAmount, rate)),
   };
+}
+
+export function buyAsset(state: GameState, fx: FxEngine, assetId: string, units: number): GameState {
+  if (units <= 0) throw new Error('Units must be positive');
+  const price = fx.assetPriceForDay(assetId, state.clock.day); // bilinmeyen -> throw
+  const cost = multiply(price, units);
+  if (!gte(state.tryBalance, cost)) throw new Error('Insufficient TRY');
+
+  const existing = state.holdings.find((h) => h.assetId === assetId);
+  let holdings: AssetHolding[];
+  if (existing) {
+    const totalUnits = existing.units + units;
+    const avg = (existing.avgCost.amount * existing.units + price.amount * units) / totalUnits;
+    holdings = state.holdings.map((h) =>
+      h.assetId === assetId ? { assetId, units: totalUnits, avgCost: tryM(avg) } : h,
+    );
+  } else {
+    holdings = [...state.holdings, { assetId, units, avgCost: price }];
+  }
+  return { ...state, tryBalance: subtract(state.tryBalance, cost), holdings };
+}
+
+export function sellAsset(state: GameState, fx: FxEngine, assetId: string, units: number): GameState {
+  if (units <= 0) throw new Error('Units must be positive');
+  const existing = state.holdings.find((h) => h.assetId === assetId);
+  if (!existing || existing.units < units) throw new Error('Insufficient units');
+  const price = fx.assetPriceForDay(assetId, state.clock.day);
+  const proceeds = multiply(price, units);
+  const remaining = existing.units - units;
+  const holdings =
+    remaining > 0
+      ? state.holdings.map((h) => (h.assetId === assetId ? { ...h, units: remaining } : h))
+      : state.holdings.filter((h) => h.assetId !== assetId);
+  return { ...state, tryBalance: add(state.tryBalance, proceeds), holdings };
 }

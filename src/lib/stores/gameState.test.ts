@@ -65,3 +65,78 @@ describe('döviz çevrimi', () => {
     expect(() => convertUsdToTry(s0, fx, usd(0))).toThrow('positive');
   });
 });
+
+import { buyAsset, sellAsset } from './gameState';
+
+describe('varlık al/sat', () => {
+  const fx = createFxEngine(VASIYET_2025, 12345);
+
+  function funded() {
+    // 100k USD -> TRY ki hisse alabilelim
+    return convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(100_000));
+  }
+
+  it('buyAsset: TRY düşer, holding eklenir, avgCost = alış fiyatı', () => {
+    const s = funded();
+    const price = fx.assetPriceForDay('THYAO', s.clock.day).amount;
+    const s2 = buyAsset(s, fx, 'THYAO', 100);
+    const h = s2.holdings.find((x) => x.assetId === 'THYAO')!;
+    expect(h.units).toBe(100);
+    expect(h.avgCost.amount).toBeCloseTo(price, 2);
+    expect(s2.tryBalance.amount).toBeCloseTo(s.tryBalance.amount - price * 100, 2);
+  });
+
+  it('buyAsset kesirli units (0.05 BTC)', () => {
+    const s = funded();
+    const s2 = buyAsset(s, fx, 'BTC', 0.05);
+    expect(s2.holdings.find((x) => x.assetId === 'BTC')!.units).toBeCloseTo(0.05, 8);
+  });
+
+  it('buyAsset ikinci alış: units toplanır, avgCost ağırlıklı ortalama', () => {
+    let s = funded();
+    s = buyAsset(s, fx, 'THYAO', 100); // gün 1
+    s = buyAsset(s, fx, 'THYAO', 100); // aynı gün, aynı fiyat
+    const h = s.holdings.find((x) => x.assetId === 'THYAO')!;
+    expect(h.units).toBe(200);
+    const price = fx.assetPriceForDay('THYAO', 1).amount;
+    expect(h.avgCost.amount).toBeCloseTo(price, 2);
+  });
+
+  it('buyAsset yetersiz TRY -> hata', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0); // TRY=0
+    expect(() => buyAsset(s, fx, 'THYAO', 1)).toThrow('Insufficient TRY');
+  });
+  it('buyAsset bilinmeyen varlık -> hata', () => {
+    const s = funded();
+    expect(() => buyAsset(s, fx, 'YOKBU', 1)).toThrow('Unknown asset');
+  });
+  it('buyAsset pozitif olmayan units -> hata', () => {
+    const s = funded();
+    expect(() => buyAsset(s, fx, 'THYAO', 0)).toThrow('positive');
+  });
+
+  it('sellAsset: TRY artar, units azalır', () => {
+    let s = funded();
+    s = buyAsset(s, fx, 'THYAO', 100);
+    const before = s.tryBalance.amount;
+    const price = fx.assetPriceForDay('THYAO', s.clock.day).amount;
+    s = sellAsset(s, fx, 'THYAO', 40);
+    expect(s.holdings.find((x) => x.assetId === 'THYAO')!.units).toBe(60);
+    expect(s.tryBalance.amount).toBeCloseTo(before + price * 40, 2);
+  });
+  it('sellAsset tamamı satılınca holding silinir', () => {
+    let s = funded();
+    s = buyAsset(s, fx, 'THYAO', 100);
+    s = sellAsset(s, fx, 'THYAO', 100);
+    expect(s.holdings.find((x) => x.assetId === 'THYAO')).toBeUndefined();
+  });
+  it('sellAsset sahip olunandan fazla -> hata', () => {
+    let s = funded();
+    s = buyAsset(s, fx, 'THYAO', 10);
+    expect(() => sellAsset(s, fx, 'THYAO', 11)).toThrow('Insufficient units');
+  });
+  it('sellAsset hiç sahip olunmayan -> hata', () => {
+    const s = funded();
+    expect(() => sellAsset(s, fx, 'THYAO', 1)).toThrow('Insufficient units');
+  });
+});
