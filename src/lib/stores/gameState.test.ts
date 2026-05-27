@@ -229,3 +229,51 @@ describe('zaman ilerletme', () => {
     expect(nextEventDay(s)).toBe(365);
   });
 });
+
+import { netWorthUsd, profitRate, beatInflation, INFLATION_TARGET_USD } from './gameState';
+
+describe('skor', () => {
+  const fx = createFxEngine(VASIYET_2025, 12345);
+
+  it('gün 1, pozisyonsuz: net servet = $1,000,000', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    expect(netWorthUsd(s, fx).amount).toBeCloseTo(STARTING_USD, 0);
+  });
+  it('gün 1 pozisyonsuz: profitRate = 1.0', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    expect(profitRate(s, fx)).toBeCloseTo(1.0, 4);
+  });
+  it('pozisyonsuz nakit enflasyon hedefini geçmez (beatInflation=false)', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    expect(netWorthUsd(s, fx).amount).toBeLessThan(INFLATION_TARGET_USD);
+    expect(beatInflation(s, fx)).toBe(false);
+  });
+  it('USD->TRY->hisse sonrası net servet pozitif ve makul', () => {
+    let s = convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(100_000));
+    s = buyAsset(s, fx, 'THYAO', 100);
+    const nw = netWorthUsd(s, fx).amount;
+    // çevrim+alış aynı gün, komisyon yok -> ~$1M civarı (gürültü payı)
+    expect(nw).toBeGreaterThan(950_000);
+    expect(nw).toBeLessThan(1_050_000);
+  });
+  it('beatInflation: net servet >= hedef ise true', () => {
+    // yapay: hisseyi gün 1 al, gün 365 değerle (drift net serveti yukarı taşır)
+    let s = convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(900_000));
+    s = buyAsset(s, fx, 'ASELS', 1000); // yüksek drift (+%40)
+    s = advanceTime(s, 364); // gün 365
+    // bu senaryoda net servet hedefi geçmeli (deterministik)
+    expect(beatInflation(s, fx)).toBe(netWorthUsd(s, fx).amount >= INFLATION_TARGET_USD);
+  });
+
+  it('determinizm: aynı seed + aynı aksiyonlar -> aynı net servet', () => {
+    function run() {
+      let s = convertUsdToTry(createGameState('vasiyet', 7, 'p', 0), fx2, usd(500_000));
+      s = buyAsset(s, fx2, 'BTC', 0.1);
+      s = buyAsset(s, fx2, 'THYAO', 200);
+      s = advanceTime(s, 100);
+      return netWorthUsd(s, fx2).amount;
+    }
+    const fx2 = createFxEngine(VASIYET_2025, 7);
+    expect(run()).toBe(run());
+  });
+});

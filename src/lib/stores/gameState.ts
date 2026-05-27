@@ -179,3 +179,26 @@ export function nextEventDay(state: GameState): number | null {
   if (state.clock.totalDays > today) candidates.push(state.clock.totalDays);
   return candidates.length === 0 ? null : Math.min(...candidates);
 }
+
+export function netWorthUsd(state: GameState, fx: FxEngine): Money {
+  const rate = fx.usdTryForDay(state.clock.day).amount;
+  let total = state.usdBalance.amount;
+  total += toUSD(state.tryBalance, rate).amount;
+  for (const d of state.deposits) {
+    const valueTry = settleDeposit(d, state.clock.day); // bugün nakde çevrilebilir değer
+    total += toUSD(valueTry, rate).amount;
+  }
+  for (const h of state.holdings) {
+    const priceTry = fx.assetPriceForDay(h.assetId, state.clock.day);
+    total += toUSD(multiply(priceTry, h.units), rate).amount;
+  }
+  return usd(total);
+}
+
+export function profitRate(state: GameState, fx: FxEngine): number {
+  return netWorthUsd(state, fx).amount / STARTING_USD;
+}
+
+export function beatInflation(state: GameState, fx: FxEngine): boolean {
+  return netWorthUsd(state, fx).amount >= INFLATION_TARGET_USD;
+}
