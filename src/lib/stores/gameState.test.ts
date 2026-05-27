@@ -180,3 +180,52 @@ describe('mevduat', () => {
     expect(() => closeDeposit(s, 'yok')).toThrow('Unknown deposit');
   });
 });
+
+import { advanceTime, nextEventDay } from './gameState';
+
+describe('zaman ilerletme', () => {
+  const fx = createFxEngine(VASIYET_2025, 12345);
+  const RATE = VASIYET_2025.data.depositAnnualRate;
+
+  function funded() {
+    return convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(100_000));
+  }
+
+  it('advanceTime günü ilerletir', () => {
+    const s = advanceTime(createGameState('vasiyet', 12345, 'p', 0), 10);
+    expect(s.clock.day).toBe(11); // gün 1 + 10
+  });
+
+  it('advanceTime totalDays üstüne çıkmaz', () => {
+    const s = advanceTime(createGameState('vasiyet', 12345, 'p', 0), 999);
+    expect(s.clock.day).toBe(365);
+  });
+
+  it('advanceTime vadesi dolan mevduatı otomatik nakde çevirir', () => {
+    let s = funded();
+    s = openDeposit(s, tryM(100_000), 30, RATE); // gün 1 açıldı, vade gün 31
+    const beforeTry = s.tryBalance.amount; // mevduat sonrası kalan TRY
+    s = advanceTime(s, 35); // gün 36, vade geçti
+    expect(s.deposits).toHaveLength(0); // otomatik kapandı
+    // principal + net faiz geri geldi (net faiz > 0)
+    expect(s.tryBalance.amount).toBeGreaterThan(beforeTry + 100_000);
+  });
+
+  it('advanceTime vadesi dolmayan mevduata dokunmaz', () => {
+    let s = funded();
+    s = openDeposit(s, tryM(100_000), 180, RATE); // vade gün 181
+    s = advanceTime(s, 30); // gün 31
+    expect(s.deposits).toHaveLength(1);
+  });
+
+  it('nextEventDay en yakın mevduat vadesini verir', () => {
+    let s = funded();
+    s = openDeposit(s, tryM(50_000), 90, RATE);  // vade 91
+    s = openDeposit(s, tryM(20_000), 30, RATE);  // vade 31
+    expect(nextEventDay(s)).toBe(31);
+  });
+  it('nextEventDay mevduat yoksa son günü verir', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    expect(nextEventDay(s)).toBe(365);
+  });
+});

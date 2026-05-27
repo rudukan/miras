@@ -2,7 +2,7 @@ import type { Money } from '../domain/money';
 import { usd, tryM, add, subtract, multiply, toTRY, toUSD, gte } from '../domain/money';
 import type { GameMode } from '../domain/types';
 import type { GameClock } from '../domain/time/clock';
-import { createClock } from '../domain/time/clock';
+import { createClock, advanceDay, isFinished } from '../domain/time/clock';
 import type { Deposit } from '../domain/deposit/deposit';
 import {
   openDeposit as createDeposit,
@@ -145,4 +145,37 @@ export function closeDeposit(state: GameState, depositId: string): GameState {
     tryBalance: add(state.tryBalance, payout),
     deposits: state.deposits.filter((d) => d.id !== depositId),
   };
+}
+
+export function advanceTime(state: GameState, step: number): GameState {
+  let s = state;
+  for (let i = 0; i < step; i++) {
+    if (isFinished(s.clock)) break;
+    const clock = advanceDay(s.clock);
+    const matured = s.deposits.filter((d) => isMatured(d, clock.day));
+    if (matured.length === 0) {
+      s = { ...s, clock };
+    } else {
+      let tryBalance = s.tryBalance;
+      for (const d of matured) tryBalance = add(tryBalance, settleDeposit(d, clock.day));
+      s = {
+        ...s,
+        clock,
+        tryBalance,
+        deposits: s.deposits.filter((d) => !isMatured(d, clock.day)),
+      };
+    }
+  }
+  return s;
+}
+
+export function nextEventDay(state: GameState): number | null {
+  const today = state.clock.day;
+  const candidates: number[] = [];
+  for (const d of state.deposits) {
+    const maturity = d.openedDay + d.termDays;
+    if (maturity > today) candidates.push(maturity);
+  }
+  if (state.clock.totalDays > today) candidates.push(state.clock.totalDays);
+  return candidates.length === 0 ? null : Math.min(...candidates);
 }
