@@ -140,3 +140,43 @@ describe('varlık al/sat', () => {
     expect(() => sellAsset(s, fx, 'THYAO', 1)).toThrow('Insufficient units');
   });
 });
+
+import { openDeposit, closeDeposit } from './gameState';
+
+describe('mevduat', () => {
+  const fx = createFxEngine(VASIYET_2025, 12345);
+  const RATE = VASIYET_2025.data.depositAnnualRate; // 0.42
+
+  function funded() {
+    return convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(100_000));
+  }
+
+  it('openDeposit: TRY düşer, mevduat id ile eklenir, seq artar', () => {
+    const s = funded();
+    const before = s.tryBalance.amount;
+    const s2 = openDeposit(s, tryM(100_000), 90, RATE);
+    expect(s2.deposits).toHaveLength(1);
+    expect(s2.deposits[0].id).toBe('dep-0');
+    expect(s2.deposits[0].annualRate).toBe(RATE);
+    expect(s2.depositSeq).toBe(1);
+    expect(s2.tryBalance.amount).toBeCloseTo(before - 100_000, 2);
+  });
+
+  it('closeDeposit erken (vade dolmadan) -> sadece principal', () => {
+    let s = funded();
+    s = openDeposit(s, tryM(100_000), 90, RATE); // gün 1 açıldı
+    const beforeClose = s.tryBalance.amount;
+    s = closeDeposit(s, 'dep-0'); // hâlâ gün 1, vade dolmadı
+    expect(s.tryBalance.amount).toBeCloseTo(beforeClose + 100_000, 2);
+    expect(s.deposits).toHaveLength(0);
+  });
+
+  it('openDeposit yetersiz TRY -> hata', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    expect(() => openDeposit(s, tryM(1000), 30, RATE)).toThrow('Insufficient TRY');
+  });
+  it('closeDeposit bilinmeyen id -> hata', () => {
+    const s = funded();
+    expect(() => closeDeposit(s, 'yok')).toThrow('Unknown deposit');
+  });
+});

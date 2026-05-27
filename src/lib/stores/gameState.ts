@@ -4,6 +4,11 @@ import type { GameMode } from '../domain/types';
 import type { GameClock } from '../domain/time/clock';
 import { createClock } from '../domain/time/clock';
 import type { Deposit } from '../domain/deposit/deposit';
+import {
+  openDeposit as createDeposit,
+  closeDeposit as settleDeposit,
+  isMatured,
+} from '../domain/deposit/deposit';
 import type { FxEngine } from '../domain/fx/fx';
 
 export const STARTING_USD = 1_000_000;
@@ -109,4 +114,35 @@ export function sellAsset(state: GameState, fx: FxEngine, assetId: string, units
       ? state.holdings.map((h) => (h.assetId === assetId ? { ...h, units: remaining } : h))
       : state.holdings.filter((h) => h.assetId !== assetId);
   return { ...state, tryBalance: add(state.tryBalance, proceeds), holdings };
+}
+
+export function openDeposit(
+  state: GameState,
+  tryAmount: Money,
+  termDays: 30 | 90 | 180,
+  annualRate: number,
+): GameState {
+  // createDeposit currency/pozitiflik validasyonunu yapar; bakiyeyi burada kontrol et
+  if (tryAmount.currency === 'TRY' && !gte(state.tryBalance, tryAmount)) {
+    throw new Error('Insufficient TRY');
+  }
+  const id = `dep-${state.depositSeq}`;
+  const deposit = createDeposit(id, tryAmount, termDays, state.clock.day, annualRate);
+  return {
+    ...state,
+    tryBalance: subtract(state.tryBalance, tryAmount),
+    deposits: [...state.deposits, deposit],
+    depositSeq: state.depositSeq + 1,
+  };
+}
+
+export function closeDeposit(state: GameState, depositId: string): GameState {
+  const deposit = state.deposits.find((d) => d.id === depositId);
+  if (!deposit) throw new Error(`Unknown deposit: ${depositId}`);
+  const payout = settleDeposit(deposit, state.clock.day); // erken=principal, vadeli=+net faiz
+  return {
+    ...state,
+    tryBalance: add(state.tryBalance, payout),
+    deposits: state.deposits.filter((d) => d.id !== depositId),
+  };
 }
