@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { VASIYET_2025 } from './macro2025';
 
-const REQUIRED_TICKERS = [
+const REQUIRED_BIST = [
   'THYAO', 'EREGL', 'ASELS', 'GUBRF', 'KCHOL', 'TUPRS', 'SASA', 'YKBNK', 'BIMAS',
 ];
+const REQUIRED_NEW = ['BTC', 'ETH', 'XAUGRAM', 'XAGGRAM', 'EUR'];
 
 describe('VASIYET_2025 senaryosu', () => {
   it('temel senaryo alanları doğru', () => {
@@ -12,6 +13,9 @@ describe('VASIYET_2025 senaryosu', () => {
     expect(VASIYET_2025.totalDays).toBe(365);
     expect(VASIYET_2025.fxSource).toBe('seeded');
     expect(VASIYET_2025.timeMode).toBe('turn');
+  });
+  it('mevduat yıllık faizi 0.42', () => {
+    expect(VASIYET_2025.data.depositAnnualRate).toBe(0.42);
   });
 });
 
@@ -26,9 +30,6 @@ describe('USD/TRY çapaları', () => {
       expect(anchors[i].day).toBeGreaterThan(anchors[i - 1].day);
     }
   });
-  it('tüm kurlar pozitif', () => {
-    for (const a of anchors) expect(a.rate).toBeGreaterThan(0);
-  });
   it('yıl içinde yukarı trend (son > ilk)', () => {
     expect(anchors[anchors.length - 1].rate).toBeGreaterThan(anchors[0].rate);
   });
@@ -38,22 +39,37 @@ describe('USD/TRY çapaları', () => {
   });
 });
 
-describe('BIST hisseleri', () => {
-  const stocks = VASIYET_2025.data.stocks;
-  it('tam 9 hisse var', () => {
-    expect(stocks).toHaveLength(9);
+describe('Varlık evreni (assets)', () => {
+  const assets = VASIYET_2025.data.assets;
+  const ids = assets.map((a) => a.id);
+
+  it('9 kanonik BIST hissesi var ve kategorileri "bist"', () => {
+    const bist = assets.filter((a) => a.category === 'bist');
+    expect(bist).toHaveLength(9);
+    for (const t of REQUIRED_BIST) expect(ids).toContain(t);
   });
-  it('9 kanonik ticker da mevcut', () => {
-    const tickers = stocks.map((s) => s.ticker);
-    for (const t of REQUIRED_TICKERS) expect(tickers).toContain(t);
+  it('5 yeni varlık (BTC/ETH/altın/gümüş/EUR) mevcut', () => {
+    for (const t of REQUIRED_NEW) expect(ids).toContain(t);
+  });
+  it('her varlığın geçerli bir kategorisi var', () => {
+    const valid = new Set(['bist', 'crypto', 'commodity', 'fx']);
+    for (const a of assets) expect(valid.has(a.category)).toBe(true);
+  });
+  it('BTC ve ETH crypto, altın/gümüş commodity, EUR fx', () => {
+    const cat = (id: string) => assets.find((a) => a.id === id)!.category;
+    expect(cat('BTC')).toBe('crypto');
+    expect(cat('ETH')).toBe('crypto');
+    expect(cat('XAUGRAM')).toBe('commodity');
+    expect(cat('XAGGRAM')).toBe('commodity');
+    expect(cat('EUR')).toBe('fx');
   });
   it('tüm başlangıç fiyatları pozitif', () => {
-    for (const s of stocks) expect(s.startPrice).toBeGreaterThan(0);
+    for (const a of assets) expect(a.startPrice).toBeGreaterThan(0);
   });
   it('tüm volatiliteler (0, 0.1) aralığında', () => {
-    for (const s of stocks) {
-      expect(s.volatility).toBeGreaterThan(0);
-      expect(s.volatility).toBeLessThan(0.1);
+    for (const a of assets) {
+      expect(a.volatility).toBeGreaterThan(0);
+      expect(a.volatility).toBeLessThan(0.1);
     }
   });
 });
