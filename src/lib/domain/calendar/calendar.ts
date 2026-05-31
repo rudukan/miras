@@ -1,3 +1,4 @@
+import type { AssetCategory } from '../scenario/types';
 import { HOLIDAYS_2026 } from './holidays2026';
 
 export interface IstanbulParts {
@@ -37,4 +38,19 @@ export function istanbulParts(at: Date): IstanbulParts {
 /** Verilen an Europe/Istanbul'da bir TR resmî tatiline mi düşüyor? */
 export function isHoliday(at: Date): boolean {
   return HOLIDAYS_2026.has(istanbulParts(at).key);
+}
+
+const BIST_OPEN_HOUR = 10;   // 10:00 (Europe/Istanbul) — seans başlangıcı (dahil)
+const BIST_CLOSE_HOUR = 18;  // 18:00 — seans bitişi (hariç)
+
+/** Verilen kategori, verilen anda işleme açık mı?
+ *  Kripto/döviz/emtia v1'de her zaman açık; BIST hafta içi 10:00–18:00 ve tatil değil. */
+export function isMarketOpen(category: AssetCategory, at: Date): boolean {
+  if (category !== 'bist') return true;
+  const p = istanbulParts(at);
+  if (p.weekday >= 6) return false;            // Cmt(6)/Paz(7)
+  if (HOLIDAYS_2026.has(p.key)) return false;  // resmî tatil
+  if (p.hour < BIST_OPEN_HOUR) return false;   // açılış öncesi
+  if (p.hour >= BIST_CLOSE_HOUR) return false; // kapanış ve sonrası
+  return true;
 }
