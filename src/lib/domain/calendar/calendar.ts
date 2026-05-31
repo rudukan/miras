@@ -54,3 +54,21 @@ export function isMarketOpen(category: AssetCategory, at: Date): boolean {
   if (p.hour >= BIST_CLOSE_HOUR) return false; // kapanış ve sonrası
   return true;
 }
+
+const DAY_MS = 86_400_000;
+const MAX_LOOKAHEAD_DAYS = 14;
+
+/** Verilen andan itibaren piyasanın açık olacağı bir sonraki anı döndürür.
+ *  Şu an açıksa `at`'ı aynen döndürür. BIST dışı kategoriler hep açık → `at`.
+ *  (Istanbul sabit UTC+3 olduğundan günün açılışı 10:00+03:00 olarak kurulur.) */
+export function nextMarketOpen(category: AssetCategory, at: Date): Date {
+  if (category !== 'bist') return at;
+  if (isMarketOpen(category, at)) return at;
+  for (let i = 0; i <= MAX_LOOKAHEAD_DAYS; i++) {
+    const probeKey = istanbulParts(new Date(at.getTime() + i * DAY_MS)).key;
+    const openAt = new Date(`${probeKey}T10:00:00+03:00`); // o günün açılış anı
+    if (openAt.getTime() < at.getTime()) continue;          // açılışı geçmiş günü atla
+    if (isMarketOpen('bist', openAt)) return openAt;        // hafta içi + tatil değil
+  }
+  return at; // güvenlik (14 gün içinde mutlaka açık seans var)
+}

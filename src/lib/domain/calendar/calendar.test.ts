@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { istanbulParts, isHoliday, isMarketOpen } from './calendar';
+import { istanbulParts, isHoliday, isMarketOpen, nextMarketOpen } from './calendar';
 
 describe('istanbulParts', () => {
   it('Europe/Istanbul yerel tarih anahtarı üretir (YYYY-MM-DD)', () => {
@@ -61,5 +61,36 @@ describe('isMarketOpen', () => {
   });
   it('BIST resmî tatilde kapalı (saat uygun olsa bile)', () => {
     expect(isMarketOpen('bist', new Date('2026-04-23T12:00:00+03:00'))).toBe(false);
+  });
+});
+
+describe('nextMarketOpen', () => {
+  it('BIST dışı kategoride argümanı aynen döndürür (hep açık)', () => {
+    const at = new Date('2026-01-03T22:00:00+03:00');
+    expect(nextMarketOpen('crypto', at).getTime()).toBe(at.getTime());
+  });
+  it('BIST açıkken o anı döndürür', () => {
+    const at = new Date('2026-01-05T11:00:00+03:00'); // Pzt seans içi
+    expect(nextMarketOpen('bist', at).getTime()).toBe(at.getTime());
+  });
+  it('açılış öncesi -> aynı günün 10:00 açılışı', () => {
+    const at = new Date('2026-01-05T08:00:00+03:00'); // Pzt 08:00
+    const expected = new Date('2026-01-05T10:00:00+03:00');
+    expect(nextMarketOpen('bist', at).getTime()).toBe(expected.getTime());
+  });
+  it('kapanış sonrası -> ertesi iş gününün 10:00 açılışı', () => {
+    const at = new Date('2026-01-02T19:00:00+03:00'); // Cuma 19:00 (kapalı)
+    const expected = new Date('2026-01-05T10:00:00+03:00'); // sonraki Pzt
+    expect(nextMarketOpen('bist', at).getTime()).toBe(expected.getTime());
+  });
+  it('hafta sonu -> Pazartesi 10:00 açılışı', () => {
+    const at = new Date('2026-01-03T12:00:00+03:00'); // Cmt
+    const expected = new Date('2026-01-05T10:00:00+03:00');
+    expect(nextMarketOpen('bist', at).getTime()).toBe(expected.getTime());
+  });
+  it('tatil gününü atlar (1 Ocak Per -> 2 Ocak Cum 10:00)', () => {
+    const at = new Date('2026-01-01T12:00:00+03:00'); // Yılbaşı (Perşembe, tatil)
+    const expected = new Date('2026-01-02T10:00:00+03:00'); // Cuma normal
+    expect(nextMarketOpen('bist', at).getTime()).toBe(expected.getTime());
   });
 });
