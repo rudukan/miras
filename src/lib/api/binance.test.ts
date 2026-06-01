@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createBinanceFeed, fetchCryptoSnapshot } from './binance';
 import type { Cached, CryptoValue } from './types';
 
@@ -19,9 +19,11 @@ class FakeWS {
       data: JSON.stringify({ stream: `${coin.toLowerCase()}usdt@trade`, data: { s: `${coin}USDT`, p: String(price) } }),
     });
   }
+  emitError() { this.onerror?.(undefined); }
 }
 
 beforeEach(() => { FakeWS.instances = []; });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('createBinanceFeed', () => {
   it('combined stream URL kurar (semboller @trade)', () => {
@@ -52,6 +54,24 @@ describe('createBinanceFeed', () => {
     expect(FakeWS.instances.length).toBe(before + 1); // yeni socket
     vi.useRealTimers();
   });
+  it('onerror -> close zinciri stale + reconnect tetikler (ağ kopması)', () => {
+    vi.useFakeTimers();
+    const st: string[] = [];
+    createBinanceFeed({ symbols: ['BTC'], onPrice() {}, onStatus: (s) => st.push(s), WebSocketImpl: FakeWS as any, reconnectMs: 3000 });
+    const before = FakeWS.instances.length;
+    FakeWS.instances[before - 1].emitError(); // onerror -> ws.close() -> onclose
+    expect(st).toContain('stale');
+    vi.advanceTimersByTime(3000);
+    expect(FakeWS.instances.length).toBe(before + 1); // reconnect yeni socket açtı
+  });
+
+  it('bozuk JSON frame yutulur (onPrice çağrılmaz, çökmez)', () => {
+    const got: Array<[string, number]> = [];
+    createBinanceFeed({ symbols: ['BTC'], onPrice: (c, p) => got.push([c, p]), WebSocketImpl: FakeWS as any });
+    expect(() => FakeWS.instances[0].onmessage?.({ data: 'bozuk-json{' })).not.toThrow();
+    expect(got).toEqual([]);
+  });
+
   it('stop() reconnect etmez', () => {
     vi.useFakeTimers();
     const feed = createBinanceFeed({ symbols: ['BTC'], onPrice() {}, WebSocketImpl: FakeWS as any });
