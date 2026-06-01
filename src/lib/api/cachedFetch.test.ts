@@ -48,4 +48,17 @@ describe('createTtlCache', () => {
     });
     expect(await get()).toEqual({ value: -1, asOf: 0, stale: true });
   });
+
+  it('eşzamanlı get() çağrıları fetcher\'ı yalnızca bir kez tetikler (inflight paylaşımı)', async () => {
+    let resolve!: (v: number) => void;
+    const fetcher = vi.fn(() => new Promise<number>((r) => { resolve = r; }));
+    const get = createTtlCache({ ttlMs: 5000, fallback: 0, fetcher, now: () => 1000 });
+    const p1 = get();
+    const p2 = get(); // ilk çekim henüz çözülmedi -> aynı inflight'ı beklemeli
+    resolve(42);
+    const [r1, r2] = await Promise.all([p1, p2]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(r1).toEqual({ value: 42, asOf: 1000, stale: false });
+    expect(r2).toEqual({ value: 42, asOf: 1000, stale: false });
+  });
 });
