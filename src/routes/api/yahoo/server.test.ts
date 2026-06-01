@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchYahooPrice, fetchUsdRates, fetchFxValue, GET } from './+server';
+import { GET } from './+server';
+import { fetchYahooPrice, fetchUsdRates, fetchFxValue } from '$lib/api/yahooSource';
 
 function okJson(body: unknown): Promise<Response> {
   return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);

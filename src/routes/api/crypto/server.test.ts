@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchBinancePrice, fetchCryptoValue, GET } from './+server';
+import { GET } from './+server';
+import { fetchBinancePrice, fetchCryptoValue } from '$lib/api/cryptoSource';
 
 function okJson(body: unknown): Promise<Response> {
   return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
