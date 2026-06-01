@@ -69,4 +69,18 @@ describe('GET /api/yahoo', () => {
       globalThis.fetch = real;
     }
   });
+
+  it('upstream hata verdiğinde stale:true + FALLBACK döner', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 503 } as Response)) as unknown as typeof fetch;
+    try {
+      const res = await GET({ url: new URL('http://localhost/api/yahoo?bist=THYAO') } as any);
+      const body = await res.json();
+      expect(body.stale).toBe(true);
+      expect(body.asOf).toBe(0);
+      expect(body.value.usdTry).toBe(40); // FALLBACK
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
 });

@@ -30,7 +30,7 @@ export async function fetchYahooPrice(symbol: string, fetchFn: typeof fetch): Pr
     { headers: { 'User-Agent': UA } },
   );
   if (!res.ok) throw new Error(`Yahoo ${symbol}: HTTP ${res.status}`);
-  const j: any = await res.json();
+  const j = (await res.json()) as { chart?: { result?: Array<{ meta?: { regularMarketPrice?: unknown } }> } };
   const price = j?.chart?.result?.[0]?.meta?.regularMarketPrice;
   if (typeof price !== 'number') throw new Error(`Yahoo ${symbol}: geçersiz yapı`);
   return price;
@@ -40,7 +40,7 @@ export async function fetchYahooPrice(symbol: string, fetchFn: typeof fetch): Pr
 export async function fetchUsdRates(fetchFn: typeof fetch): Promise<Record<string, number>> {
   const res = await fetchFn('https://open.er-api.com/v6/latest/USD');
   if (!res.ok) throw new Error(`er-api: HTTP ${res.status}`);
-  const j: any = await res.json();
+  const j = (await res.json()) as { rates?: Record<string, number> };
   if (!j?.rates?.TRY) throw new Error('er-api: geçersiz yapı');
   return j.rates as Record<string, number>;
 }
@@ -83,7 +83,8 @@ export const GET: RequestHandler = async ({ url }) => {
     try {
       const value = await fetchFxValue(bist, fetch);
       return json({ value, asOf: Date.now(), stale: false }, { headers });
-    } catch {
+    } catch (err) {
+      console.error('[api/yahoo] ?bist= fetch başarısız, fallback dönülüyor', err);
       return json({ value: FALLBACK, asOf: 0, stale: true }, { headers });
     }
   }
