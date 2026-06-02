@@ -128,6 +128,7 @@
 					<WalletSummary
 						game={store.game}
 						usdTry={store.usdTry}
+						positions={store.positions}
 					/>
 
 					<TradePanel
