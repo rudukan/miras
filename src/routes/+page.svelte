@@ -8,6 +8,7 @@
 	import WalletSummary from '$lib/components/WalletSummary.svelte';
 	import PriceList from '$lib/components/PriceList.svelte';
 	import TradePanel from '$lib/components/TradePanel.svelte';
+	import ContextCard from '$lib/components/ContextCard.svelte';
 
 	const store = createLiveGameStore();
 
@@ -103,6 +104,7 @@
 					feedStatus={store.feedStatus}
 					now={nowMs}
 				/>
+				<ContextCard />
 			</header>
 
 			<!-- Ana içerik: iki kolon -->
