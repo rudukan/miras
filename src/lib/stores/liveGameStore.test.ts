@@ -176,4 +176,25 @@ describe('createLiveGameStore', () => {
     expect(t.store.netWorthUsd).toBeNull();
     expect(t.store.profitRate).toBeNull();
   });
+
+  it('9) günlük % değişim verisi prices satırlarına akar (yahoo change + crypto 24s)', async () => {
+    const t = setup();
+    t.setYahoo({
+      value: { usdTry: 40, prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45 }, change: { THYAO: 2.5, XAUGRAM: -1.2 } },
+      asOf: 111, stale: false,
+    });
+    t.setCrypto({
+      value: { prices: { BTC: 60000, ETH: 3000 }, change: { BTC: 4.1 } },
+      asOf: 111, stale: false,
+    });
+    await t.store.start(); // feed başlangıçta stale → ilk poll yahoo+crypto çeker
+    flushSync();
+
+    const thy = t.store.prices.find((p) => p.id === 'THYAO');
+    const btc = t.store.prices.find((p) => p.id === 'BTC');
+    const eur = t.store.prices.find((p) => p.id === 'EUR');
+    expect(thy?.changePct).toBe(2.5);
+    expect(btc?.changePct).toBe(4.1);
+    expect(eur?.changePct).toBeUndefined(); // er-api değişim vermez
+  });
 });

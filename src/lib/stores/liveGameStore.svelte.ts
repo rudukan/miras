@@ -25,7 +25,7 @@ import type { FxValue } from '../api/types';
 
 export type PeriodDays = 60 | 180 | 365;
 
-/** PriceList satırı — canlı katalog fiyatı + market-açık rozeti. */
+/** PriceList satırı — canlı katalog fiyatı + market-açık rozeti + günlük % değişim. */
 export interface PriceRow {
   id: string;
   label: string;
@@ -33,6 +33,7 @@ export interface PriceRow {
   source: 'crypto' | 'yahoo';
   priceTry: number | undefined; // canlı fiyat yoksa undefined
   marketOpen: boolean;
+  changePct: number | undefined; // günlük/24s % değişim; yoksa undefined (rozet gösterilmez)
 }
 
 /** WalletSummary satırı — holding + güncel değer. */
@@ -100,6 +101,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   let game = $state<GameState>(createGameState('canli', seed, playerId, now()));
   let fxCache = $state<FxValue>(FALLBACK_FX); // tüm fiyatlar TRY
   let cryptoUsd = $state<Record<string, number>>({}); // USD (TRY çevrimi source'da)
+  let cryptoChange = $state<Record<string, number>>({}); // coin → 24s % (poll'dan; WS değişim taşımaz)
   let fxAsOf = $state(0);
   let fxStale = $state(true);
   let feedStatus = $state<'live' | 'stale'>('stale');
@@ -156,6 +158,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       source: m.source,
       priceTry: source.assetTry(m.id),
       marketOpen: isMarketOpen(m.category, at),
+      changePct: m.source === 'crypto' ? cryptoChange[m.id] : fxCache.change?.[m.id],
     }));
   });
 
@@ -217,14 +220,16 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       fxStale = true;
       lastError = e instanceof Error ? e.message : String(e);
     }
-    // WS stale ise kripto'yu proxy snapshot'undan tazele (fallback)
-    if (feedStatus === 'stale') {
-      try {
-        const c = await fetchCryptoSnapshot({ coins: [...CRYPTO_SYMBOLS], fetchFn });
+    // Kripto: 24s % değişim WS'te yok → her poll'da proxy snapshot'undan tazelenir.
+    // Fiyatı yalnız WS kopukken snapshot'tan al (WS canlıyken fiyat otoritesi WS'tedir).
+    try {
+      const c = await fetchCryptoSnapshot({ coins: [...CRYPTO_SYMBOLS], fetchFn });
+      cryptoChange = c.value.change ?? {};
+      if (feedStatus === 'stale') {
         cryptoUsd = { ...cryptoUsd, ...c.value.prices };
-      } catch {
-        /* fallback başarısız — sessiz; fxStale/dataStale zaten "veri eski" yüzeyliyor */
       }
+    } catch {
+      /* fallback başarısız — sessiz; fxStale/dataStale zaten "veri eski" yüzeyliyor */
     }
   }
 
