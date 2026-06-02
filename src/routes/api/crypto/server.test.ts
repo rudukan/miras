@@ -1,15 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { GET } from './+server';
-import { fetchBinancePrice, fetchCryptoValue } from '$lib/api/cryptoSource';
+import { fetchBinancePrice, fetchBinanceTicker, fetchCryptoValue } from '$lib/api/cryptoSource';
 
 function okJson(body: unknown): Promise<Response> {
   return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
 }
 function routedFetch() {
   return vi.fn((url: string) => {
-    if (url.includes('BTCUSDT')) return okJson({ symbol: 'BTCUSDT', price: '95000.50' });
-    if (url.includes('ETHUSDT')) return okJson({ symbol: 'ETHUSDT', price: '3300.10' });
-    return okJson({ symbol: '?', price: '1' });
+    if (url.includes('BTCUSDT'))
+      return okJson({ symbol: 'BTCUSDT', price: '95000.50', lastPrice: '95000.50', priceChangePercent: '2.5' });
+    if (url.includes('ETHUSDT'))
+      return okJson({ symbol: 'ETHUSDT', price: '3300.10', lastPrice: '3300.10', priceChangePercent: '-1.2' });
+    return okJson({ symbol: '?', price: '1', lastPrice: '1', priceChangePercent: '0' });
   }) as unknown as typeof fetch;
 }
 
@@ -27,10 +29,23 @@ describe('fetchBinancePrice', () => {
   });
 });
 
+describe('fetchBinanceTicker', () => {
+  it('24s ticker: lastPrice + priceChangePercent döner', async () => {
+    const t = await fetchBinanceTicker('BTC', routedFetch());
+    expect(t.price).toBe(95000.5);
+    expect(t.changePct).toBe(2.5);
+  });
+  it('HTTP hatasında fırlatır', async () => {
+    const f = vi.fn(() => Promise.resolve({ ok: false, status: 429 } as Response)) as unknown as typeof fetch;
+    await expect(fetchBinanceTicker('BTC', f)).rejects.toThrow('429');
+  });
+});
+
 describe('fetchCryptoValue', () => {
-  it('istenen coinleri USD fiyatlarıyla döner', async () => {
+  it('istenen coinleri USD fiyat + 24s değişimle döner', async () => {
     const v = await fetchCryptoValue(['BTC', 'ETH'], routedFetch());
     expect(v.prices).toEqual({ BTC: 95000.5, ETH: 3300.1 });
+    expect(v.change).toEqual({ BTC: 2.5, ETH: -1.2 });
   });
 });
 

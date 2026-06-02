@@ -12,7 +12,7 @@ export const CRYPTO_TTL_MS = 5000;
 export const DEFAULT_COINS = ['BTC', 'ETH', 'SOL'];
 
 /** Upstream çökerse dönen fallback (USD). Quant rafine edecek (spec §12). */
-export const CRYPTO_FALLBACK: CryptoValue = { prices: { BTC: 95000, ETH: 3300, SOL: 200 } };
+export const CRYPTO_FALLBACK: CryptoValue = { prices: { BTC: 95000, ETH: 3300, SOL: 200 }, change: {} };
 
 /** Binance ticker/price'tan tek coin'in USDT fiyatını number olarak çeker. */
 export async function fetchBinancePrice(coin: string, fetchFn: typeof fetch): Promise<number> {
@@ -24,9 +24,30 @@ export async function fetchBinancePrice(coin: string, fetchFn: typeof fetch): Pr
   return price;
 }
 
-/** İstenen coinleri tek snapshot'ta (USD) birleştirir. Atomik. */
+/** Binance 24s ticker'dan tek coin'in son fiyatı (USD) + 24s % değişimi. */
+export async function fetchBinanceTicker(
+  coin: string,
+  fetchFn: typeof fetch,
+): Promise<{ price: number; changePct: number }> {
+  const res = await fetchFn(`https://api.binance.com/api/v3/ticker/24hr?symbol=${coin}USDT`);
+  if (!res.ok) throw new Error(`Binance ${coin}: HTTP ${res.status}`);
+  const j = (await res.json()) as { lastPrice?: unknown; priceChangePercent?: unknown };
+  const price = Number(j?.lastPrice);
+  if (!Number.isFinite(price)) throw new Error(`Binance ${coin}: geçersiz fiyat`);
+  const changePct = Number(j?.priceChangePercent);
+  return { price, changePct: Number.isFinite(changePct) ? changePct : 0 };
+}
+
+/** İstenen coinleri tek snapshot'ta (USD fiyat + 24s % değişim) birleştirir. Atomik. */
 export async function fetchCryptoValue(coins: readonly string[], fetchFn: typeof fetch): Promise<CryptoValue> {
   const prices: Record<string, number> = {};
-  await Promise.all(coins.map(async (c) => { prices[c] = await fetchBinancePrice(c, fetchFn); }));
-  return { prices };
+  const change: Record<string, number> = {};
+  await Promise.all(
+    coins.map(async (c) => {
+      const t = await fetchBinanceTicker(c, fetchFn);
+      prices[c] = t.price;
+      change[c] = t.changePct;
+    }),
+  );
+  return { prices, change };
 }

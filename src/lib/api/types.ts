@@ -9,6 +9,7 @@ export interface FxValue {
 /** Binance proxy değeri: tüm fiyatlar USD (USDT). TRY çevrimi store'da yapılır. */
 export interface CryptoValue {
   prices: Record<string, number>; // USD
+  change?: Record<string, number>; // 24s % değişim (Binance priceChangePercent); yoksa atlanır
 }
 
 /** Önbellek zarfı: değer + son başarılı güncelleme anı + bayatlık bayrağı.
