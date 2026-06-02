@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, signedTry } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, signedTry, maxUnitsAffordable } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -163,6 +163,26 @@ describe('signedTry', () => {
 	});
 	it('sıfır → + öneki', () => {
 		expect(signedTry(0).startsWith('+')).toBe(true);
+	});
+});
+
+// ── maxUnitsAffordable ──────────────────────────────────────────────────────────
+describe('maxUnitsAffordable', () => {
+	it('fiyat undefined → 0', () => {
+		expect(maxUnitsAffordable(1000, undefined)).toBe(0);
+	});
+	it('fiyat 0 → 0 (sıfıra bölme yok)', () => {
+		expect(maxUnitsAffordable(1000, 0)).toBe(0);
+	});
+	it('bakiye 0 → 0', () => {
+		expect(maxUnitsAffordable(0, 100)).toBe(0);
+	});
+	it('tam bölünür: 1000 / 100 = 10', () => {
+		expect(maxUnitsAffordable(1000, 100)).toBe(10);
+	});
+	it('4 ondalığa aşağı yuvarlar (asla bakiyeyi aşmaz)', () => {
+		expect(maxUnitsAffordable(1000, 300)).toBe(3.3333);
+		expect(3.3333 * 300).toBeLessThanOrEqual(1000);
 	});
 });
 

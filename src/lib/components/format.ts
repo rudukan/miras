@@ -71,6 +71,15 @@ export function dailyChangeBadge(pct: number | undefined): { text: string; cls: 
 }
 
 /**
+ * Mevcut TRY bakiyesiyle alınabilecek en çok adet (kesirli).
+ * Fiyat yok / 0 / bakiye 0 → 0. 4 ondalığa AŞAĞI yuvarlanır → asla bakiyeyi aşmaz.
+ */
+export function maxUnitsAffordable(tryBalance: number, priceTry: number | undefined): number {
+	if (priceTry === undefined || priceTry <= 0 || tryBalance <= 0) return 0;
+	return Math.floor((tryBalance / priceTry) * 10000) / 10000;
+}
+
+/**
  * Pozisyon kâr/zararı.
  * valueTry undefined → her ikisi undefined.
  * pnlTry = güncel değer − (adet × ort. maliyet); pnlPct yüzde (20 = +%20).
