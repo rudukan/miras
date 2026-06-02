@@ -33,9 +33,6 @@
 </script>
 
 <div class="bg-term-bg text-term-text font-mono min-h-screen">
-	<!-- CRT scanline bindirmesi -->
-	<div class="scanlines" aria-hidden="true"></div>
-
 	{#if phase === 'intro'}
 		<!-- ── INTRO EKRANI ─────────────────────────────────────────────────────── -->
 		<main class="min-h-screen flex items-center justify-center px-4">
