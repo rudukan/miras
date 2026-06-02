@@ -71,6 +71,34 @@ export function dailyChangeBadge(pct: number | undefined): { text: string; cls: 
 }
 
 /**
+ * Pozisyon kâr/zararı.
+ * valueTry undefined → her ikisi undefined.
+ * pnlTry = güncel değer − (adet × ort. maliyet); pnlPct yüzde (20 = +%20).
+ * maliyet 0 ise pnlPct undefined (sıfıra bölme yok).
+ */
+export function positionPnl(
+	units: number,
+	avgCostTry: number,
+	valueTry: number | undefined,
+): { pnlTry: number | undefined; pnlPct: number | undefined } {
+	if (valueTry === undefined) return { pnlTry: undefined, pnlPct: undefined };
+	const cost = units * avgCostTry;
+	const pnlTry = valueTry - cost;
+	const pnlPct = cost > 0 ? (pnlTry / cost) * 100 : undefined;
+	return { pnlTry, pnlPct };
+}
+
+/**
+ * İşaretli TRY gösterimi (pozisyon K/Z için).
+ * undefined → '—'; n>=0 → '+₺x'; n<0 → '-₺x' (formatMoney eksiyi gösterir).
+ */
+export function signedTry(n: number | undefined): string {
+	if (n === undefined) return '—';
+	if (n >= 0) return '+' + formatMoney(tryM(n));
+	return formatMoney(tryM(n));
+}
+
+/**
  * "Şu an"-lık göreli zaman etiketi (durum bandı).
  * asOf<=0 → '—'; <5sn → 'az önce'; <60sn → 'N sn önce'; <60dk → 'N dk önce'; üstü → 'N sa önce'.
  */
