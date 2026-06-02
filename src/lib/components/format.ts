@@ -58,3 +58,28 @@ export function signedUsd(m: Money | null): string {
 	if (m.amount >= 0) return '+' + formatMoney(m);
 	return formatMoney(m);
 }
+
+/**
+ * Günlük/24s % değişim rozeti.
+ * undefined → null (rozet gösterilmez); +2.5 → {text:'+2.50%', green};
+ * -1.2 → {text:'-1.20%', red}; 0 → {text:'+0.00%', nötr}.
+ */
+export function dailyChangeBadge(pct: number | undefined): { text: string; cls: string } | null {
+	if (pct === undefined) return null;
+	const sign = pct >= 0 ? '+' : '';
+	return { text: `${sign}${pct.toFixed(2)}%`, cls: pnlClass(pct) };
+}
+
+/**
+ * "Şu an"-lık göreli zaman etiketi (durum bandı).
+ * asOf<=0 → '—'; <5sn → 'az önce'; <60sn → 'N sn önce'; <60dk → 'N dk önce'; üstü → 'N sa önce'.
+ */
+export function relativeTime(asOf: number, now: number): string {
+	if (asOf <= 0) return '—';
+	const sec = Math.max(0, Math.floor((now - asOf) / 1000));
+	if (sec < 5) return 'az önce';
+	if (sec < 60) return `${sec} sn önce`;
+	const min = Math.floor(sec / 60);
+	if (min < 60) return `${min} dk önce`;
+	return `${Math.floor(min / 60)} sa önce`;
+}

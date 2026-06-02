@@ -23,21 +23,39 @@ export const YAHOO_FALLBACK: FxValue = {
     TUPRS: 243.1, SASA: 2.65, YKBNK: 32.86, BIMAS: 392.75,
     XAUGRAM: 4000, XAGGRAM: 40, EUR: 43,
   },
+  change: {},
 };
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
-/** Yahoo chart API'sinden tek sembolün son fiyatını çeker. */
-export async function fetchYahooPrice(symbol: string, fetchFn: typeof fetch): Promise<number> {
+/** Yahoo chart API'sinden tek sembolün son fiyatı + günlük % değişimi.
+ *  changePct = (fiyat − previousClose) / previousClose × 100 (yoksa undefined). */
+export async function fetchYahooQuote(
+  symbol: string,
+  fetchFn: typeof fetch,
+): Promise<{ price: number; changePct: number | undefined }> {
   const res = await fetchFn(
     `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1d&interval=1m`,
     { headers: { 'User-Agent': UA } },
   );
   if (!res.ok) throw new Error(`Yahoo ${symbol}: HTTP ${res.status}`);
-  const j = (await res.json()) as { chart?: { result?: Array<{ meta?: { regularMarketPrice?: unknown } }> } };
-  const price = j?.chart?.result?.[0]?.meta?.regularMarketPrice;
+  const j = (await res.json()) as {
+    chart?: { result?: Array<{ meta?: { regularMarketPrice?: unknown; previousClose?: unknown; chartPreviousClose?: unknown } }> };
+  };
+  const meta = j?.chart?.result?.[0]?.meta;
+  const price = meta?.regularMarketPrice;
   if (typeof price !== 'number') throw new Error(`Yahoo ${symbol}: geçersiz yapı`);
-  return price;
+  const prev =
+    typeof meta?.previousClose === 'number' ? meta.previousClose
+    : typeof meta?.chartPreviousClose === 'number' ? meta.chartPreviousClose
+    : undefined;
+  const changePct = prev && prev !== 0 ? round2(((price - prev) / prev) * 100) : undefined;
+  return { price, changePct };
+}
+
+/** Yalnız fiyat (geriye uyumluluk; fetchYahooQuote'a delegeler). */
+export async function fetchYahooPrice(symbol: string, fetchFn: typeof fetch): Promise<number> {
+  return (await fetchYahooQuote(symbol, fetchFn)).price;
 }
 
 /** open.er-api.com'dan USD bazlı kur tablosunu çeker. */
@@ -55,17 +73,25 @@ export async function fetchFxValue(bist: readonly string[], fetchFn: typeof fetc
   const rates = await fetchUsdRates(fetchFn);
   const usdTry = rates.TRY;
   const prices: Record<string, number> = {};
+  const change: Record<string, number> = {};
 
   await Promise.all(
-    bist.map(async (sym) => { prices[sym] = round2(await fetchYahooPrice(`${sym}.IS`, fetchFn)); }),
+    bist.map(async (sym) => {
+      const q = await fetchYahooQuote(`${sym}.IS`, fetchFn);
+      prices[sym] = round2(q.price);
+      if (q.changePct !== undefined) change[sym] = q.changePct;
+    }),
   );
 
-  const goldOz = await fetchYahooPrice('GC=F', fetchFn);   // COMEX altın USD/ons
-  prices.XAUGRAM = round2((goldOz * usdTry) / TROY_OUNCE_GRAMS);
-  const silverOz = await fetchYahooPrice('SI=F', fetchFn); // COMEX gümüş USD/ons
-  prices.XAGGRAM = round2((silverOz * usdTry) / TROY_OUNCE_GRAMS);
+  const gold = await fetchYahooQuote('GC=F', fetchFn);   // COMEX altın USD/ons
+  prices.XAUGRAM = round2((gold.price * usdTry) / TROY_OUNCE_GRAMS);
+  if (gold.changePct !== undefined) change.XAUGRAM = gold.changePct;
 
-  if (rates.EUR) prices.EUR = round2(usdTry / rates.EUR); // EUR/TRY
+  const silver = await fetchYahooQuote('SI=F', fetchFn); // COMEX gümüş USD/ons
+  prices.XAGGRAM = round2((silver.price * usdTry) / TROY_OUNCE_GRAMS);
+  if (silver.changePct !== undefined) change.XAGGRAM = silver.changePct;
 
-  return { usdTry: round2(usdTry), prices };
+  if (rates.EUR) prices.EUR = round2(usdTry / rates.EUR); // EUR/TRY (er-api değişim vermez → change yok)
+
+  return { usdTry: round2(usdTry), prices, change };
 }

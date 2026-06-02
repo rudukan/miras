@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -110,5 +110,40 @@ describe('signedUsd', () => {
 		const result = signedUsd(tryM(500));
 		expect(result.startsWith('+')).toBe(true);
 		expect(result).toContain('500');
+	});
+});
+
+// ── dailyChangeBadge ────────────────────────────────────────────────────────────
+describe('dailyChangeBadge', () => {
+	it('undefined → null (rozet yok)', () => {
+		expect(dailyChangeBadge(undefined)).toBeNull();
+	});
+	it('pozitif → +%, term-green', () => {
+		expect(dailyChangeBadge(2.5)).toEqual({ text: '+2.50%', cls: 'text-term-green' });
+	});
+	it('negatif → eksi, term-red', () => {
+		expect(dailyChangeBadge(-1.2)).toEqual({ text: '-1.20%', cls: 'text-term-red' });
+	});
+	it('sıfır → +0.00%, nötr', () => {
+		expect(dailyChangeBadge(0)).toEqual({ text: '+0.00%', cls: 'text-term-text' });
+	});
+});
+
+// ── relativeTime ────────────────────────────────────────────────────────────────
+describe('relativeTime', () => {
+	it('asOf=0 → —', () => {
+		expect(relativeTime(0, 10_000)).toBe('—');
+	});
+	it('<5sn → az önce', () => {
+		expect(relativeTime(10_000, 12_000)).toBe('az önce');
+	});
+	it('saniye aralığı → N sn önce', () => {
+		expect(relativeTime(10_000, 40_000)).toBe('30 sn önce');
+	});
+	it('dakika aralığı → N dk önce', () => {
+		expect(relativeTime(1, 120_001)).toBe('2 dk önce');
+	});
+	it('saat aralığı → N sa önce', () => {
+		expect(relativeTime(1, 7_200_001)).toBe('2 sa önce');
 	});
 });
