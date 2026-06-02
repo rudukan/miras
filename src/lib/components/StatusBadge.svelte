@@ -1,15 +1,16 @@
 <script lang="ts">
+	import { relativeTime } from './format';
+
 	interface Props {
 		stale: boolean;
 		asOf: number;
 		feedStatus: 'live' | 'stale';
+		now: number;
 	}
 
-	let { stale, asOf, feedStatus }: Props = $props();
+	let { stale, asOf, feedStatus, now }: Props = $props();
 
-	const timeLabel = $derived(
-		asOf > 0 ? new Date(asOf).toLocaleTimeString('tr-TR') : '—'
-	);
+	const timeLabel = $derived(relativeTime(asOf, now));
 
 	const dotColor = $derived(stale ? 'text-term-amber' : 'text-term-green');
 	const dotGlow = $derived(stale ? '' : 'glow-text-green');

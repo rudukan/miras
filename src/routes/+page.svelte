@@ -14,6 +14,8 @@
 	let phase = $state<'intro' | 'playing'>('intro');
 	let selectedPeriod = $state<PeriodDays>(365);
 	let selectedAssetId = $state<string | null>(null);
+	let nowMs = $state(Date.now());
+	let tick: ReturnType<typeof setInterval> | null = null;
 
 	const periodOptions: { value: PeriodDays; label: string }[] = [
 		{ value: 60, label: '60 Gün' },
@@ -25,11 +27,15 @@
 		store.setPeriod(selectedPeriod);
 		if (browser) {
 			void store.start();
+			tick = setInterval(() => (nowMs = Date.now()), 1000);
 		}
 		phase = 'playing';
 	}
 
-	onDestroy(() => store.stop());
+	onDestroy(() => {
+		store.stop();
+		if (tick) clearInterval(tick);
+	});
 </script>
 
 <div class="bg-term-bg text-term-text font-mono min-h-screen">
@@ -95,6 +101,7 @@
 					stale={store.dataStale}
 					asOf={store.asOf}
 					feedStatus={store.feedStatus}
+					now={nowMs}
 				/>
 			</header>
 
