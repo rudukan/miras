@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PriceRow } from '$lib/stores/liveGameStore.svelte';
-	import { displayTry, marketBadge } from './format';
+	import { displayTry, marketBadge, dailyChangeBadge } from './format';
 
 	interface Props {
 		prices: PriceRow[];
@@ -59,6 +59,7 @@
 		{:else}
 			{#each filtered as row (row.id)}
 				{@const badge = marketBadge(row.marketOpen)}
+				{@const chg = dailyChangeBadge(row.changePct)}
 				<button
 					type="button"
 					onclick={() => onSelect(row.id)}
@@ -75,14 +76,19 @@
 								{categoryLabel[row.category] ?? row.category}
 							</span>
 						</div>
-						<!-- Sağ: fiyat + market rozeti -->
+						<!-- Sağ: fiyat + günlük değişim + market rozeti -->
 						<div class="flex flex-col items-end shrink-0">
 							<span class="text-term-green font-bold">
 								{displayTry(row.priceTry)}
 							</span>
-							<span class="text-[10px] {badge.cls}">
-								{badge.text}
-							</span>
+							<div class="flex items-center gap-2">
+								{#if chg}
+									<span class="text-[10px] {chg.cls} font-bold">{chg.text}</span>
+								{/if}
+								<span class="text-[10px] {badge.cls}">
+									{badge.text}
+								</span>
+							</div>
 						</div>
 					</div>
 				</button>
