@@ -76,6 +76,23 @@ describe('fetchFxValue (birleşik TRY snapshot)', () => {
     expect(v.change?.XAUGRAM).toBeCloseTo(3.69, 1);  // (3110.35-3000)/3000*100
     expect(v.change?.XAGGRAM).toBeUndefined();        // prevClose yok → atlanır
   });
+
+  it('geçersiz BIST sembolü tüm snapshot\'ı düşürmez — atlanır, diğerleri gelir', async () => {
+    const f = vi.fn((url: string) => {
+      if (url.includes('open.er-api.com')) return okJson({ rates: { TRY: 40, EUR: 0.5 } });
+      if (url.includes('GC=F')) return okJson(yahooBody(3110.34768, 3000));
+      if (url.includes('SI=F')) return okJson(yahooBody(31.1034768));
+      if (url.includes('THYAO.IS')) return okJson(yahooBody(300, 240));
+      if (url.includes('ZZZZ.IS')) return Promise.resolve({ ok: false, status: 404 } as Response);
+      return okJson(yahooBody(1));
+    }) as unknown as typeof fetch;
+
+    const v = await fetchFxValue(['THYAO', 'ZZZZ'], f);
+    expect(v.prices.THYAO).toBe(300);   // sağlam sembol geldi
+    expect(v.prices.ZZZZ).toBeUndefined(); // hatalı sembol atlandı
+    expect(v.usdTry).toBe(40);          // çekirdek korundu
+    expect(v.prices.XAUGRAM).toBe(4000); // metaller korundu
+  });
 });
 
 describe('GET /api/yahoo', () => {

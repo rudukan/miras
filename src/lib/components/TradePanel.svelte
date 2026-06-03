@@ -2,6 +2,7 @@
 	import type { LiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import { usd, tryM } from '$lib/domain/money';
 	import { CATALOG } from '$lib/catalog/liveAssets';
+	import { bistName } from '$lib/catalog/bist100';
 	import { displayUsd, displayTry, maxUnitsAffordable } from './format';
 
 	interface Props {
@@ -47,7 +48,7 @@
 	let units = $state(0);
 
 	const assetLabel = $derived(
-		selectedAssetId ? (CATALOG[selectedAssetId]?.label ?? selectedAssetId) : null
+		selectedAssetId ? (CATALOG[selectedAssetId]?.label ?? bistName(selectedAssetId)) : null
 	);
 
 	function handleBuy() {
