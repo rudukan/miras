@@ -75,11 +75,17 @@ export async function fetchFxValue(bist: readonly string[], fetchFn: typeof fetc
   const prices: Record<string, number> = {};
   const change: Record<string, number> = {};
 
+  // Sembol-bazında dayanıklı: on-demand'de geçersiz/delisted sembol diğerlerini düşürmesin.
+  // (usdTry + metaller aşağıda atomik kalır — onlar çekirdek, kullanıcı girdisi değil.)
   await Promise.all(
     bist.map(async (sym) => {
-      const q = await fetchYahooQuote(`${sym}.IS`, fetchFn);
-      prices[sym] = round2(q.price);
-      if (q.changePct !== undefined) change[sym] = q.changePct;
+      try {
+        const q = await fetchYahooQuote(`${sym}.IS`, fetchFn);
+        prices[sym] = round2(q.price);
+        if (q.changePct !== undefined) change[sym] = q.changePct;
+      } catch (err) {
+        console.warn(`[yahooSource] BIST ${sym} atlandı:`, err instanceof Error ? err.message : err);
+      }
     }),
   );
 
