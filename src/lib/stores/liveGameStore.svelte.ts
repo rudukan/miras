@@ -147,7 +147,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       const price = source.assetTry(h.assetId);
       return {
         assetId: h.assetId,
-        label: CATALOG[h.assetId]?.label ?? h.assetId,
+        label: CATALOG[h.assetId]?.label ?? bistName(h.assetId),
         units: h.units,
         avgCostTry: h.avgCost.amount,
         priceTry: price,

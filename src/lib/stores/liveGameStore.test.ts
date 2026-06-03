@@ -241,6 +241,10 @@ describe('createLiveGameStore', () => {
     flushSync();
     expect(t.store.lastError).toBeNull();
     expect(t.store.game.holdings.some((h) => h.assetId === 'GARAN' && h.units === 100)).toBe(true);
+
+    // cüzdan pozisyonu CATALOG'da olmayan sembolü TR adıyla etiketler (sembole düşmez)
+    const pos = t.store.positions.find((p) => p.assetId === 'GARAN');
+    expect(pos?.label).toBe('Garanti BBVA');
   });
 
   it('12) addBist tekrarı yinelenmez (idempotent)', async () => {
