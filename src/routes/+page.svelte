@@ -114,6 +114,10 @@
 					<PriceList
 						prices={store.prices}
 						onSelect={(id) => (selectedAssetId = id)}
+						onAddBist={(symbol) => {
+							store.addBist(symbol);
+							selectedAssetId = symbol;
+						}}
 					/>
 				</aside>
 
