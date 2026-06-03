@@ -36,3 +36,11 @@ export const CRYPTO_SYMBOLS: ReadonlyArray<string> = LIVE_ASSETS.filter(
 export const BIST_SYMBOLS: ReadonlyArray<string> = LIVE_ASSETS.filter(
   (a) => a.category === 'bist',
 ).map((a) => a.id);
+
+/** Hızlı kripto üyelik kontrolü (store source closure'ı: kripto → USD×usdTry, diğer → TRY proxy). */
+export const CRYPTO_SET: ReadonlySet<string> = new Set(CRYPTO_SYMBOLS);
+
+/** BIST olmayan çekirdek varlıklar — fiyat listesinde HER ZAMAN görünür (kripto + emtia + döviz). */
+export const CORE_ASSETS: ReadonlyArray<LiveAssetMeta> = LIVE_ASSETS.filter(
+  (a) => a.category !== 'bist',
+);
