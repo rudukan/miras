@@ -1,13 +1,15 @@
 <script lang="ts">
 	import type { PriceRow } from '$lib/stores/liveGameStore.svelte';
 	import { displayTry, marketBadge, dailyChangeBadge } from './format';
+	import { searchBist100 } from '$lib/catalog/bist100';
 
 	interface Props {
 		prices: PriceRow[];
 		onSelect: (id: string) => void;
+		onAddBist: (symbol: string) => void;
 	}
 
-	let { prices, onSelect }: Props = $props();
+	let { prices, onSelect, onAddBist }: Props = $props();
 
 	let q = $state('');
 
@@ -20,6 +22,18 @@
 						r.id.toLowerCase().includes(q.toLowerCase())
 			  )
 	);
+
+	// Arama yapılınca: BIST100'den eşleşip henüz aktif sette OLMAYAN semboller ("eklenebilir").
+	const addable = $derived.by(() => {
+		if (q.trim() === '') return [];
+		const activeIds = new Set(prices.map((p) => p.id));
+		return searchBist100(q).filter((e) => !activeIds.has(e.symbol));
+	});
+
+	function handleAdd(symbol: string) {
+		onAddBist(symbol);
+		q = ''; // aramayı temizle → yeni eklenen aktif listede görünür
+	}
 
 	const categoryLabel: Record<string, string> = {
 		bist: 'BIST',
@@ -52,7 +66,7 @@
 
 	<!-- Liste -->
 	<div class="flex-1 overflow-y-auto">
-		{#if filtered.length === 0}
+		{#if filtered.length === 0 && addable.length === 0}
 			<div class="px-3 py-4 text-term-text opacity-40 italic text-center">
 				Sonuç bulunamadı
 			</div>
@@ -91,6 +105,28 @@
 							</div>
 						</div>
 					</div>
+				</button>
+			{/each}
+		{/if}
+
+		{#if addable.length > 0}
+			<div class="px-3 pt-3 pb-1 text-[10px] uppercase tracking-widest text-term-blue opacity-60 border-t border-term-border">
+				BIST100 — Ekle
+			</div>
+			{#each addable as e (e.symbol)}
+				<button
+					type="button"
+					onclick={() => handleAdd(e.symbol)}
+					class="w-full text-left px-3 py-2 border-b border-term-border border-opacity-40
+					       hover:bg-term-panelLight hover:border-term-borderGlow
+					       focus:outline-none focus:bg-term-panelLight
+					       transition-colors duration-75 cursor-pointer flex items-center justify-between gap-2"
+				>
+					<div class="flex flex-col min-w-0">
+						<span class="text-term-text font-bold truncate">{e.name}</span>
+						<span class="text-[10px] text-term-blue opacity-70 uppercase tracking-wide">{e.symbol}</span>
+					</div>
+					<span class="text-[10px] text-term-green font-bold shrink-0">+ EKLE</span>
 				</button>
 			{/each}
 		{/if}
