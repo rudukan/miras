@@ -13,7 +13,8 @@ import {
 import { createLiveFxEngine, type LivePriceSource } from '../domain/fx/liveFx';
 import { isMarketOpen } from '../domain/calendar/calendar';
 import type { AssetCategory } from '../domain/scenario/types';
-import { LIVE_ASSETS, CATALOG, CRYPTO_SYMBOLS, BIST_SYMBOLS } from '../catalog/liveAssets';
+import { CATALOG, CRYPTO_SYMBOLS, CRYPTO_SET, CORE_ASSETS, BIST_SYMBOLS } from '../catalog/liveAssets';
+import { bistName } from '../catalog/bist100';
 import { fetchFxSnapshot } from '../api/fx';
 import {
   createBinanceFeed,
@@ -76,6 +77,7 @@ export interface LiveGameStore {
   usdToTry(amount: Money): void;
   tryToUsd(amount: Money): void;
   setPeriod(days: PeriodDays): void;
+  addBist(symbol: string): void;
   start(): Promise<void>;
   stop(): void;
 }
@@ -92,7 +94,9 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   const now = opts.now ?? (() => Date.now());
   const playerId = opts.playerId ?? 'local-player';
   const seed = opts.seed ?? 1;
-  const pollMs = opts.pollMs ?? 5000;
+  // fix-B: FX poll'u yavaşlat (hisse yavaş değişir) → Yahoo rate-limit kök sebebini keser.
+  // Kripto WS push ile hızlı kalır; bu poll yalnız FX + kripto 24s%/WS-stale fallback içindir.
+  const pollMs = opts.pollMs ?? 20000;
   const throttleMs = opts.throttleMs ?? 500;
   const fetchFn = opts.fetchFn ?? fetch;
   const makeFeed = opts.makeFeed ?? ((o: BinanceFeedOptions) => createBinanceFeed(o));
@@ -107,17 +111,20 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   let feedStatus = $state<'live' | 'stale'>('stale');
   let lastError = $state<string | null>(null);
   let selectedPeriodDays = $state<PeriodDays>(opts.periodDays ?? 365);
+  // Dinamik aktif BIST seti — başlangıç = katalog başlangıç hisseleri; addBist ile büyür (v1: yalnız büyür).
+  let activeBist = $state<string[]>([...BIST_SYMBOLS]);
 
   // Canlı fiyat kaynağı — rune okur → her zaman güncel; createLiveFxEngine tek seam.
   const source: LivePriceSource = {
     usdTry: () => fxCache.usdTry,
     assetTry: (id) => {
-      const m = CATALOG[id];
-      if (!m) return undefined;
-      if (m.source === 'crypto') {
+      // Kripto: USD fiyatını canlı kurla TRY'ye çevir.
+      if (CRYPTO_SET.has(id)) {
         const u = cryptoUsd[id];
         return u === undefined ? undefined : u * fxCache.usdTry;
       }
+      // Diğer her şey (BIST/emtia/döviz) proxy'den zaten TRY gelir — CATALOG üyeliği gerekmez
+      // (on-demand aranan BIST sembolleri de böyle çözülür).
       return fxCache.prices[id];
     },
   };
@@ -151,15 +158,33 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   const prices = $derived.by<PriceRow[]>(() => {
     const at = new Date(now());
-    return LIVE_ASSETS.map((m) => ({
-      id: m.id,
-      label: m.label,
-      category: m.category,
-      source: m.source,
-      priceTry: source.assetTry(m.id),
-      marketOpen: isMarketOpen(m.category, at),
-      changePct: m.source === 'crypto' ? cryptoChange[m.id] : fxCache.change?.[m.id],
-    }));
+    const rows: PriceRow[] = [];
+    // Çekirdek: kripto + emtia + döviz — her zaman görünür.
+    for (const m of CORE_ASSETS) {
+      rows.push({
+        id: m.id,
+        label: m.label,
+        category: m.category,
+        source: m.source,
+        priceTry: source.assetTry(m.id),
+        marketOpen: isMarketOpen(m.category, at),
+        changePct: m.source === 'crypto' ? cryptoChange[m.id] : fxCache.change?.[m.id],
+      });
+    }
+    // Aktif BIST: tutulan/seçilen hisseler (canlı ?bist= ile çekilir).
+    const bistOpen = isMarketOpen('bist', at);
+    for (const sym of activeBist) {
+      rows.push({
+        id: sym,
+        label: bistName(sym),
+        category: 'bist',
+        source: 'yahoo',
+        priceTry: fxCache.prices[sym],
+        marketOpen: bistOpen,
+        changePct: fxCache.change?.[sym],
+      });
+    }
+    return rows;
   });
 
   const dataStale = $derived(fxStale || feedStatus === 'stale');
@@ -179,6 +204,13 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   const tryToUsd = (amount: Money) => apply(() => convertTryToUsd(game, fx, amount));
   const setPeriod = (days: PeriodDays) => {
     selectedPeriodDays = days;
+  };
+  // On-demand BIST: aktif sete ekle (normalize + idempotent) → hemen tek seferlik poll ile fiyatı getir.
+  const addBist = (symbol: string) => {
+    const s = symbol.trim().toUpperCase();
+    if (s === '' || activeBist.includes(s)) return;
+    activeBist = [...activeBist, s];
+    if (started) void pollFx(); // anında fiyat çek (≤poll periyodu beklemeden)
   };
 
   // --- canlı veri yaşam döngüsü ---
@@ -212,9 +244,12 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   async function pollFx(): Promise<void> {
     try {
-      const snap = await fetchFxSnapshot({ bist: [...BIST_SYMBOLS], fetchFn });
-      fxCache = snap.value;
-      fxAsOf = snap.asOf;
+      const snap = await fetchFxSnapshot({ bist: [...activeBist], fetchFn });
+      // fix-A: stale snapshot (fallback) son-gerçek fiyatı EZMESİN — yalnız taze veride güncelle.
+      if (!snap.stale) {
+        fxCache = snap.value;
+        fxAsOf = snap.asOf;
+      }
       fxStale = snap.stale;
     } catch (e) {
       fxStale = true;
@@ -296,6 +331,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     usdToTry,
     tryToUsd,
     setPeriod,
+    addBist,
     start,
     stop,
   };

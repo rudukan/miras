@@ -197,4 +197,57 @@ describe('createLiveGameStore', () => {
     expect(btc?.changePct).toBe(4.1);
     expect(eur?.changePct).toBeUndefined(); // er-api değişim vermez
   });
+
+  it('10) fix-A: stale poll son-gerçek fiyatı EZMEZ, yalnız fxStale true olur', async () => {
+    vi.useFakeTimers();
+    const t = setup({ pollMs: 5000 });
+    await t.store.start();
+    flushSync();
+    const thyBefore = t.store.prices.find((p) => p.id === 'THYAO')?.priceTry;
+    expect(thyBefore).toBe(300);
+
+    // upstream rate-limit → route stale fallback döner
+    t.setYahoo({ value: { usdTry: 99, prices: { THYAO: 1 } }, asOf: 0, stale: true });
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+
+    // fiyat KORUNDU (fallback ezmedi), ama veri eski damgalı
+    expect(t.store.prices.find((p) => p.id === 'THYAO')?.priceTry).toBe(300);
+    expect(t.store.usdTry).toBe(40);
+    expect(t.store.dataStale).toBe(true);
+  });
+
+  it('11) on-demand: addBist aktif sete ekler, ?bist= isteğine yansır, fiyat gelince buy çalışır', async () => {
+    const t = setup();
+    await t.store.start();
+    flushSync();
+    // başlangıç aktif set = THYAO,ASELS → GARAN listede yok
+    expect(t.store.prices.some((p) => p.id === 'GARAN')).toBe(false);
+
+    // GARAN fiyatını yahoo yanıtına dahil et, sonra ekle
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300, ASELS: 200, GARAN: 120, XAUGRAM: 5000, EUR: 45 } }, asOf: 222, stale: false });
+    t.store.addBist('garan'); // küçük harf → normalize edilmeli; tek seferlik poll tetikler
+    await new Promise((r) => setTimeout(r, 0)); // addBist'in tetiklediği pollFx zincirini boşalt
+    flushSync();
+
+    expect(t.fetchFn).toHaveBeenCalledWith('/api/yahoo?bist=THYAO,ASELS,GARAN');
+    const garan = t.store.prices.find((p) => p.id === 'GARAN');
+    expect(garan?.priceTry).toBe(120);
+    expect(garan?.category).toBe('bist');
+
+    // satın al: çevir + al, hata yok
+    t.store.usdToTry(usd(10_000)); // 400.000 TRY
+    t.store.buy('GARAN', 100);     // 120×100 = 12.000 TRY
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'GARAN' && h.units === 100)).toBe(true);
+  });
+
+  it('12) addBist tekrarı yinelenmez (idempotent)', async () => {
+    const t = setup();
+    await t.store.start();
+    t.store.addBist('THYAO'); // zaten başlangıç setinde
+    flushSync();
+    expect(t.store.prices.filter((p) => p.id === 'THYAO').length).toBe(1);
+  });
 });

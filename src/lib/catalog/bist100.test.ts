@@ -8,7 +8,7 @@ describe('BIST100 statik katalog', () => {
       expect(typeof e.symbol).toBe('string');
       expect(e.symbol).toBe(e.symbol.toUpperCase());
       expect(typeof e.name).toBe('string');
-      expect((e as Record<string, unknown>).price).toBeUndefined();
+      expect((e as unknown as Record<string, unknown>).price).toBeUndefined();
     }
   });
 
