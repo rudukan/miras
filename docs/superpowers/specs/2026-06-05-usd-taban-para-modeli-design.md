@@ -96,7 +96,7 @@ interface UsdPriceOracle {
   - `convert*` testleri **silinir**.
   - `buyAsset`/`sellAsset` artık `UsdPriceOracle` alır → USD maliyet bazı + `netWorthUsd` paritesiz doğrulanır.
   - `beatInflation` testi → `grewDollars`.
-- **Mevduat testleri `describe.skip`** (`openDeposit`/`closeDeposit`/`advanceTime`-mevduat) — silmek yerine rafa, geri getirilebilir.
+- **Mevduat testleri silinir** (`gameState.test.ts` mevduat `describe` bloğu): `openDeposit`/`closeDeposit` sarmalayıcıları gameState'ten silindiği için onlara referans veren testler de gider (describe.skip bile silinen sembolü import edemez → TS hatası). Alttaki `src/lib/domain/deposit/deposit.ts` modülü + `deposit.test.ts` (15 test) **dokunulmaz** — saf mevduat matematiği git'te + çalışır halde durur, VASİYET sprintinde geri bağlanır.
 - **Yeni saf-helper testleri:** `UsdPriceOracle.assetUsd` (kripto kayıpsız), `signedUsd`, USD-tabanlı `positionPnl`.
 - **Store testleri:** `usdToTry`/`tryToUsd` testleri silinir; `buy`/`sell` oto-takas senaryosu eklenir (BIST al → `usdBalance` düşer, TRY cepte beklemez).
 
