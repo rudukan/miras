@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -162,6 +162,29 @@ describe('maxUnitsAffordable', () => {
 	it('4 ondalığa aşağı yuvarlar (asla bakiyeyi aşmaz)', () => {
 		expect(maxUnitsAffordable(1000, 300)).toBe(3.3333);
 		expect(3.3333 * 300).toBeLessThanOrEqual(1000);
+	});
+});
+
+// ── heldUnits ───────────────────────────────────────────────────────────────────
+describe('heldUnits', () => {
+	const pos = [
+		{ assetId: 'THYAO', units: 155279.5031 },
+		{ assetId: 'BTC', units: 0.05 },
+	];
+	it('tutulan varlığın TAM adedini döner (yuvarlamasız)', () => {
+		expect(heldUnits(pos, 'THYAO')).toBe(155279.5031);
+	});
+	it('kesirli adet aynen döner', () => {
+		expect(heldUnits(pos, 'BTC')).toBe(0.05);
+	});
+	it('tutulmayan varlık → 0', () => {
+		expect(heldUnits(pos, 'ASELS')).toBe(0);
+	});
+	it('null seçim → 0', () => {
+		expect(heldUnits(pos, null)).toBe(0);
+	});
+	it('boş portföy → 0', () => {
+		expect(heldUnits([], 'THYAO')).toBe(0);
 	});
 });
 

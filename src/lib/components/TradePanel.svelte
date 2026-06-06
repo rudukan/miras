@@ -3,7 +3,7 @@
 	import { usd } from '$lib/domain/money';
 	import { CATALOG } from '$lib/catalog/liveAssets';
 	import { bistName } from '$lib/catalog/bist100';
-	import { displayUsd, maxUnitsAffordable } from './format';
+	import { displayUsd, maxUnitsAffordable, heldUnits } from './format';
 
 	interface Props {
 		store: LiveGameStore;
@@ -22,12 +22,17 @@
 	const selectedAssetUsd = $derived(
 		selectedAssetId ? store.assetUsdPrice(selectedAssetId) : undefined,
 	);
+	// Seçili varlıkta tutulan TAM adet (TÜMÜ = satış-hepsi için).
+	const heldUnitsSel = $derived(heldUnits(store.positions, selectedAssetId));
 
 	// ── Al/Sat durumu ────────────────────────────────────────────────────────────
 	let units = $state(0);
 
 	function maxUnits() {
 		units = maxUnitsAffordable(usdBalance, selectedAssetUsd);
+	}
+	function allUnits() {
+		units = heldUnitsSel;
 	}
 
 	const assetLabel = $derived(
@@ -85,6 +90,9 @@
 						       focus:outline-none focus:border-term-borderGlow text-xs w-full"
 					/>
 					<button type="button" onclick={maxUnits} class="shrink-0 {chipCls}">MAX</button>
+					{#if heldUnitsSel > 0}
+						<button type="button" onclick={allUnits} class="shrink-0 {chipCls}">TÜMÜ</button>
+					{/if}
 				</div>
 				<div class="flex justify-end">
 					<span class="text-term-text opacity-50 text-[10px]">

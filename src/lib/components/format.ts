@@ -80,6 +80,19 @@ export function maxUnitsAffordable(tryBalance: number, priceTry: number | undefi
 }
 
 /**
+ * Verilen varlıkta tutulan TAM adet (satış-hepsi için).
+ * Yuvarlama YOK — `sellAsset`'in "tutulandan fazla" kontrolüne birebir eşit geçer.
+ * Seçim null / tutulmuyor / boş portföy → 0.
+ */
+export function heldUnits(
+	positions: ReadonlyArray<{ assetId: string; units: number }>,
+	assetId: string | null,
+): number {
+	if (assetId === null) return 0;
+	return positions.find((p) => p.assetId === assetId)?.units ?? 0;
+}
+
+/**
  * Pozisyon kâr/zararı (para birimi bağımsız — sayısal).
  * value undefined → her ikisi undefined.
  * pnl = güncel değer − (adet × ort. maliyet); pnlPct yüzde (20 = +%20).
