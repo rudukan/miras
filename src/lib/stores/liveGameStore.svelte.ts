@@ -5,12 +5,11 @@ import {
   createGameState,
   buyAsset,
   sellAsset,
-  convertUsdToTry,
-  convertTryToUsd,
   netWorthUsd as netWorthUsdFn,
   STARTING_USD,
 } from './gameState';
-import { createLiveFxEngine, type LivePriceSource } from '../domain/fx/liveFx';
+import type { LivePriceSource } from '../domain/fx/liveFx';
+import type { UsdPriceOracle } from '../domain/fx/usdOracle';
 import { isMarketOpen } from '../domain/calendar/calendar';
 import type { AssetCategory } from '../domain/scenario/types';
 import { CATALOG, CRYPTO_SYMBOLS, CRYPTO_SET, CORE_ASSETS, BIST_SYMBOLS } from '../catalog/liveAssets';
@@ -33,18 +32,19 @@ export interface PriceRow {
   category: AssetCategory;
   source: 'crypto' | 'yahoo';
   priceTry: number | undefined; // canlı fiyat yoksa undefined
+  priceUsd: number | undefined; // USD karşılığı (kripto kayıpsız, diğer = TRY/kur)
   marketOpen: boolean;
   changePct: number | undefined; // günlük/24s % değişim; yoksa undefined (rozet gösterilmez)
 }
 
-/** WalletSummary satırı — holding + güncel değer. */
+/** WalletSummary satırı — holding + güncel USD değer. */
 export interface PositionRow {
   assetId: string;
   label: string;
   units: number;
-  avgCostTry: number;
-  priceTry: number | undefined;
-  valueTry: number | undefined;
+  avgCostUsd: number;
+  priceUsd: number | undefined;
+  valueUsd: number | undefined;
 }
 
 export interface LiveGameStoreOptions {
@@ -74,8 +74,7 @@ export interface LiveGameStore {
   readonly selectedPeriodDays: PeriodDays;
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
-  usdToTry(amount: Money): void;
-  tryToUsd(amount: Money): void;
+  assetUsdPrice(assetId: string): number | undefined;
   setPeriod(days: PeriodDays): void;
   addBist(symbol: string): void;
   start(): Promise<void>;
@@ -128,13 +127,26 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       return fxCache.prices[id];
     },
   };
-  const fx = createLiveFxEngine(source);
+  // USD fiyat oracle'ı — motor (reducer'lar) bunu tüketir; parite çevrimi burada.
+  // Kripto: cryptoUsd doğrudan (kayıpsız). BIST/emtia/döviz: TRY fiyat / canlı kur.
+  const oracle: UsdPriceOracle = {
+    assetUsd: (id) => {
+      if (CRYPTO_SET.has(id)) {
+        const u = cryptoUsd[id];
+        if (u === undefined) throw new Error(`No live price: ${id}`);
+        return usd(u);
+      }
+      const t = fxCache.prices[id];
+      if (t === undefined) throw new Error(`No live price: ${id}`);
+      return usd(t / fxCache.usdTry);
+    },
+  };
 
   // --- türev değerler ($derived; render bunlardan, setInterval yalnız cache'i besler) ---
   // netWorth: holding fiyatı yoksa reducer throw eder → try/catch ile null'a düşürülür (UI "—").
   const netWorth = $derived.by<Money | null>(() => {
     try {
-      return netWorthUsdFn(game, fx);
+      return netWorthUsdFn(game, oracle);
     } catch {
       return null;
     }
@@ -144,14 +156,19 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   const positions = $derived.by<PositionRow[]>(() =>
     game.holdings.map((h) => {
-      const price = source.assetTry(h.assetId);
+      let priceUsd: number | undefined;
+      try {
+        priceUsd = oracle.assetUsd(h.assetId).amount;
+      } catch {
+        priceUsd = undefined;
+      }
       return {
         assetId: h.assetId,
         label: CATALOG[h.assetId]?.label ?? bistName(h.assetId),
         units: h.units,
-        avgCostTry: h.avgCost.amount,
-        priceTry: price,
-        valueTry: price === undefined ? undefined : price * h.units,
+        avgCostUsd: h.avgCost.amount,
+        priceUsd,
+        valueUsd: priceUsd === undefined ? undefined : priceUsd * h.units,
       };
     }),
   );
@@ -167,6 +184,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
         category: m.category,
         source: m.source,
         priceTry: source.assetTry(m.id),
+        priceUsd: assetUsdPrice(m.id),
         marketOpen: isMarketOpen(m.category, at),
         changePct: m.source === 'crypto' ? cryptoChange[m.id] : fxCache.change?.[m.id],
       });
@@ -180,6 +198,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
         category: 'bist',
         source: 'yahoo',
         priceTry: fxCache.prices[sym],
+        priceUsd: assetUsdPrice(sym),
         marketOpen: bistOpen,
         changePct: fxCache.change?.[sym],
       });
@@ -198,10 +217,16 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       lastError = e instanceof Error ? e.message : String(e);
     }
   }
-  const buy = (assetId: string, units: number) => apply(() => buyAsset(game, fx, assetId, units));
-  const sell = (assetId: string, units: number) => apply(() => sellAsset(game, fx, assetId, units));
-  const usdToTry = (amount: Money) => apply(() => convertUsdToTry(game, fx, amount));
-  const tryToUsd = (amount: Money) => apply(() => convertTryToUsd(game, fx, amount));
+  const buy = (assetId: string, units: number) => apply(() => buyAsset(game, oracle, assetId, units));
+  const sell = (assetId: string, units: number) => apply(() => sellAsset(game, oracle, assetId, units));
+  /** Seçili varlığın USD fiyatı (TradePanel MAX + maliyet yankısı için); fiyat yoksa undefined. */
+  function assetUsdPrice(assetId: string): number | undefined {
+    try {
+      return oracle.assetUsd(assetId).amount;
+    } catch {
+      return undefined;
+    }
+  }
   const setPeriod = (days: PeriodDays) => {
     selectedPeriodDays = days;
   };
@@ -328,8 +353,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     },
     buy,
     sell,
-    usdToTry,
-    tryToUsd,
+    assetUsdPrice,
     setPeriod,
     addBist,
     start,

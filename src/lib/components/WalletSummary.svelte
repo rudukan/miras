@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { GameState } from '$lib/stores/gameState';
 	import type { PositionRow } from '$lib/stores/liveGameStore.svelte';
-	import { formatMoney } from '$lib/domain/money';
-	import { displayTry, signedTry, pnlClass, dailyChangeBadge, positionPnl } from './format';
+	import { usd, formatMoney } from '$lib/domain/money';
+	import { displayUsd, signedUsd, pnlClass, dailyChangeBadge, positionPnl } from './format';
 
 	interface Props {
 		game: GameState;
@@ -21,7 +21,7 @@
 		CÜZDAN
 	</div>
 
-	<!-- Nakit bakiyeleri -->
+	<!-- Nakit (tek: USD) + parite göstergesi -->
 	<div class="space-y-1.5">
 		<div class="flex justify-between items-center">
 			<span class="text-term-text opacity-70">USD nakit</span>
@@ -29,19 +29,13 @@
 				{formatMoney(game.usdBalance)}
 			</span>
 		</div>
-		<div class="flex justify-between items-center">
-			<span class="text-term-text opacity-70">TRY nakit</span>
-			<span class="text-term-amber font-bold">
-				{formatMoney(game.tryBalance)}
-			</span>
-		</div>
 		<div class="flex justify-between items-center pt-0.5">
-			<span class="text-term-text opacity-50 text-[10px]">USD/TRY</span>
+			<span class="text-term-text opacity-50 text-[10px]">USD/TRY (parite)</span>
 			<span class="text-term-blue text-[10px]">₺{usdRate}</span>
 		</div>
 	</div>
 
-	<!-- Pozisyonlar -->
+	<!-- Pozisyonlar (USD değer + K/Z) -->
 	<div>
 		<div class="text-term-text opacity-50 text-[10px] uppercase tracking-wider mb-1.5 flex justify-between">
 			<span>Pozisyonlar</span>
@@ -53,7 +47,7 @@
 		{:else}
 			<div class="space-y-1">
 				{#each positions as p (p.assetId)}
-					{@const pnl = positionPnl(p.units, p.avgCostTry, p.valueTry)}
+					{@const pnl = positionPnl(p.units, p.avgCostUsd, p.valueUsd)}
 					{@const pctBadge = dailyChangeBadge(pnl.pnlPct)}
 					<div class="flex justify-between items-start gap-2 border-b border-term-border border-opacity-30 pb-1 last:border-0 last:pb-0">
 						<div class="flex flex-col">
@@ -63,9 +57,9 @@
 							</span>
 						</div>
 						<div class="text-right">
-							<div class="text-term-text">{displayTry(p.valueTry)}</div>
+							<div class="text-term-text">{displayUsd(p.valueUsd === undefined ? null : usd(p.valueUsd))}</div>
 							<div class="text-[10px] flex items-center justify-end gap-1.5">
-								<span class={pnlClass(pnl.pnlTry ?? null)}>{signedTry(pnl.pnlTry)}</span>
+								<span class={pnlClass(pnl.pnl ?? null)}>{signedUsd(pnl.pnl === undefined ? null : usd(pnl.pnl))}</span>
 								{#if pctBadge}<span class={pctBadge.cls}>({pctBadge.text})</span>{/if}
 							</div>
 						</div>

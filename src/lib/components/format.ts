@@ -80,31 +80,34 @@ export function maxUnitsAffordable(tryBalance: number, priceTry: number | undefi
 }
 
 /**
- * Pozisyon kâr/zararı.
- * valueTry undefined → her ikisi undefined.
- * pnlTry = güncel değer − (adet × ort. maliyet); pnlPct yüzde (20 = +%20).
+ * Verilen varlıkta tutulan TAM adet (satış-hepsi için).
+ * Yuvarlama YOK — `sellAsset`'in "tutulandan fazla" kontrolüne birebir eşit geçer.
+ * Seçim null / tutulmuyor / boş portföy → 0.
+ */
+export function heldUnits(
+	positions: ReadonlyArray<{ assetId: string; units: number }>,
+	assetId: string | null,
+): number {
+	if (assetId === null) return 0;
+	return positions.find((p) => p.assetId === assetId)?.units ?? 0;
+}
+
+/**
+ * Pozisyon kâr/zararı (para birimi bağımsız — sayısal).
+ * value undefined → her ikisi undefined.
+ * pnl = güncel değer − (adet × ort. maliyet); pnlPct yüzde (20 = +%20).
  * maliyet 0 ise pnlPct undefined (sıfıra bölme yok).
  */
 export function positionPnl(
 	units: number,
-	avgCostTry: number,
-	valueTry: number | undefined,
-): { pnlTry: number | undefined; pnlPct: number | undefined } {
-	if (valueTry === undefined) return { pnlTry: undefined, pnlPct: undefined };
-	const cost = units * avgCostTry;
-	const pnlTry = valueTry - cost;
-	const pnlPct = cost > 0 ? (pnlTry / cost) * 100 : undefined;
-	return { pnlTry, pnlPct };
-}
-
-/**
- * İşaretli TRY gösterimi (pozisyon K/Z için).
- * undefined → '—'; n>=0 → '+₺x'; n<0 → '-₺x' (formatMoney eksiyi gösterir).
- */
-export function signedTry(n: number | undefined): string {
-	if (n === undefined) return '—';
-	if (n >= 0) return '+' + formatMoney(tryM(n));
-	return formatMoney(tryM(n));
+	avgCost: number,
+	value: number | undefined,
+): { pnl: number | undefined; pnlPct: number | undefined } {
+	if (value === undefined) return { pnl: undefined, pnlPct: undefined };
+	const cost = units * avgCost;
+	const pnl = value - cost;
+	const pnlPct = cost > 0 ? (pnl / cost) * 100 : undefined;
+	return { pnl, pnlPct };
 }
 
 /**
