@@ -1,5 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { createGameState, STARTING_USD } from './gameState';
+import {
+  createGameState,
+  buyAsset,
+  sellAsset,
+  advanceTime,
+  nextEventDay,
+  netWorthUsd,
+  profitRate,
+  grewDollars,
+  STARTING_USD,
+} from './gameState';
+import { usd } from '../domain/money';
+import type { UsdPriceOracle } from '../domain/fx/usdOracle';
+
+// Sahte USD fiyat oracle'ı: sabit USD fiyatları (deterministik test).
+function stubOracle(prices: Record<string, number>): UsdPriceOracle {
+  return {
+    assetUsd(id) {
+      const p = prices[id];
+      if (p === undefined) throw new Error(`No live price: ${id}`);
+      return usd(p);
+    },
+  };
+}
+
+const ORACLE = stubOracle({ THYAO: 7.5, ASELS: 5, BTC: 64000, EUR: 1.1 });
 
 describe('createGameState', () => {
   const s = createGameState('vasiyet', 12345, 'player-1', 1000);
@@ -7,15 +32,11 @@ describe('createGameState', () => {
   it('başlangıçta $1,000,000 USD', () => {
     expect(s.usdBalance).toEqual({ amount: STARTING_USD, currency: 'USD' });
   });
-  it('başlangıçta ₺0 TRY', () => {
-    expect(s.tryBalance).toEqual({ amount: 0, currency: 'TRY' });
-  });
   it('gün 1, vasiyet 365g', () => {
     expect(s.clock.day).toBe(1);
     expect(s.clock.totalDays).toBe(365);
   });
-  it('boş portföy ve mevduat', () => {
-    expect(s.deposits).toEqual([]);
+  it('boş portföy', () => {
     expect(s.holdings).toEqual([]);
   });
   it('kimlik ve zaman alanları', () => {
@@ -24,256 +45,126 @@ describe('createGameState', () => {
     expect(s.seed).toBe(12345);
     expect(s.createdAt).toBe(1000);
     expect(s.updatedAt).toBe(1000);
-    expect(s.depositSeq).toBe(0);
   });
 });
 
-import { convertUsdToTry, convertTryToUsd } from './gameState';
-import { usd, tryM } from '../domain/money';
-import { createFxEngine } from '../domain/fx/fx';
-import { VASIYET_2025 } from '../data/macro2025';
-
-describe('döviz çevrimi', () => {
-  const fx = createFxEngine(VASIYET_2025, 12345);
-
-  it('USD->TRY: USD düşer, TRY artar, kur gün 1', () => {
+describe('varlık al/sat (USD oto-takas)', () => {
+  it('buyAsset: USD düşer, holding eklenir, avgCost = USD alış fiyatı', () => {
     const s0 = createGameState('vasiyet', 12345, 'p', 0);
-    const s1 = convertUsdToTry(s0, fx, usd(1000));
-    const rate = fx.usdTryForDay(s0.clock.day).amount;
-    expect(s1.usdBalance.amount).toBeCloseTo(STARTING_USD - 1000, 2);
-    expect(s1.tryBalance.amount).toBeCloseTo(1000 * rate, 2);
-  });
-
-  it('TRY->USD: TRY düşer, USD artar', () => {
-    const s0 = createGameState('vasiyet', 12345, 'p', 0);
-    const withTry = convertUsdToTry(s0, fx, usd(1000));
-    const s2 = convertTryToUsd(withTry, fx, tryM(3530));
-    expect(s2.tryBalance.amount).toBeCloseTo(withTry.tryBalance.amount - 3530, 2);
-    expect(s2.usdBalance.amount).toBeGreaterThan(withTry.usdBalance.amount);
-  });
-
-  it('yetersiz USD -> hata', () => {
-    const s0 = createGameState('vasiyet', 12345, 'p', 0);
-    expect(() => convertUsdToTry(s0, fx, usd(2_000_000))).toThrow('Insufficient USD');
-  });
-  it('yetersiz TRY -> hata', () => {
-    const s0 = createGameState('vasiyet', 12345, 'p', 0);
-    expect(() => convertTryToUsd(s0, fx, tryM(100))).toThrow('Insufficient TRY');
-  });
-  it('pozitif olmayan miktar -> hata', () => {
-    const s0 = createGameState('vasiyet', 12345, 'p', 0);
-    expect(() => convertUsdToTry(s0, fx, usd(0))).toThrow('positive');
-  });
-});
-
-import { buyAsset, sellAsset } from './gameState';
-
-describe('varlık al/sat', () => {
-  const fx = createFxEngine(VASIYET_2025, 12345);
-
-  function funded() {
-    // 100k USD -> TRY ki hisse alabilelim
-    return convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(100_000));
-  }
-
-  it('buyAsset: TRY düşer, holding eklenir, avgCost = alış fiyatı', () => {
-    const s = funded();
-    const price = fx.assetPriceForDay('THYAO', s.clock.day).amount;
-    const s2 = buyAsset(s, fx, 'THYAO', 100);
+    const s2 = buyAsset(s0, ORACLE, 'THYAO', 100); // 100 × $7.5 = $750
     const h = s2.holdings.find((x) => x.assetId === 'THYAO')!;
     expect(h.units).toBe(100);
-    expect(h.avgCost.amount).toBeCloseTo(price, 2);
-    expect(s2.tryBalance.amount).toBeCloseTo(s.tryBalance.amount - price * 100, 2);
+    expect(h.avgCost).toEqual({ amount: 7.5, currency: 'USD' });
+    expect(s2.usdBalance.amount).toBeCloseTo(STARTING_USD - 750, 2);
   });
 
   it('buyAsset kesirli units (0.05 BTC)', () => {
-    const s = funded();
-    const s2 = buyAsset(s, fx, 'BTC', 0.05);
+    const s0 = createGameState('vasiyet', 12345, 'p', 0);
+    const s2 = buyAsset(s0, ORACLE, 'BTC', 0.05); // 0.05 × $64000 = $3200
     expect(s2.holdings.find((x) => x.assetId === 'BTC')!.units).toBeCloseTo(0.05, 8);
+    expect(s2.usdBalance.amount).toBeCloseTo(STARTING_USD - 3200, 2);
   });
 
-  it('buyAsset ikinci alış: units toplanır, avgCost ağırlıklı ortalama', () => {
-    let s = funded();
-    s = buyAsset(s, fx, 'THYAO', 100); // gün 1
-    s = buyAsset(s, fx, 'THYAO', 100); // aynı gün, aynı fiyat
+  it('buyAsset ikinci alış: units toplanır, avgCost ağırlıklı ortalama (USD)', () => {
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'THYAO', 100);
+    s = buyAsset(s, ORACLE, 'THYAO', 100); // aynı fiyat
     const h = s.holdings.find((x) => x.assetId === 'THYAO')!;
     expect(h.units).toBe(200);
-    const price = fx.assetPriceForDay('THYAO', 1).amount;
-    expect(h.avgCost.amount).toBeCloseTo(price, 2);
+    expect(h.avgCost.amount).toBeCloseTo(7.5, 2);
   });
 
-  it('buyAsset yetersiz TRY -> hata', () => {
-    const s = createGameState('vasiyet', 12345, 'p', 0); // TRY=0
-    expect(() => buyAsset(s, fx, 'THYAO', 1)).toThrow('Insufficient TRY');
+  it('buyAsset yetersiz USD -> hata', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    expect(() => buyAsset(s, ORACLE, 'THYAO', 1_000_000)).toThrow('Insufficient USD');
   });
-  it('buyAsset bilinmeyen varlık -> hata', () => {
-    const s = funded();
-    expect(() => buyAsset(s, fx, 'YOKBU', 1)).toThrow('Unknown asset');
+  it('buyAsset fiyatsız varlık -> hata', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    expect(() => buyAsset(s, ORACLE, 'YOKBU', 1)).toThrow('No live price');
   });
   it('buyAsset pozitif olmayan units -> hata', () => {
-    const s = funded();
-    expect(() => buyAsset(s, fx, 'THYAO', 0)).toThrow('positive');
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    expect(() => buyAsset(s, ORACLE, 'THYAO', 0)).toThrow('positive');
   });
 
-  it('sellAsset: TRY artar, units azalır', () => {
-    let s = funded();
-    s = buyAsset(s, fx, 'THYAO', 100);
-    const before = s.tryBalance.amount;
-    const price = fx.assetPriceForDay('THYAO', s.clock.day).amount;
-    s = sellAsset(s, fx, 'THYAO', 40);
+  it('sellAsset: USD artar, units azalır', () => {
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'THYAO', 100); // -$750
+    const before = s.usdBalance.amount;
+    s = sellAsset(s, ORACLE, 'THYAO', 40); // +40 × $7.5 = $300
     expect(s.holdings.find((x) => x.assetId === 'THYAO')!.units).toBe(60);
-    expect(s.tryBalance.amount).toBeCloseTo(before + price * 40, 2);
+    expect(s.usdBalance.amount).toBeCloseTo(before + 300, 2);
   });
   it('sellAsset tamamı satılınca holding silinir', () => {
-    let s = funded();
-    s = buyAsset(s, fx, 'THYAO', 100);
-    s = sellAsset(s, fx, 'THYAO', 100);
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'THYAO', 100);
+    s = sellAsset(s, ORACLE, 'THYAO', 100);
     expect(s.holdings.find((x) => x.assetId === 'THYAO')).toBeUndefined();
   });
   it('sellAsset sahip olunandan fazla -> hata', () => {
-    let s = funded();
-    s = buyAsset(s, fx, 'THYAO', 10);
-    expect(() => sellAsset(s, fx, 'THYAO', 11)).toThrow('Insufficient units');
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'THYAO', 10);
+    expect(() => sellAsset(s, ORACLE, 'THYAO', 11)).toThrow('Insufficient units');
   });
   it('sellAsset hiç sahip olunmayan -> hata', () => {
-    const s = funded();
-    expect(() => sellAsset(s, fx, 'THYAO', 1)).toThrow('Insufficient units');
-  });
-});
-
-import { openDeposit, closeDeposit } from './gameState';
-
-describe('mevduat', () => {
-  const fx = createFxEngine(VASIYET_2025, 12345);
-  const RATE = VASIYET_2025.data.depositAnnualRate; // 0.42
-
-  function funded() {
-    return convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(100_000));
-  }
-
-  it('openDeposit: TRY düşer, mevduat id ile eklenir, seq artar', () => {
-    const s = funded();
-    const before = s.tryBalance.amount;
-    const s2 = openDeposit(s, tryM(100_000), 90, RATE);
-    expect(s2.deposits).toHaveLength(1);
-    expect(s2.deposits[0].id).toBe('dep-0');
-    expect(s2.deposits[0].annualRate).toBe(RATE);
-    expect(s2.depositSeq).toBe(1);
-    expect(s2.tryBalance.amount).toBeCloseTo(before - 100_000, 2);
-  });
-
-  it('closeDeposit erken (vade dolmadan) -> sadece principal', () => {
-    let s = funded();
-    s = openDeposit(s, tryM(100_000), 90, RATE); // gün 1 açıldı
-    const beforeClose = s.tryBalance.amount;
-    s = closeDeposit(s, 'dep-0'); // hâlâ gün 1, vade dolmadı
-    expect(s.tryBalance.amount).toBeCloseTo(beforeClose + 100_000, 2);
-    expect(s.deposits).toHaveLength(0);
-  });
-
-  it('openDeposit yetersiz TRY -> hata', () => {
     const s = createGameState('vasiyet', 12345, 'p', 0);
-    expect(() => openDeposit(s, tryM(1000), 30, RATE)).toThrow('Insufficient TRY');
-  });
-  it('closeDeposit bilinmeyen id -> hata', () => {
-    const s = funded();
-    expect(() => closeDeposit(s, 'yok')).toThrow('Unknown deposit');
+    expect(() => sellAsset(s, ORACLE, 'THYAO', 1)).toThrow('Insufficient units');
   });
 });
-
-import { advanceTime, nextEventDay } from './gameState';
 
 describe('zaman ilerletme', () => {
-  const fx = createFxEngine(VASIYET_2025, 12345);
-  const RATE = VASIYET_2025.data.depositAnnualRate;
-
-  function funded() {
-    return convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(100_000));
-  }
-
   it('advanceTime günü ilerletir', () => {
     const s = advanceTime(createGameState('vasiyet', 12345, 'p', 0), 10);
-    expect(s.clock.day).toBe(11); // gün 1 + 10
+    expect(s.clock.day).toBe(11);
   });
-
   it('advanceTime totalDays üstüne çıkmaz', () => {
     const s = advanceTime(createGameState('vasiyet', 12345, 'p', 0), 999);
     expect(s.clock.day).toBe(365);
   });
-
-  it('advanceTime vadesi dolan mevduatı otomatik nakde çevirir', () => {
-    let s = funded();
-    s = openDeposit(s, tryM(100_000), 30, RATE); // gün 1 açıldı, vade gün 31
-    const beforeTry = s.tryBalance.amount; // mevduat sonrası kalan TRY
-    s = advanceTime(s, 35); // gün 36, vade geçti
-    expect(s.deposits).toHaveLength(0); // otomatik kapandı
-    // principal + net faiz geri geldi (net faiz > 0)
-    expect(s.tryBalance.amount).toBeGreaterThan(beforeTry + 100_000);
-  });
-
-  it('advanceTime vadesi dolmayan mevduata dokunmaz', () => {
-    let s = funded();
-    s = openDeposit(s, tryM(100_000), 180, RATE); // vade gün 181
-    s = advanceTime(s, 30); // gün 31
-    expect(s.deposits).toHaveLength(1);
-  });
-
-  it('nextEventDay en yakın mevduat vadesini verir', () => {
-    let s = funded();
-    s = openDeposit(s, tryM(50_000), 90, RATE);  // vade 91
-    s = openDeposit(s, tryM(20_000), 30, RATE);  // vade 31
-    expect(nextEventDay(s)).toBe(31);
-  });
-  it('nextEventDay mevduat yoksa son günü verir', () => {
+  it('nextEventDay son günü verir', () => {
     const s = createGameState('vasiyet', 12345, 'p', 0);
     expect(nextEventDay(s)).toBe(365);
   });
+  it('nextEventDay son günde null', () => {
+    const s = advanceTime(createGameState('vasiyet', 12345, 'p', 0), 999);
+    expect(nextEventDay(s)).toBeNull();
+  });
 });
 
-import { netWorthUsd, profitRate, beatInflation, INFLATION_TARGET_USD } from './gameState';
-
-describe('skor', () => {
-  const fx = createFxEngine(VASIYET_2025, 12345);
-
+describe('skor (USD)', () => {
   it('gün 1, pozisyonsuz: net servet = $1,000,000', () => {
     const s = createGameState('vasiyet', 12345, 'p', 0);
-    expect(netWorthUsd(s, fx).amount).toBeCloseTo(STARTING_USD, 0);
+    expect(netWorthUsd(s, ORACLE).amount).toBeCloseTo(STARTING_USD, 2);
   });
   it('gün 1 pozisyonsuz: profitRate = 1.0', () => {
     const s = createGameState('vasiyet', 12345, 'p', 0);
-    expect(profitRate(s, fx)).toBeCloseTo(1.0, 4);
+    expect(profitRate(s, ORACLE)).toBeCloseTo(1.0, 4);
   });
-  it('pozisyonsuz nakit enflasyon hedefini geçmez (beatInflation=false)', () => {
+  it('pozisyonsuz nakit doları büyütmez (grewDollars=false)', () => {
     const s = createGameState('vasiyet', 12345, 'p', 0);
-    expect(netWorthUsd(s, fx).amount).toBeLessThan(INFLATION_TARGET_USD);
-    expect(beatInflation(s, fx)).toBe(false);
+    expect(grewDollars(s, ORACLE)).toBe(false);
   });
-  it('USD->TRY->hisse sonrası net servet pozitif ve makul', () => {
-    let s = convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(100_000));
-    s = buyAsset(s, fx, 'THYAO', 100);
-    const nw = netWorthUsd(s, fx).amount;
-    // çevrim+alış aynı gün, komisyon yok -> ~$1M civarı (gürültü payı)
-    expect(nw).toBeGreaterThan(950_000);
-    expect(nw).toBeLessThan(1_050_000);
+  it('alım sonrası net servet korunur (oto-takas, makas yok)', () => {
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'BTC', 1); // -$64000 nakit, +$64000 holding
+    expect(netWorthUsd(s, ORACLE).amount).toBeCloseTo(STARTING_USD, 2);
   });
-  it('beatInflation: net servet >= hedef ise true', () => {
-    // yapay: hisseyi gün 1 al, gün 365 değerle (drift net serveti yukarı taşır)
-    let s = convertUsdToTry(createGameState('vasiyet', 12345, 'p', 0), fx, usd(900_000));
-    s = buyAsset(s, fx, 'ASELS', 1000); // yüksek drift (+%40)
-    s = advanceTime(s, 364); // gün 365
-    // bu senaryoda net servet hedefi geçmeli (deterministik)
-    expect(beatInflation(s, fx)).toBe(netWorthUsd(s, fx).amount >= INFLATION_TARGET_USD);
+  it('grewDollars: holding değeri artınca true', () => {
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'BTC', 10); // -$640000, +10 BTC
+    // fiyat $64000 → $80000 yükselen oracle ile değerle
+    const up = stubOracle({ BTC: 80000 });
+    expect(grewDollars(s, up)).toBe(true);
+    expect(netWorthUsd(s, up).amount).toBeCloseTo(STARTING_USD + 10 * 16000, 2);
   });
-
-  it('determinizm: aynı seed + aynı aksiyonlar -> aynı net servet', () => {
+  it('determinizm: aynı aksiyonlar -> aynı net servet', () => {
     function run() {
-      let s = convertUsdToTry(createGameState('vasiyet', 7, 'p', 0), fx2, usd(500_000));
-      s = buyAsset(s, fx2, 'BTC', 0.1);
-      s = buyAsset(s, fx2, 'THYAO', 200);
+      let s = createGameState('vasiyet', 7, 'p', 0);
+      s = buyAsset(s, ORACLE, 'BTC', 0.1);
+      s = buyAsset(s, ORACLE, 'THYAO', 200);
       s = advanceTime(s, 100);
-      return netWorthUsd(s, fx2).amount;
+      return netWorthUsd(s, ORACLE).amount;
     }
-    const fx2 = createFxEngine(VASIYET_2025, 7);
     expect(run()).toBe(run());
   });
 });
