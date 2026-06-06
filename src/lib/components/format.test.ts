@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, signedTry, maxUnitsAffordable } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -131,38 +131,17 @@ describe('dailyChangeBadge', () => {
 
 // ── positionPnl ─────────────────────────────────────────────────────────────────
 describe('positionPnl', () => {
-	it('valueTry undefined → pnl undefined', () => {
-		expect(positionPnl(1, 100, undefined)).toEqual({ pnlTry: undefined, pnlPct: undefined });
+	it('value undefined → pnl undefined', () => {
+		expect(positionPnl(1, 100, undefined)).toEqual({ pnl: undefined, pnlPct: undefined });
 	});
-	it('kâr: 1 adet, maliyet 100, değer 120 → +20 TRY, +%20', () => {
-		expect(positionPnl(1, 100, 120)).toEqual({ pnlTry: 20, pnlPct: 20 });
+	it('kâr: 1 adet, maliyet 100, değer 120 → +20, +%20', () => {
+		expect(positionPnl(1, 100, 120)).toEqual({ pnl: 20, pnlPct: 20 });
 	});
-	it('zarar: 2 adet, maliyet 50, değer 80 → -20 TRY, -%20', () => {
-		expect(positionPnl(2, 50, 80)).toEqual({ pnlTry: -20, pnlPct: -20 });
+	it('zarar: 2 adet, maliyet 50, değer 80 → -20, -%20', () => {
+		expect(positionPnl(2, 50, 80)).toEqual({ pnl: -20, pnlPct: -20 });
 	});
 	it('maliyet 0 → pnlPct undefined (sıfıra bölme yok)', () => {
-		expect(positionPnl(5, 0, 100)).toEqual({ pnlTry: 100, pnlPct: undefined });
-	});
-});
-
-// ── signedTry ───────────────────────────────────────────────────────────────────
-describe('signedTry', () => {
-	it('undefined → —', () => {
-		expect(signedTry(undefined)).toBe('—');
-	});
-	it('pozitif → + öneki + ₺', () => {
-		const r = signedTry(1000);
-		expect(r.startsWith('+')).toBe(true);
-		expect(r).toContain('₺');
-		expect(r).toContain('1.000');
-	});
-	it('negatif → eksi, + öneki yok', () => {
-		const r = signedTry(-500);
-		expect(r.startsWith('+')).toBe(false);
-		expect(r).toContain('500');
-	});
-	it('sıfır → + öneki', () => {
-		expect(signedTry(0).startsWith('+')).toBe(true);
+		expect(positionPnl(5, 0, 100)).toEqual({ pnl: 100, pnlPct: undefined });
 	});
 });
 
