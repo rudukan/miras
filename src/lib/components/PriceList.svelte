@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PriceRow } from '$lib/stores/liveGameStore.svelte';
-	import { displayTry, marketBadge, dailyChangeBadge } from './format';
+	import { usd } from '$lib/domain/money';
+	import { displayTry, displayUsd, marketBadge, dailyChangeBadge } from './format';
 	import { searchBist100 } from '$lib/catalog/bist100';
 
 	interface Props {
@@ -94,6 +95,9 @@
 						<div class="flex flex-col items-end shrink-0">
 							<span class="text-term-green font-bold">
 								{displayTry(row.priceTry)}
+							</span>
+							<span class="text-[10px] text-term-text opacity-50">
+								≈ {displayUsd(row.priceUsd === undefined ? null : usd(row.priceUsd))}
 							</span>
 							<div class="flex items-center gap-2">
 								{#if chg}

@@ -32,6 +32,7 @@ export interface PriceRow {
   category: AssetCategory;
   source: 'crypto' | 'yahoo';
   priceTry: number | undefined; // canlı fiyat yoksa undefined
+  priceUsd: number | undefined; // USD karşılığı (kripto kayıpsız, diğer = TRY/kur)
   marketOpen: boolean;
   changePct: number | undefined; // günlük/24s % değişim; yoksa undefined (rozet gösterilmez)
 }
@@ -183,6 +184,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
         category: m.category,
         source: m.source,
         priceTry: source.assetTry(m.id),
+        priceUsd: assetUsdPrice(m.id),
         marketOpen: isMarketOpen(m.category, at),
         changePct: m.source === 'crypto' ? cryptoChange[m.id] : fxCache.change?.[m.id],
       });
@@ -196,6 +198,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
         category: 'bist',
         source: 'yahoo',
         priceTry: fxCache.prices[sym],
+        priceUsd: assetUsdPrice(sym),
         marketOpen: bistOpen,
         changePct: fxCache.change?.[sym],
       });

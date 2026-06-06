@@ -240,7 +240,19 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(pos?.avgCostUsd).toBeCloseTo(3, 2);
   });
 
-  it('13) addBist tekrarı yinelenmez (idempotent)', async () => {
+  it('14) prices satırları USD karşılığını taşır (kripto kayıpsız, BIST = TRY/kur)', async () => {
+    const t = setup();
+    await t.store.start();
+    t.feed.onStatus?.('live');
+    t.feed.onPrice('BTC', 64000);
+    flushSync();
+    // BTC: doğrudan USD (kayıpsız)
+    expect(t.store.prices.find((p) => p.id === 'BTC')?.priceUsd).toBe(64000);
+    // THYAO: 300 TRY / 40 kur = $7.5
+    expect(t.store.prices.find((p) => p.id === 'THYAO')?.priceUsd).toBeCloseTo(7.5, 2);
+  });
+
+  it('15) addBist tekrarı yinelenmez (idempotent)', async () => {
     const t = setup();
     await t.store.start();
     t.store.addBist('THYAO');
