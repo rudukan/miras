@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { GET } from './+server';
-import { fetchYahooPrice, fetchYahooQuote, fetchUsdRates, fetchFxValue } from '$lib/api/yahooSource';
+import { fetchYahooPrice, fetchYahooQuote, fetchFxValue } from '$lib/api/yahooSource';
 
 function okJson(body: unknown): Promise<Response> {
   return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
@@ -8,10 +8,11 @@ function okJson(body: unknown): Promise<Response> {
 function yahooBody(price: number, previousClose?: number) {
   return { chart: { result: [{ meta: { regularMarketPrice: price, previousClose } }] } };
 }
-/** URL'ye göre yönlendiren sahte fetch (er-api + Yahoo sembolleri). */
+/** URL'ye göre yönlendiren sahte fetch (Yahoo sembolleri: USDTRY=X/EURTRY=X + BIST + metaller). */
 function routedFetch() {
   return vi.fn((url: string) => {
-    if (url.includes('open.er-api.com')) return okJson({ rates: { TRY: 40, EUR: 0.5 } });
+    if (url.includes('USDTRY=X')) return okJson(yahooBody(40));            // usdTry 40
+    if (url.includes('EURTRY=X')) return okJson(yahooBody(80, 76));        // EUR/TRY 80, +5.26%
     if (url.includes('GC=F')) return okJson(yahooBody(3110.34768, 3000)); // ons altın USD -> /31.1034768 = 100 USD/gram
     if (url.includes('SI=F')) return okJson(yahooBody(31.1034768));       // ons gümüş USD -> 1 USD/gram (prevClose yok)
     if (url.includes('THYAO.IS')) return okJson(yahooBody(300, 240));     // +25%
@@ -49,17 +50,6 @@ describe('fetchYahooQuote', () => {
   });
 });
 
-describe('fetchUsdRates', () => {
-  it('USD bazlı kur tablosunu döner', async () => {
-    const f = vi.fn(() => okJson({ rates: { TRY: 40.2, EUR: 0.92 } })) as unknown as typeof fetch;
-    expect((await fetchUsdRates(f)).TRY).toBe(40.2);
-  });
-  it('TRY yoksa fırlatır', async () => {
-    const f = vi.fn(() => okJson({ rates: { EUR: 0.92 } })) as unknown as typeof fetch;
-    await expect(fetchUsdRates(f)).rejects.toThrow();
-  });
-});
-
 describe('fetchFxValue (birleşik TRY snapshot)', () => {
   it('BIST(TRY) + gram altın/gümüş(TRY) + EUR(TRY) + usdTry üretir', async () => {
     const v = await fetchFxValue(['THYAO'], routedFetch());
@@ -67,7 +57,7 @@ describe('fetchFxValue (birleşik TRY snapshot)', () => {
     expect(v.prices.THYAO).toBe(300);
     expect(v.prices.XAUGRAM).toBe(4000); // 100 USD/gram × 40
     expect(v.prices.XAGGRAM).toBe(40);   // 1 USD/gram × 40
-    expect(v.prices.EUR).toBe(80);       // usdTry / eurPerUsd = 40 / 0.5
+    expect(v.prices.EUR).toBe(80);       // EURTRY=X doğrudan
   });
 
   it('change haritası: previousClose olan semboller için günlük % döner', async () => {
@@ -75,11 +65,13 @@ describe('fetchFxValue (birleşik TRY snapshot)', () => {
     expect(v.change?.THYAO).toBe(25);                // (300-240)/240*100
     expect(v.change?.XAUGRAM).toBeCloseTo(3.69, 1);  // (3110.35-3000)/3000*100
     expect(v.change?.XAGGRAM).toBeUndefined();        // prevClose yok → atlanır
+    expect(v.change?.EUR).toBeCloseTo(5.26, 1);      // (80-76)/76*100 → EUR rozeti (yeni)
   });
 
   it('geçersiz BIST sembolü tüm snapshot\'ı düşürmez — atlanır, diğerleri gelir', async () => {
     const f = vi.fn((url: string) => {
-      if (url.includes('open.er-api.com')) return okJson({ rates: { TRY: 40, EUR: 0.5 } });
+      if (url.includes('USDTRY=X')) return okJson(yahooBody(40));
+      if (url.includes('EURTRY=X')) return okJson(yahooBody(80));
       if (url.includes('GC=F')) return okJson(yahooBody(3110.34768, 3000));
       if (url.includes('SI=F')) return okJson(yahooBody(31.1034768));
       if (url.includes('THYAO.IS')) return okJson(yahooBody(300, 240));
@@ -92,6 +84,29 @@ describe('fetchFxValue (birleşik TRY snapshot)', () => {
     expect(v.prices.ZZZZ).toBeUndefined(); // hatalı sembol atlandı
     expect(v.usdTry).toBe(40);          // çekirdek korundu
     expect(v.prices.XAUGRAM).toBe(4000); // metaller korundu
+  });
+
+  it('usdTry (USDTRY=X) hatası snapshot\'ı patlatır (atomik çekirdek)', async () => {
+    const f = vi.fn((url: string) => {
+      if (url.includes('USDTRY=X')) return Promise.resolve({ ok: false, status: 503 } as Response);
+      return okJson(yahooBody(1));
+    }) as unknown as typeof fetch;
+    await expect(fetchFxValue(['THYAO'], f)).rejects.toThrow();
+  });
+
+  it('EUR (EURTRY=X) hatası snapshot\'ı patlatmaz — EUR atlanır, gerisi gelir', async () => {
+    const f = vi.fn((url: string) => {
+      if (url.includes('USDTRY=X')) return okJson(yahooBody(40));
+      if (url.includes('EURTRY=X')) return Promise.resolve({ ok: false, status: 503 } as Response);
+      if (url.includes('GC=F')) return okJson(yahooBody(3110.34768, 3000));
+      if (url.includes('SI=F')) return okJson(yahooBody(31.1034768));
+      if (url.includes('THYAO.IS')) return okJson(yahooBody(300, 240));
+      return okJson(yahooBody(1));
+    }) as unknown as typeof fetch;
+    const v = await fetchFxValue(['THYAO'], f);
+    expect(v.prices.EUR).toBeUndefined();  // EUR atlandı
+    expect(v.usdTry).toBe(40);             // çekirdek ayakta
+    expect(v.prices.THYAO).toBe(300);
   });
 });
 

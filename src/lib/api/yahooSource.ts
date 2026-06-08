@@ -58,25 +58,16 @@ export async function fetchYahooPrice(symbol: string, fetchFn: typeof fetch): Pr
   return (await fetchYahooQuote(symbol, fetchFn)).price;
 }
 
-/** open.er-api.com'dan USD bazlı kur tablosunu çeker. */
-export async function fetchUsdRates(fetchFn: typeof fetch): Promise<Record<string, number>> {
-  const res = await fetchFn('https://open.er-api.com/v6/latest/USD');
-  if (!res.ok) throw new Error(`er-api: HTTP ${res.status}`);
-  const j = (await res.json()) as { rates?: Record<string, number> };
-  if (!j?.rates?.TRY) throw new Error('er-api: geçersiz yapı');
-  return j.rates as Record<string, number>;
-}
-
 /** BIST(TRY) + gram altın/gümüş(TRY) + EUR(TRY) + USD/TRY'yi tek snapshot'ta birleştirir.
- *  Atomik: herhangi bir upstream çağrısı patlarsa snapshot patlar (cache fallback'e düşer). */
+ *  usdTry = Yahoo USDTRY=X (atomik çekirdek). EUR = Yahoo EURTRY=X (dayanıklı).
+ *  Herhangi bir çekirdek (usdTry/metal) çağrısı patlarsa snapshot patlar (cache fallback'e düşer). */
 export async function fetchFxValue(bist: readonly string[], fetchFn: typeof fetch): Promise<FxValue> {
-  const rates = await fetchUsdRates(fetchFn);
-  const usdTry = rates.TRY;
+  const usdQuote = await fetchYahooQuote('USDTRY=X', fetchFn); // atomik çekirdek (THE parite)
+  const usdTry = usdQuote.price;
   const prices: Record<string, number> = {};
   const change: Record<string, number> = {};
 
   // Sembol-bazında dayanıklı: on-demand'de geçersiz/delisted sembol diğerlerini düşürmesin.
-  // (usdTry + metaller aşağıda atomik kalır — onlar çekirdek, kullanıcı girdisi değil.)
   await Promise.all(
     bist.map(async (sym) => {
       try {
@@ -97,7 +88,14 @@ export async function fetchFxValue(bist: readonly string[], fetchFn: typeof fetc
   prices.XAGGRAM = round2((silver.price * usdTry) / TROY_OUNCE_GRAMS);
   if (silver.changePct !== undefined) change.XAGGRAM = silver.changePct;
 
-  if (rates.EUR) prices.EUR = round2(usdTry / rates.EUR); // EUR/TRY (er-api değişim vermez → change yok)
+  // EUR/TRY: dayanıklı (tek gösterim varlığı; patlarsa atlanır, snapshot ayakta kalır).
+  try {
+    const eur = await fetchYahooQuote('EURTRY=X', fetchFn);
+    prices.EUR = round2(eur.price);
+    if (eur.changePct !== undefined) change.EUR = eur.changePct;
+  } catch (err) {
+    console.warn('[yahooSource] EUR (EURTRY=X) atlandı:', err instanceof Error ? err.message : err);
+  }
 
   return { usdTry: round2(usdTry), prices, change };
 }
