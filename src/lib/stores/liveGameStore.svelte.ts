@@ -112,15 +112,21 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   let selectedPeriodDays = $state<PeriodDays>(opts.periodDays ?? 365);
   // Dinamik aktif BIST seti — başlangıç = katalog başlangıç hisseleri; addBist ile büyür (v1: yalnız büyür).
   let activeBist = $state<string[]>([...BIST_SYMBOLS]);
+  // Hibrit USD/TRY: WS usdttry tick'i (birincil); yokken/stale'ken Yahoo'ya düşülür.
+  let liveUsdTry = $state<number | undefined>(undefined);
+
+  // WS canlı + tick var → WS; aksi halde Yahoo (fxCache); o da yoksa FALLBACK_FX.usdTry.
+  const effectiveUsdTry = (): number =>
+    feedStatus === 'live' && liveUsdTry !== undefined ? liveUsdTry : fxCache.usdTry;
 
   // Canlı fiyat kaynağı — rune okur → her zaman güncel; createLiveFxEngine tek seam.
   const source: LivePriceSource = {
-    usdTry: () => fxCache.usdTry,
+    usdTry: () => effectiveUsdTry(),
     assetTry: (id) => {
       // Kripto: USD fiyatını canlı kurla TRY'ye çevir.
       if (CRYPTO_SET.has(id)) {
         const u = cryptoUsd[id];
-        return u === undefined ? undefined : u * fxCache.usdTry;
+        return u === undefined ? undefined : u * effectiveUsdTry();
       }
       // Diğer her şey (BIST/emtia/döviz) proxy'den zaten TRY gelir — CATALOG üyeliği gerekmez
       // (on-demand aranan BIST sembolleri de böyle çözülür).
@@ -138,7 +144,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       }
       const t = fxCache.prices[id];
       if (t === undefined) throw new Error(`No live price: ${id}`);
-      return usd(t / fxCache.usdTry);
+      return usd(t / effectiveUsdTry());
     },
   };
 
@@ -245,26 +251,47 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   let pending: Record<string, number> = {};
   let started = false;
 
-  function flushCrypto(): void {
-    cryptoUsd = { ...cryptoUsd, ...pending };
-    pending = {};
+  let pendingUsdTry: number | undefined = undefined;
+  function flushPending(): void {
+    if (Object.keys(pending).length > 0) {
+      cryptoUsd = { ...cryptoUsd, ...pending };
+      pending = {};
+    }
+    if (pendingUsdTry !== undefined) {
+      liveUsdTry = pendingUsdTry;
+      pendingUsdTry = undefined;
+    }
   }
   function onPrice(coin: string, u: number): void {
     pending[coin] = u;
     if (throttleMs <= 0) {
-      flushCrypto();
+      flushPending();
       return;
     }
     // trailing throttle: aşırı $derived re-hesabını önler (yüksek frekanslı WS)
     if (throttleTimer === null) {
       throttleTimer = setTimeout(() => {
         throttleTimer = null;
-        flushCrypto();
+        flushPending();
       }, throttleMs);
     }
   }
   function onStatus(s: 'live' | 'stale'): void {
     feedStatus = s;
+  }
+  function onFxRate(pair: string, rate: number): void {
+    if (pair !== 'USDTTRY') return;
+    pendingUsdTry = rate;
+    if (throttleMs <= 0) {
+      flushPending();
+      return;
+    }
+    if (throttleTimer === null) {
+      throttleTimer = setTimeout(() => {
+        throttleTimer = null;
+        flushPending();
+      }, throttleMs);
+    }
   }
 
   async function pollFx(): Promise<void> {
@@ -296,7 +323,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   async function start(): Promise<void> {
     if (started) return;
     started = true;
-    feed = makeFeed({ symbols: [...CRYPTO_SYMBOLS], onPrice, onStatus });
+    feed = makeFeed({ symbols: [...CRYPTO_SYMBOLS], fxPairs: ['USDTTRY'], onPrice, onStatus, onFxRate });
     pollTimer = setInterval(() => void pollFx(), pollMs);
     await pollFx(); // ilk çekim
   }
@@ -334,7 +361,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       return prices;
     },
     get usdTry() {
-      return fxCache.usdTry;
+      return effectiveUsdTry();
     },
     get dataStale() {
       return dataStale;

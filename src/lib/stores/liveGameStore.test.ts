@@ -259,4 +259,33 @@ describe('createLiveGameStore (USD-taban)', () => {
     flushSync();
     expect(t.store.prices.filter((p) => p.id === 'THYAO').length).toBe(1);
   });
+
+  it('16) hibrit: WS usdttry tick effectiveUsdTry\'ı günceller (Yahoo\'yu ezer)', async () => {
+    const t = setup({ throttleMs: 0 });
+    await t.store.start();
+    t.feed.onStatus?.('live');
+    t.feed.onFxRate?.('USDTTRY', 50);
+    flushSync();
+    expect(t.store.usdTry).toBe(50); // Yahoo 40 yerine WS 50
+  });
+
+  it('17) hibrit: WS stale olunca Yahoo usdTry\'a düşer', async () => {
+    const t = setup({ throttleMs: 0 });
+    await t.store.start();
+    t.feed.onStatus?.('live');
+    t.feed.onFxRate?.('USDTTRY', 50);
+    flushSync();
+    expect(t.store.usdTry).toBe(50);
+    t.feed.onStatus?.('stale');
+    flushSync();
+    expect(t.store.usdTry).toBe(40); // Yahoo fallback
+  });
+
+  it('18) hibrit: liveUsdTry yokken Yahoo kullanılır (regresyon yok)', async () => {
+    const t = setup();
+    await t.store.start();
+    t.feed.onStatus?.('live');
+    flushSync();
+    expect(t.store.usdTry).toBe(40);
+  });
 });
