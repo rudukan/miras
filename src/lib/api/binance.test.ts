@@ -19,6 +19,11 @@ class FakeWS {
       data: JSON.stringify({ stream: `${coin.toLowerCase()}usdt@trade`, data: { s: `${coin}USDT`, p: String(price) } }),
     });
   }
+  emitFxTrade(pair: string, price: number) {
+    this.onmessage?.({
+      data: JSON.stringify({ stream: `${pair.toLowerCase()}@trade`, data: { s: pair.toUpperCase(), p: String(price) } }),
+    });
+  }
   emitError() { this.onerror?.(undefined); }
 }
 
@@ -42,6 +47,24 @@ describe('createBinanceFeed', () => {
     createBinanceFeed({ symbols: ['BTC'], onPrice: (c, p) => got.push([c, p]), WebSocketImpl: FakeWS as any });
     FakeWS.instances[0].emitTrade('BTC', 95000.5);
     expect(got).toEqual([['BTC', 95000.5]]);
+  });
+  it('fxPairs verilince @trade stream kurar (USDT eki YOK)', () => {
+    createBinanceFeed({ symbols: ['BTC'], fxPairs: ['USDTTRY'], onPrice() {}, WebSocketImpl: FakeWS as any });
+    expect(FakeWS.instances[0].url).toContain('btcusdt@trade');
+    expect(FakeWS.instances[0].url).toContain('usdttry@trade');
+  });
+  it('fx çifti frame onFxRate tetikler, onPrice DEĞİL', () => {
+    const prices: Array<[string, number]> = [];
+    const fx: Array<[string, number]> = [];
+    createBinanceFeed({
+      symbols: ['BTC'], fxPairs: ['USDTTRY'],
+      onPrice: (c, p) => prices.push([c, p]),
+      onFxRate: (s, r) => fx.push([s, r]),
+      WebSocketImpl: FakeWS as any,
+    });
+    FakeWS.instances[0].emitFxTrade('USDTTRY', 46.09);
+    expect(fx).toEqual([['USDTTRY', 46.09]]);
+    expect(prices).toEqual([]); // onPrice çağrılmadı
   });
   it('kapanışta onStatus("stale") + reconnect zamanlar', () => {
     vi.useFakeTimers();
