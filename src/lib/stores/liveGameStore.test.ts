@@ -133,7 +133,7 @@ describe('createLiveGameStore (USD-taban)', () => {
     flushSync();
     const btc = t.store.prices.find((p) => p.id === 'BTC');
     expect(btc?.priceTry).toBe(60000 * 40);
-    expect(t.fetchFn).toHaveBeenCalledWith('/api/crypto?coins=BTC,ETH');
+    expect(t.fetchFn).toHaveBeenCalledWith('/api/crypto?coins=BTC,ETH,SOL,XRP,DOGE,AVAX');
   });
 
   it('7) guard: fiyat yok / yetersiz USD / holding yok → lastError, game değişmez', async () => {
