@@ -15,9 +15,14 @@ export interface LiveAssetMeta {
 export const LIVE_ASSETS: ReadonlyArray<LiveAssetMeta> = [
   { id: 'BTC', label: 'Bitcoin', category: 'crypto', source: 'crypto' },
   { id: 'ETH', label: 'Ethereum', category: 'crypto', source: 'crypto' },
+  { id: 'SOL', label: 'Solana', category: 'crypto', source: 'crypto' },
+  { id: 'XRP', label: 'Ripple', category: 'crypto', source: 'crypto' },
+  { id: 'DOGE', label: 'Dogecoin', category: 'crypto', source: 'crypto' },
+  { id: 'AVAX', label: 'Avalanche', category: 'crypto', source: 'crypto' },
   { id: 'THYAO', label: 'Türk Hava Yolları', category: 'bist', source: 'yahoo' },
   { id: 'ASELS', label: 'Aselsan', category: 'bist', source: 'yahoo' },
   { id: 'XAUGRAM', label: 'Gram Altın', category: 'commodity', source: 'yahoo' },
+  { id: 'XAGGRAM', label: 'Gram Gümüş', category: 'commodity', source: 'yahoo' },
   { id: 'EUR', label: 'Euro', category: 'fx', source: 'yahoo' },
 ];
 

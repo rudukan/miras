@@ -123,3 +123,37 @@ export function relativeTime(asOf: number, now: number): string {
 	if (min < 60) return `${min} dk önce`;
 	return `${Math.floor(min / 60)} sa önce`;
 }
+
+/** Piyasa listesi grup/sekme sırası — sabit: kripto → bist → emtia → döviz. */
+const CATEGORY_ORDER: ReadonlyArray<string> = ['crypto', 'bist', 'commodity', 'fx'];
+
+/** Kategori → UI etiketi. "EMTİA" jargon olduğu için ALTIN&GÜMÜŞ (hedef kitle: sıradan kriz-insanı). */
+export const CATEGORY_LABELS: Readonly<Record<string, string>> = {
+	crypto: 'KRİPTO',
+	bist: 'BIST',
+	commodity: 'ALTIN&GÜMÜŞ',
+	fx: 'DÖVİZ',
+};
+
+export interface CategoryGroup<T> {
+	category: string;
+	rows: T[];
+}
+
+/**
+ * Satırları sabit kategori sırasıyla gruplar (grup içi giriş sırası korunur).
+ * Bilinmeyen kategoriler sona, giriş sırasıyla. Boş grup üretilmez.
+ */
+export function groupByCategory<T extends { category: string }>(
+	rows: ReadonlyArray<T>,
+): CategoryGroup<T>[] {
+	const map = new Map<string, T[]>();
+	for (const r of rows) {
+		const list = map.get(r.category);
+		if (list) list.push(r);
+		else map.set(r.category, [r]);
+	}
+	const known = CATEGORY_ORDER.filter((c) => map.has(c));
+	const unknown = [...map.keys()].filter((c) => !CATEGORY_ORDER.includes(c));
+	return [...known, ...unknown].map((category) => ({ category, rows: map.get(category)! }));
+}

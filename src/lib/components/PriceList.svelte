@@ -1,11 +1,11 @@
 <script lang="ts">
-	import type { PriceRow } from '$lib/stores/liveGameStore.svelte';
-	import { usd } from '$lib/domain/money';
-	import { displayTry, displayUsd, marketBadge, dailyChangeBadge } from './format';
+	import type { PriceRow as PriceRowData } from '$lib/stores/liveGameStore.svelte';
+	import { groupByCategory, CATEGORY_LABELS } from './format';
 	import { searchBist100 } from '$lib/catalog/bist100';
+	import PriceRow from './PriceRow.svelte';
 
 	interface Props {
-		prices: PriceRow[];
+		prices: PriceRowData[];
 		onSelect: (id: string) => void;
 		onAddBist: (symbol: string) => void;
 	}
@@ -13,20 +13,35 @@
 	let { prices, onSelect, onAddBist }: Props = $props();
 
 	let q = $state('');
+	let tab = $state('all');
 
-	const filtered = $derived(
-		q.trim() === ''
-			? prices
-			: prices.filter(
-					(r) =>
-						r.label.toLowerCase().includes(q.toLowerCase()) ||
-						r.id.toLowerCase().includes(q.toLowerCase())
-			  )
-	);
+	const TABS: ReadonlyArray<{ id: string; label: string }> = [
+		{ id: 'all', label: 'TÜMÜ' },
+		{ id: 'crypto', label: CATEGORY_LABELS.crypto },
+		{ id: 'bist', label: CATEGORY_LABELS.bist },
+		{ id: 'commodity', label: CATEGORY_LABELS.commodity },
+		{ id: 'fx', label: CATEGORY_LABELS.fx },
+	];
+
+	const searching = $derived(q.trim() !== '');
+
+	// Arama her şeyi ezer (sekme yok sayılır); aramasızken sekme filtreler.
+	// Tek render yolu: sonuç her durumda gruplu çizilir.
+	const visible = $derived.by(() => {
+		if (searching) {
+			const needle = q.trim().toLowerCase();
+			return prices.filter(
+				(r) => r.label.toLowerCase().includes(needle) || r.id.toLowerCase().includes(needle)
+			);
+		}
+		return tab === 'all' ? prices : prices.filter((r) => r.category === tab);
+	});
+
+	const groups = $derived(groupByCategory(visible));
 
 	// Arama yapılınca: BIST100'den eşleşip henüz aktif sette OLMAYAN semboller ("eklenebilir").
 	const addable = $derived.by(() => {
-		if (q.trim() === '') return [];
+		if (!searching) return [];
 		const activeIds = new Set(prices.map((p) => p.id));
 		return searchBist100(q).filter((e) => !activeIds.has(e.symbol));
 	});
@@ -35,24 +50,10 @@
 		onAddBist(symbol);
 		q = ''; // aramayı temizle → yeni eklenen aktif listede görünür
 	}
-
-	const categoryLabel: Record<string, string> = {
-		bist: 'BIST',
-		crypto: 'KRİPTO',
-		commodity: 'EMTİA',
-		fx: 'DÖVİZ',
-	};
-
-	const categoryColor: Record<string, string> = {
-		bist: 'text-term-blue',
-		crypto: 'text-term-amber',
-		commodity: 'text-term-green',
-		fx: 'text-term-text',
-	};
 </script>
 
 <div class="bg-term-panel border border-term-border font-mono text-xs flex flex-col h-full">
-	<!-- Başlık -->
+	<!-- Başlık + arama -->
 	<div class="px-3 pt-3 pb-2 border-b border-term-border">
 		<div class="text-term-blue tracking-widest uppercase text-[10px] font-bold mb-2">
 			PİYASA FİYATLARI
@@ -65,51 +66,36 @@
 		/>
 	</div>
 
-	<!-- Liste -->
+	<!-- Kategori sekmeleri (arama doluyken pasif görünür — arama her şeyi ezer) -->
+	<div class="flex flex-wrap gap-1 px-3 py-2 border-b border-term-border">
+		{#each TABS as t (t.id)}
+			<button
+				type="button"
+				onclick={() => (tab = t.id)}
+				class="px-2 py-0.5 text-[10px] border transition-colors duration-75
+				       {tab === t.id && !searching
+					? 'border-term-green text-term-green bg-term-panelLight'
+					: 'border-term-border text-term-text opacity-60 hover:opacity-100'}"
+			>
+				{t.label}
+			</button>
+		{/each}
+	</div>
+
+	<!-- Liste: her durumda gruplu (tek render yolu) -->
 	<div class="flex-1 overflow-y-auto">
-		{#if filtered.length === 0 && addable.length === 0}
+		{#if groups.length === 0 && addable.length === 0}
 			<div class="px-3 py-4 text-term-text opacity-40 italic text-center">
 				Sonuç bulunamadı
 			</div>
 		{:else}
-			{#each filtered as row (row.id)}
-				{@const badge = marketBadge(row.marketOpen)}
-				{@const chg = dailyChangeBadge(row.changePct)}
-				<button
-					type="button"
-					onclick={() => onSelect(row.id)}
-					class="w-full text-left px-3 py-2 border-b border-term-border border-opacity-40
-					       hover:bg-term-panelLight hover:border-term-borderGlow
-					       focus:outline-none focus:bg-term-panelLight
-					       transition-colors duration-75 cursor-pointer"
-				>
-					<div class="flex items-center justify-between gap-2">
-						<!-- Sol: isim + kategori -->
-						<div class="flex flex-col min-w-0">
-							<span class="text-term-text font-bold truncate">{row.label}</span>
-							<span class="text-[10px] {categoryColor[row.category] ?? 'text-term-text'} opacity-70 uppercase tracking-wide">
-								{categoryLabel[row.category] ?? row.category}
-							</span>
-						</div>
-						<!-- Sağ: fiyat + günlük değişim + market rozeti -->
-						<div class="flex flex-col items-end shrink-0">
-							<span class="text-term-green font-bold">
-								{displayTry(row.priceTry)}
-							</span>
-							<span class="text-[10px] text-term-text opacity-50">
-								≈ {displayUsd(row.priceUsd === undefined ? null : usd(row.priceUsd))}
-							</span>
-							<div class="flex items-center gap-2">
-								{#if chg}
-									<span class="text-[10px] {chg.cls} font-bold">{chg.text}</span>
-								{/if}
-								<span class="text-[10px] {badge.cls}">
-									{badge.text}
-								</span>
-							</div>
-						</div>
-					</div>
-				</button>
+			{#each groups as g (g.category)}
+				<div class="px-3 py-1 text-[10px] uppercase tracking-widest text-term-blue opacity-60 bg-term-bg">
+					{CATEGORY_LABELS[g.category] ?? g.category}
+				</div>
+				{#each g.rows as row (row.id)}
+					<PriceRow {row} {onSelect} />
+				{/each}
 			{/each}
 		{/if}
 
