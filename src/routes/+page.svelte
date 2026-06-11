@@ -17,6 +17,7 @@
 	import { sendTelemetry, pingDailyVisit } from '$lib/api/telemetry';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import NetWorthMirror from '$lib/components/NetWorthMirror.svelte';
+	import NetWorthMini from '$lib/components/NetWorthMini.svelte';
 	import WalletSummary from '$lib/components/WalletSummary.svelte';
 	import PriceList from '$lib/components/PriceList.svelte';
 	import TradePanel from '$lib/components/TradePanel.svelte';
@@ -234,47 +235,59 @@
 						Günün Kartı
 					</button>
 				</div>
-				<ContextCard />
-			</header>
 
-			<!-- Ana içerik: mobilde dikey yığın (liste üstte, paneller altta) / md+ iki kolon -->
-			<div class="flex flex-col md:flex-row flex-1 overflow-hidden gap-0">
-				<!-- Fiyat listesi: mobilde üst bölge (~%40 yükseklik), md+ sol kolon -->
-				<aside
-					class="h-[40dvh] w-full border-b shrink-0 border-term-border overflow-hidden flex flex-col
-					       md:h-auto md:w-72 md:border-b-0 md:border-r"
-				>
-					<PriceList
-						prices={store.prices}
-						onSelect={handleSelectAsset}
-						onAddBist={(symbol) => {
-							store.addBist(symbol);
-							handleSelectAsset(symbol);
-						}}
-					/>
-				</aside>
-
-				<!-- Bilgi panelleri (dikey yığın, kaydırılabilir) -->
-				<main class="flex-1 overflow-y-auto p-3 space-y-3">
-					<NetWorthMirror
+				<!-- Mini servet bandı: yalnız mobil — "param ne oldu" her an göz önünde -->
+				<div class="md:hidden">
+					<NetWorthMini
 						netWorthUsd={store.netWorthUsd}
 						profitRate={store.profitRate}
 						vsUsdHoldUsd={store.vsUsdHoldUsd}
 					/>
+				</div>
 
-					<WalletSummary
-						game={store.game}
-						usdTry={store.usdTry}
-						positions={store.positions}
-					/>
+				<ContextCard />
+			</header>
 
-					<div id="trade-panel" class="scroll-mt-2">
-						<TradePanel
-							{store}
-							{selectedAssetId}
+			<!-- Ana içerik: mobilde TEK akışta kayan dikey yığın / md+ iki kolon (kolon içi kaydırma) -->
+			<div class="flex-1 overflow-y-auto md:overflow-hidden">
+				<div class="md:flex md:h-full">
+					<!-- Fiyat listesi: mobilde akışın parçası (tam liste), md+ sol kolon (içte kayar) -->
+					<aside
+						class="border-b border-term-border
+						       md:w-72 md:shrink-0 md:border-b-0 md:border-r md:overflow-hidden md:flex md:flex-col"
+					>
+						<PriceList
+							prices={store.prices}
+							onSelect={handleSelectAsset}
+							onAddBist={(symbol) => {
+								store.addBist(symbol);
+								handleSelectAsset(symbol);
+							}}
 						/>
-					</div>
-				</main>
+					</aside>
+
+					<!-- Bilgi panelleri (dikey yığın; md+ kendi içinde kayar) -->
+					<main class="p-3 space-y-3 md:flex-1 md:overflow-y-auto">
+						<NetWorthMirror
+							netWorthUsd={store.netWorthUsd}
+							profitRate={store.profitRate}
+							vsUsdHoldUsd={store.vsUsdHoldUsd}
+						/>
+
+						<WalletSummary
+							game={store.game}
+							usdTry={store.usdTry}
+							positions={store.positions}
+						/>
+
+						<div id="trade-panel" class="scroll-mt-2">
+							<TradePanel
+								{store}
+								{selectedAssetId}
+							/>
+						</div>
+					</main>
+				</div>
 			</div>
 		</div>
 
