@@ -22,6 +22,9 @@ import {
   type BinanceFeed,
 } from '../api/binance';
 import type { FxValue } from '../api/types';
+import type { SaveEnvelopeV1 } from './savegame';
+import { istanbulParts } from '../domain/calendar/calendar';
+import { computeAllocation, upsertSnapshot, type DailySnapshot } from '../domain/snapshot/dailySnapshot';
 
 export type PeriodDays = 60 | 180 | 365;
 
@@ -51,6 +54,14 @@ export interface LiveGameStoreOptions {
   playerId?: string;
   seed?: number;
   periodDays?: PeriodDays;
+  /** localStorage'dan yüklenmiş kayıt — verilirse game/periodDays/activeBist bundan kurulur. */
+  initial?: SaveEnvelopeV1 | null;
+  /** Her durum değişikliğinde (apply/setPeriod/addBist) çağrılır — persistence buradan yapılır. */
+  onPersist?: (envelope: SaveEnvelopeV1) => void;
+  /** localStorage'dan yüklenmiş günlük kapanış geçmişi. */
+  initialHistory?: DailySnapshot[];
+  /** Her snapshot upsert'inden sonra çağrılır — history persistence buradan yapılır. */
+  onPersistHistory?: (history: DailySnapshot[]) => void;
   // --- test/SSR enjeksiyonu ---
   fetchFn?: typeof fetch;
   makeFeed?: (opts: BinanceFeedOptions) => BinanceFeed;
@@ -72,6 +83,7 @@ export interface LiveGameStore {
   readonly feedStatus: 'live' | 'stale';
   readonly lastError: string | null;
   readonly selectedPeriodDays: PeriodDays;
+  readonly history: DailySnapshot[];
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
   assetUsdPrice(assetId: string): number | undefined;
@@ -83,6 +95,21 @@ export interface LiveGameStore {
 
 /** Canlı veri gelene kadar makul TRY/USD zemini (netWorth ilk render'da çökmesin). */
 const FALLBACK_FX: FxValue = { usdTry: 40, prices: {} };
+
+/** Bir assetId on-demand (BIST100) sembol mü? — katalogda yok ya da kategorisi 'bist'. */
+function isBistLikeId(id: string): boolean {
+  const meta = CATALOG[id];
+  return meta === undefined || meta.category === 'bist';
+}
+
+/** activeBist restore birleşimi: katalog başlangıç hisseleri ∪ kayıtlı set ∪ holding'lerdeki BIST id'leri. */
+function computeInitialActiveBist(initial: SaveEnvelopeV1 | null): string[] {
+  const fromSave = initial?.activeBist ?? [];
+  const fromHoldings = (initial?.game.holdings ?? [])
+    .map((h) => h.assetId)
+    .filter(isBistLikeId);
+  return Array.from(new Set([...BIST_SYMBOLS, ...fromSave, ...fromHoldings]));
+}
 
 /**
  * Canlı çekirdek reaktif store'u — **factory** (sınıf/modül-global rune YOK; her çağrı
@@ -100,8 +127,10 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   const fetchFn = opts.fetchFn ?? fetch;
   const makeFeed = opts.makeFeed ?? ((o: BinanceFeedOptions) => createBinanceFeed(o));
 
+  const initial = opts.initial ?? null;
+
   // --- reaktif durum ---
-  let game = $state<GameState>(createGameState('canli', seed, playerId, now()));
+  let game = $state<GameState>(initial?.game ?? createGameState('canli', seed, playerId, now()));
   let fxCache = $state<FxValue>(FALLBACK_FX); // tüm fiyatlar TRY
   let cryptoUsd = $state<Record<string, number>>({}); // USD (TRY çevrimi source'da)
   let cryptoChange = $state<Record<string, number>>({}); // coin → 24s % (poll'dan; WS değişim taşımaz)
@@ -109,11 +138,14 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   let fxStale = $state(true);
   let feedStatus = $state<'live' | 'stale'>('stale');
   let lastError = $state<string | null>(null);
-  let selectedPeriodDays = $state<PeriodDays>(opts.periodDays ?? 365);
-  // Dinamik aktif BIST seti — başlangıç = katalog başlangıç hisseleri; addBist ile büyür (v1: yalnız büyür).
-  let activeBist = $state<string[]>([...BIST_SYMBOLS]);
+  let selectedPeriodDays = $state<PeriodDays>(initial?.periodDays ?? opts.periodDays ?? 365);
+  // Dinamik aktif BIST seti — başlangıç = katalog başlangıç hisseleri ∪ kayıtlı set ∪ holding'lerdeki
+  // BIST sembolleri (yoksa on-demand alınan hissenin fiyatı poll edilmez → oracle throw → netWorth null).
+  let activeBist = $state<string[]>(computeInitialActiveBist(initial));
   // Hibrit USD/TRY: WS usdttry tick'i (birincil); yokken/stale'ken Yahoo'ya düşülür.
   let liveUsdTry = $state<number | undefined>(undefined);
+  // Günlük kapanış geçmişi — pollFx sonunda netWorth biliniyorsa upsert edilir.
+  let history = $state<DailySnapshot[]>(opts.initialHistory ?? []);
 
   // WS canlı + tick var → WS; aksi halde Yahoo (fxCache); o da yoksa FALLBACK_FX.usdTry.
   const effectiveUsdTry = (): number =>
@@ -214,11 +246,17 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   const dataStale = $derived(fxStale || feedStatus === 'stale');
 
+  // --- persistence ---
+  function persist(): void {
+    opts.onPersist?.({ v: 1, game, periodDays: selectedPeriodDays, activeBist });
+  }
+
   // --- yazma aksiyonları (guard → reducer → immutable reassign + updatedAt damga → hata yüzeyle) ---
   function apply(fn: () => GameState): void {
     try {
       game = { ...fn(), updatedAt: now() };
       lastError = null;
+      persist();
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
     }
@@ -235,12 +273,14 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   }
   const setPeriod = (days: PeriodDays) => {
     selectedPeriodDays = days;
+    persist();
   };
   // On-demand BIST: aktif sete ekle (normalize + idempotent) → hemen tek seferlik poll ile fiyatı getir.
   const addBist = (symbol: string) => {
     const s = symbol.trim().toUpperCase();
     if (s === '' || activeBist.includes(s)) return;
     activeBist = [...activeBist, s];
+    persist();
     if (started) void pollFx(); // anında fiyat çek (≤poll periyodu beklemeden)
   };
 
@@ -318,6 +358,26 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     } catch {
       /* fallback başarısız — sessiz; fxStale/dataStale zaten "veri eski" yüzeyliyor */
     }
+    recordSnapshot();
+  }
+
+  // Fiyat eksikse (netWorth null) ATLA — çöp veri yazılmaz.
+  function recordSnapshot(): void {
+    if (netWorth === null || vsUsdHold === null) return;
+    const snap: DailySnapshot = {
+      dateKey: istanbulParts(new Date(now())).key,
+      netWorthUsd: netWorth,
+      vsUsdHoldUsd: vsUsdHold,
+      allocation: computeAllocation(
+        game.usdBalance.amount,
+        positions.map((p) => ({ assetId: p.assetId, valueUsd: p.valueUsd ?? 0 })),
+        netWorth.amount,
+        (id) => CATALOG[id]?.category ?? 'bist',
+      ),
+      recordedAt: now(),
+    };
+    history = upsertSnapshot(history, snap);
+    opts.onPersistHistory?.(history);
   }
 
   async function start(): Promise<void> {
@@ -377,6 +437,9 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     },
     get selectedPeriodDays() {
       return selectedPeriodDays;
+    },
+    get history() {
+      return history;
     },
     buy,
     sell,

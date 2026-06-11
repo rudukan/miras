@@ -288,4 +288,94 @@ describe('createLiveGameStore (USD-taban)', () => {
     flushSync();
     expect(t.store.usdTry).toBe(40);
   });
+
+  it("19) persistence: buy/sell/setPeriod/addBist sonrası onPersist güncel envelope ile çağrılır", async () => {
+    const onPersist = vi.fn();
+    const t = setup({ onPersist });
+    await t.store.start();
+    flushSync();
+
+    t.store.setPeriod(60);
+    expect(onPersist).toHaveBeenLastCalledWith(
+      expect.objectContaining({ v: 1, periodDays: 60 }),
+    );
+
+    t.store.buy('THYAO', 100);
+    flushSync();
+    expect(onPersist).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        v: 1,
+        game: expect.objectContaining({
+          holdings: expect.arrayContaining([expect.objectContaining({ assetId: 'THYAO', units: 100 })]),
+        }),
+      }),
+    );
+
+    t.store.addBist('garan');
+    expect(onPersist).toHaveBeenLastCalledWith(
+      expect.objectContaining({ activeBist: expect.arrayContaining(['GARAN']) }),
+    );
+  });
+
+  it('20) restore: initial.game/periodDays/activeBist kurulumda kullanılır, holding BIST sembolü activeBist\'te', async () => {
+    const initialGame = {
+      playerId: 'p1',
+      scenarioId: 'canli' as const,
+      seed: 1,
+      clock: { day: 5, totalDays: 90, speed: 'realtime' as const, paused: false },
+      usdBalance: { amount: 999_250, currency: 'USD' as const },
+      holdings: [{ assetId: 'GARAN', units: 100, avgCost: { amount: 3, currency: 'USD' as const } }],
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    const t = setup({
+      initial: { v: 1, game: initialGame, periodDays: 60, activeBist: ['GARAN'] },
+    });
+    expect(t.store.game.clock.day).toBe(5);
+    expect(t.store.selectedPeriodDays).toBe(60);
+    expect(t.store.prices.some((p) => p.id === 'GARAN')).toBe(true);
+  });
+
+  it("21) günlük snapshot: start() sonunda netWorth biliniyorsa history'ye upsert + onPersistHistory çağrılır", async () => {
+    const onPersistHistory = vi.fn();
+    const t = setup({ onPersistHistory });
+
+    await t.store.start();
+    flushSync();
+
+    expect(t.store.history).toHaveLength(1);
+    const snap = t.store.history[0];
+    expect(snap.netWorthUsd.amount).toBeCloseTo(1_000_000, 2);
+    expect(snap.allocation.usd).toBeCloseTo(100, 2);
+    expect(onPersistHistory).toHaveBeenCalledWith(t.store.history);
+  });
+
+  it("22) günlük snapshot: aynı (FIXED_NOW) günde tekrar poll → replace, append yok", async () => {
+    vi.useFakeTimers();
+    const t = setup({ pollMs: 5000 });
+    await t.store.start();
+    flushSync();
+    expect(t.store.history).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+
+    expect(t.store.history).toHaveLength(1);
+  });
+
+  it('23) günlük snapshot: fiyat eksikse (netWorth null) ATLA — history büyümez', async () => {
+    vi.useFakeTimers();
+    const t = setup();
+    await t.store.start();
+    t.store.buy('THYAO', 100);
+    flushSync();
+    expect(t.store.history).toHaveLength(1);
+
+    t.setYahoo({ value: { usdTry: 40, prices: { ASELS: 200, XAUGRAM: 5000, EUR: 45 } }, asOf: 222, stale: false });
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+
+    expect(t.store.netWorthUsd).toBeNull();
+    expect(t.store.history).toHaveLength(1); // büyümedi
+  });
 });

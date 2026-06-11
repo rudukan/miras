@@ -127,12 +127,14 @@ export function relativeTime(asOf: number, now: number): string {
 /** Piyasa listesi grup/sekme sırası — sabit: kripto → bist → emtia → döviz. */
 const CATEGORY_ORDER: ReadonlyArray<string> = ['crypto', 'bist', 'commodity', 'fx'];
 
-/** Kategori → UI etiketi. "EMTİA" jargon olduğu için ALTIN&GÜMÜŞ (hedef kitle: sıradan kriz-insanı). */
+/** Kategori → UI etiketi. "EMTİA" jargon olduğu için ALTIN&GÜMÜŞ (hedef kitle: sıradan kriz-insanı).
+ *  `usd` — kapanış kartı dağılım barında nakit segmenti (closingCard.ts). */
 export const CATEGORY_LABELS: Readonly<Record<string, string>> = {
 	crypto: 'KRİPTO',
 	bist: 'BIST',
 	commodity: 'ALTIN&GÜMÜŞ',
 	fx: 'DÖVİZ',
+	usd: 'DOLAR',
 };
 
 export interface CategoryGroup<T> {

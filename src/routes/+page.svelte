@@ -3,19 +3,51 @@
 	import { browser } from '$app/environment';
 	import { createLiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import type { PeriodDays } from '$lib/stores/liveGameStore.svelte';
+	import {
+		loadGame,
+		saveGame,
+		clearSave,
+		getOrCreatePlayerId,
+		loadHistory,
+		saveHistory,
+	} from '$lib/stores/savegame';
+	import { istanbulParts } from '$lib/domain/calendar/calendar';
+	import { buildClosingCardModel } from '$lib/components/closingCard';
+	import type { ShareResult } from '$lib/share/share';
+	import { sendTelemetry, pingDailyVisit } from '$lib/api/telemetry';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import NetWorthMirror from '$lib/components/NetWorthMirror.svelte';
 	import WalletSummary from '$lib/components/WalletSummary.svelte';
 	import PriceList from '$lib/components/PriceList.svelte';
 	import TradePanel from '$lib/components/TradePanel.svelte';
 	import ContextCard from '$lib/components/ContextCard.svelte';
+	import ClosingCard from '$lib/components/ClosingCard.svelte';
 
-	const store = createLiveGameStore();
+	const CARD_SEEN_KEY = 'miras.cardSeen';
+
+	const initial = browser ? loadGame(localStorage) : null;
+	const initialHistory = browser ? loadHistory(localStorage)?.history : undefined;
+	const playerId = browser ? getOrCreatePlayerId(localStorage) : 'local-player';
+
+	if (browser) pingDailyVisit(localStorage, playerId, istanbulParts(new Date()).key);
+
+	const store = createLiveGameStore({
+		playerId,
+		initial,
+		initialHistory,
+		onPersist: (envelope) => {
+			if (browser) saveGame(localStorage, envelope);
+		},
+		onPersistHistory: (history) => {
+			if (browser) saveHistory(localStorage, { v: 1, history });
+		},
+	});
 
 	let phase = $state<'intro' | 'playing'>('intro');
 	let selectedPeriod = $state<PeriodDays>(365);
 	let selectedAssetId = $state<string | null>(null);
 	let nowMs = $state(Date.now());
+	let showCard = $state(false);
 	let tick: ReturnType<typeof setInterval> | null = null;
 
 	const periodOptions: { value: PeriodDays; label: string }[] = [
@@ -24,13 +56,56 @@
 		{ value: 365, label: '365 Gün' },
 	];
 
+	const canShowCard = $derived(store.netWorthUsd !== null && store.vsUsdHoldUsd !== null);
+	const closingCardModel = $derived.by(() => {
+		if (store.netWorthUsd === null || store.vsUsdHoldUsd === null) return null;
+		return buildClosingCardModel(store.game, store.netWorthUsd, store.vsUsdHoldUsd, store.history, nowMs);
+	});
+
+	// Otomatik tetik (retention anı): geçmişte bugünden ÖNCE bir kayıt varsa ve kart bugün
+	// henüz gösterilmediyse — günde max 1.
+	function maybeAutoShowCard() {
+		if (!browser || !canShowCard) return;
+		const todayKey = istanbulParts(new Date(Date.now())).key;
+		const hasOlderSnapshot = (initialHistory ?? []).some((s) => s.dateKey < todayKey);
+		if (hasOlderSnapshot && localStorage.getItem(CARD_SEEN_KEY) !== todayKey) {
+			showCard = true;
+			localStorage.setItem(CARD_SEEN_KEY, todayKey);
+		}
+	}
+
+	function handleShareClick() {
+		sendTelemetry(playerId, 'share_click');
+	}
+
+	function handleShareResult(result: ShareResult) {
+		void result;
+		sendTelemetry(playerId, 'share_done');
+	}
+
+	async function startTicking() {
+		phase = 'playing';
+		if (browser) {
+			tick = setInterval(() => (nowMs = Date.now()), 1000);
+			await store.start();
+			maybeAutoShowCard();
+		}
+	}
+
 	function handleStart() {
 		store.setPeriod(selectedPeriod);
+		void startTicking();
+	}
+
+	function handleContinue() {
+		void startTicking();
+	}
+
+	function handleResetSave() {
 		if (browser) {
-			void store.start();
-			tick = setInterval(() => (nowMs = Date.now()), 1000);
+			clearSave(localStorage);
+			location.reload();
 		}
-		phase = 'playing';
 	}
 
 	onDestroy(() => {
@@ -57,39 +132,70 @@
 					</div>
 				</div>
 
-				<!-- Periyot seçimi -->
-				<div class="bg-term-panel border border-term-border p-4 space-y-3">
-					<div class="text-term-text opacity-50 text-[10px] uppercase tracking-wider">
-						Oyun Süresi
+				{#if initial}
+					<!-- Kayıtlı oyun bulundu -->
+					<div class="bg-term-panel border border-term-border p-4 space-y-3 text-center">
+						<div class="text-term-text opacity-50 text-[10px] uppercase tracking-wider">
+							Kayıtlı oyun bulundu
+						</div>
+						<div class="text-term-blue text-xs">
+							Gün {initial.game.clock.day} / {initial.game.clock.totalDays}
+						</div>
 					</div>
-					<div class="space-y-2">
-						{#each periodOptions as opt (opt.value)}
-							<label class="flex items-center gap-3 cursor-pointer group">
-								<input
-									type="radio"
-									name="period"
-									value={opt.value}
-									bind:group={selectedPeriod}
-									class="accent-term-green"
-								/>
-								<span class="text-sm {selectedPeriod === opt.value ? 'text-term-green glow-text-green font-bold' : 'text-term-text group-hover:text-term-blue'}">
-									{opt.label}
-								</span>
-							</label>
-						{/each}
-					</div>
-				</div>
 
-				<!-- Başla butonu -->
-				<button
-					type="button"
-					onclick={handleStart}
-					class="w-full py-3 bg-term-bg border border-term-green text-term-green font-bold
-					       text-sm tracking-widest uppercase hover:bg-term-panelLight
-					       glow-border-green transition-colors"
-				>
-					BAŞLA ▶
-				</button>
+					<button
+						type="button"
+						onclick={handleContinue}
+						class="w-full py-3 bg-term-bg border border-term-green text-term-green font-bold
+						       text-sm tracking-widest uppercase hover:bg-term-panelLight
+						       glow-border-green transition-colors"
+					>
+						DEVAM ET ▶
+					</button>
+
+					<button
+						type="button"
+						onclick={handleResetSave}
+						class="w-full text-center text-[10px] text-term-text opacity-50 underline
+						       hover:opacity-80 transition-opacity"
+					>
+						Sıfırla ve yeni oyun
+					</button>
+				{:else}
+					<!-- Periyot seçimi -->
+					<div class="bg-term-panel border border-term-border p-4 space-y-3">
+						<div class="text-term-text opacity-50 text-[10px] uppercase tracking-wider">
+							Oyun Süresi
+						</div>
+						<div class="space-y-2">
+							{#each periodOptions as opt (opt.value)}
+								<label class="flex items-center gap-3 cursor-pointer group">
+									<input
+										type="radio"
+										name="period"
+										value={opt.value}
+										bind:group={selectedPeriod}
+										class="accent-term-green"
+									/>
+									<span class="text-sm {selectedPeriod === opt.value ? 'text-term-green glow-text-green font-bold' : 'text-term-text group-hover:text-term-blue'}">
+										{opt.label}
+									</span>
+								</label>
+							{/each}
+						</div>
+					</div>
+
+					<!-- Başla butonu -->
+					<button
+						type="button"
+						onclick={handleStart}
+						class="w-full py-3 bg-term-bg border border-term-green text-term-green font-bold
+						       text-sm tracking-widest uppercase hover:bg-term-panelLight
+						       glow-border-green transition-colors"
+					>
+						BAŞLA ▶
+					</button>
+				{/if}
 			</div>
 		</main>
 
@@ -98,12 +204,27 @@
 		<div class="flex flex-col h-screen">
 			<!-- Üst durum bandı -->
 			<header class="shrink-0">
-				<StatusBadge
-					stale={store.dataStale}
-					asOf={store.asOf}
-					feedStatus={store.feedStatus}
-					now={nowMs}
-				/>
+				<div class="flex items-stretch">
+					<div class="flex-1 min-w-0">
+						<StatusBadge
+							stale={store.dataStale}
+							asOf={store.asOf}
+							feedStatus={store.feedStatus}
+							now={nowMs}
+						/>
+					</div>
+					<button
+						type="button"
+						onclick={() => (showCard = true)}
+						disabled={!canShowCard}
+						class="px-3 py-1.5 bg-term-panel border border-l-0 border-term-border
+						       text-term-blue text-xs font-mono uppercase tracking-widest
+						       hover:bg-term-panelLight transition-colors
+						       disabled:opacity-30 disabled:cursor-not-allowed"
+					>
+						Günün Kartı
+					</button>
+				</div>
 				<ContextCard />
 			</header>
 
@@ -142,5 +263,14 @@
 				</main>
 			</div>
 		</div>
+
+		{#if showCard && closingCardModel}
+			<ClosingCard
+				model={closingCardModel}
+				onShareClick={handleShareClick}
+				onShare={handleShareResult}
+				onClose={() => (showCard = false)}
+			/>
+		{/if}
 	{/if}
 </div>
