@@ -91,7 +91,7 @@
 		{:else}
 			{#each groups as g (g.category)}
 				<div class="px-3 py-1 text-[10px] uppercase tracking-widest text-term-blue opacity-60 bg-term-bg">
-					{CATEGORY_LABELS[g.category] ?? g.category}
+					{CATEGORY_LABELS[g.category] ?? g.category}{#if g.category === 'bist'}<span class="normal-case tracking-normal opacity-70"> · ~15 dk gecikmeli</span>{/if}
 				</div>
 				{#each g.rows as row (row.id)}
 					<PriceRow {row} {onSelect} />
