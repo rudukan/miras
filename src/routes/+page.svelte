@@ -74,6 +74,14 @@
 		}
 	}
 
+	function handleSelectAsset(id: string) {
+		selectedAssetId = id;
+		// Mobil: liste üstte, işlem paneli görünmez alanda — seçimde panele kaydır.
+		if (browser && window.innerWidth < 768) {
+			document.getElementById('trade-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		}
+	}
+
 	function handleShareClick() {
 		sendTelemetry(playerId, 'share_click');
 	}
@@ -201,7 +209,8 @@
 
 	{:else}
 		<!-- ── PLAYING EKRANI ───────────────────────────────────────────────────── -->
-		<div class="flex flex-col h-screen">
+		<!-- h-dvh: mobil tarayıcıda adres çubuğu hesaba katılır (h-screen alt kesme yapar) -->
+		<div class="flex flex-col h-dvh">
 			<!-- Üst durum bandı -->
 			<header class="shrink-0">
 				<div class="flex items-stretch">
@@ -218,7 +227,7 @@
 						onclick={() => (showCard = true)}
 						disabled={!canShowCard}
 						class="px-3 py-1.5 bg-term-panel border border-l-0 border-term-border
-						       text-term-blue text-xs font-mono uppercase tracking-widest
+						       text-term-blue text-xs font-mono uppercase tracking-widest whitespace-nowrap
 						       hover:bg-term-panelLight transition-colors
 						       disabled:opacity-30 disabled:cursor-not-allowed"
 					>
@@ -228,21 +237,24 @@
 				<ContextCard />
 			</header>
 
-			<!-- Ana içerik: iki kolon -->
-			<div class="flex flex-1 overflow-hidden gap-0">
-				<!-- Sol kolon: fiyat listesi -->
-				<aside class="w-72 shrink-0 border-r border-term-border overflow-hidden flex flex-col">
+			<!-- Ana içerik: mobilde dikey yığın (liste üstte, paneller altta) / md+ iki kolon -->
+			<div class="flex flex-col md:flex-row flex-1 overflow-hidden gap-0">
+				<!-- Fiyat listesi: mobilde üst bölge (~%40 yükseklik), md+ sol kolon -->
+				<aside
+					class="h-[40dvh] w-full border-b shrink-0 border-term-border overflow-hidden flex flex-col
+					       md:h-auto md:w-72 md:border-b-0 md:border-r"
+				>
 					<PriceList
 						prices={store.prices}
-						onSelect={(id) => (selectedAssetId = id)}
+						onSelect={handleSelectAsset}
 						onAddBist={(symbol) => {
 							store.addBist(symbol);
-							selectedAssetId = symbol;
+							handleSelectAsset(symbol);
 						}}
 					/>
 				</aside>
 
-				<!-- Sağ kolon: bilgi panelleri (dikey yığın, kaydırılabilir) -->
+				<!-- Bilgi panelleri (dikey yığın, kaydırılabilir) -->
 				<main class="flex-1 overflow-y-auto p-3 space-y-3">
 					<NetWorthMirror
 						netWorthUsd={store.netWorthUsd}
@@ -256,10 +268,12 @@
 						positions={store.positions}
 					/>
 
-					<TradePanel
-						{store}
-						{selectedAssetId}
-					/>
+					<div id="trade-panel" class="scroll-mt-2">
+						<TradePanel
+							{store}
+							{selectedAssetId}
+						/>
+					</div>
 				</main>
 			</div>
 		</div>
