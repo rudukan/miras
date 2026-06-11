@@ -17,6 +17,7 @@
 	import { sendTelemetry, pingDailyVisit } from '$lib/api/telemetry';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import NetWorthMirror from '$lib/components/NetWorthMirror.svelte';
+	import NetWorthMini from '$lib/components/NetWorthMini.svelte';
 	import WalletSummary from '$lib/components/WalletSummary.svelte';
 	import PriceList from '$lib/components/PriceList.svelte';
 	import TradePanel from '$lib/components/TradePanel.svelte';
@@ -71,6 +72,14 @@
 		if (hasOlderSnapshot && localStorage.getItem(CARD_SEEN_KEY) !== todayKey) {
 			showCard = true;
 			localStorage.setItem(CARD_SEEN_KEY, todayKey);
+		}
+	}
+
+	function handleSelectAsset(id: string) {
+		selectedAssetId = id;
+		// Mobil: liste üstte, işlem paneli görünmez alanda — seçimde panele kaydır.
+		if (browser && window.innerWidth < 768) {
+			document.getElementById('trade-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 		}
 	}
 
@@ -201,7 +210,8 @@
 
 	{:else}
 		<!-- ── PLAYING EKRANI ───────────────────────────────────────────────────── -->
-		<div class="flex flex-col h-screen">
+		<!-- h-dvh: mobil tarayıcıda adres çubuğu hesaba katılır (h-screen alt kesme yapar) -->
+		<div class="flex flex-col h-dvh">
 			<!-- Üst durum bandı -->
 			<header class="shrink-0">
 				<div class="flex items-stretch">
@@ -218,49 +228,66 @@
 						onclick={() => (showCard = true)}
 						disabled={!canShowCard}
 						class="px-3 py-1.5 bg-term-panel border border-l-0 border-term-border
-						       text-term-blue text-xs font-mono uppercase tracking-widest
+						       text-term-blue text-xs font-mono uppercase tracking-widest whitespace-nowrap
 						       hover:bg-term-panelLight transition-colors
 						       disabled:opacity-30 disabled:cursor-not-allowed"
 					>
 						Günün Kartı
 					</button>
 				</div>
-				<ContextCard />
-			</header>
 
-			<!-- Ana içerik: iki kolon -->
-			<div class="flex flex-1 overflow-hidden gap-0">
-				<!-- Sol kolon: fiyat listesi -->
-				<aside class="w-72 shrink-0 border-r border-term-border overflow-hidden flex flex-col">
-					<PriceList
-						prices={store.prices}
-						onSelect={(id) => (selectedAssetId = id)}
-						onAddBist={(symbol) => {
-							store.addBist(symbol);
-							selectedAssetId = symbol;
-						}}
-					/>
-				</aside>
-
-				<!-- Sağ kolon: bilgi panelleri (dikey yığın, kaydırılabilir) -->
-				<main class="flex-1 overflow-y-auto p-3 space-y-3">
-					<NetWorthMirror
+				<!-- Mini servet bandı: yalnız mobil — "param ne oldu" her an göz önünde -->
+				<div class="md:hidden">
+					<NetWorthMini
 						netWorthUsd={store.netWorthUsd}
 						profitRate={store.profitRate}
 						vsUsdHoldUsd={store.vsUsdHoldUsd}
 					/>
+				</div>
 
-					<WalletSummary
-						game={store.game}
-						usdTry={store.usdTry}
-						positions={store.positions}
-					/>
+				<ContextCard />
+			</header>
 
-					<TradePanel
-						{store}
-						{selectedAssetId}
-					/>
-				</main>
+			<!-- Ana içerik: mobilde TEK akışta kayan dikey yığın / md+ iki kolon (kolon içi kaydırma) -->
+			<div class="flex-1 overflow-y-auto md:overflow-hidden">
+				<div class="md:flex md:h-full">
+					<!-- Fiyat listesi: mobilde akışın parçası (tam liste), md+ sol kolon (içte kayar) -->
+					<aside
+						class="border-b border-term-border
+						       md:w-72 md:shrink-0 md:border-b-0 md:border-r md:overflow-hidden md:flex md:flex-col"
+					>
+						<PriceList
+							prices={store.prices}
+							onSelect={handleSelectAsset}
+							onAddBist={(symbol) => {
+								store.addBist(symbol);
+								handleSelectAsset(symbol);
+							}}
+						/>
+					</aside>
+
+					<!-- Bilgi panelleri (dikey yığın; md+ kendi içinde kayar) -->
+					<main class="p-3 space-y-3 md:flex-1 md:overflow-y-auto">
+						<NetWorthMirror
+							netWorthUsd={store.netWorthUsd}
+							profitRate={store.profitRate}
+							vsUsdHoldUsd={store.vsUsdHoldUsd}
+						/>
+
+						<WalletSummary
+							game={store.game}
+							usdTry={store.usdTry}
+							positions={store.positions}
+						/>
+
+						<div id="trade-panel" class="scroll-mt-2">
+							<TradePanel
+								{store}
+								{selectedAssetId}
+							/>
+						</div>
+					</main>
+				</div>
 			</div>
 		</div>
 

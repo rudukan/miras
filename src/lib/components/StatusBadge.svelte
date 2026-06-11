@@ -19,20 +19,20 @@
 	const feedColor = $derived(feedStatus === 'live' ? 'text-term-green' : 'text-term-amber');
 </script>
 
-<div class="flex items-center gap-3 px-3 py-1.5 bg-term-panel border border-term-border text-xs font-mono">
-	<span class="{dotColor} {dotGlow} font-bold tracking-wide">
+<div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-1.5 bg-term-panel border border-term-border text-xs font-mono">
+	<span class="{dotColor} {dotGlow} font-bold tracking-wide whitespace-nowrap">
 		● {statusText}
 	</span>
 
-	<span class="text-term-text opacity-60">|</span>
+	<span class="text-term-text opacity-60 hidden sm:inline">|</span>
 
-	<span class="text-term-text">
-		Son güncelleme: <span class="text-term-blue">{timeLabel}</span>
+	<span class="text-term-text whitespace-nowrap">
+		<span class="hidden sm:inline">Son güncelleme: </span><span class="text-term-blue">{timeLabel}</span>
 	</span>
 
-	<span class="text-term-text opacity-60">|</span>
+	<span class="text-term-text opacity-60 hidden sm:inline">|</span>
 
-	<span class="text-term-text">
+	<span class="text-term-text whitespace-nowrap hidden sm:inline">
 		akış: <span class="{feedColor}">{feedLabel}</span>
 	</span>
 </div>
