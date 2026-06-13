@@ -241,7 +241,8 @@
 					</aside>
 
 					<!-- Bilgi panelleri (dikey yığın; md+ kendi içinde kayar) -->
-					<main class="p-3 space-y-3 md:flex-1 md:overflow-y-auto">
+					<!-- pb: iOS home çubuğu güvenli alanı (viewport-fit=cover ile içerik kenara uzanır) -->
+					<main class="px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] space-y-3 md:flex-1 md:overflow-y-auto">
 						<NetWorthMirror
 							netWorthUsd={store.netWorthUsd}
 							profitRate={store.profitRate}
