@@ -2,7 +2,6 @@
 	import { onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { createLiveGameStore } from '$lib/stores/liveGameStore.svelte';
-	import type { PeriodDays } from '$lib/stores/liveGameStore.svelte';
 	import {
 		loadGame,
 		saveGame,
@@ -12,6 +11,7 @@
 		saveHistory,
 	} from '$lib/stores/savegame';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
+	import { daysElapsed, dailyBreakdown } from '$lib/domain/snapshot/dailySnapshot';
 	import { buildClosingCardModel } from '$lib/components/closingCard';
 	import type { ShareResult } from '$lib/share/share';
 	import { sendTelemetry, pingDailyVisit } from '$lib/api/telemetry';
@@ -23,6 +23,7 @@
 	import TradePanel from '$lib/components/TradePanel.svelte';
 	import ContextCard from '$lib/components/ContextCard.svelte';
 	import ClosingCard from '$lib/components/ClosingCard.svelte';
+	import DailyBreakdown from '$lib/components/DailyBreakdown.svelte';
 
 	const CARD_SEEN_KEY = 'miras.cardSeen';
 
@@ -45,19 +46,16 @@
 	});
 
 	let phase = $state<'intro' | 'playing'>('intro');
-	let selectedPeriod = $state<PeriodDays>(365);
 	let selectedAssetId = $state<string | null>(null);
 	let nowMs = $state(Date.now());
 	let showCard = $state(false);
 	let tick: ReturnType<typeof setInterval> | null = null;
 
-	const periodOptions: { value: PeriodDays; label: string }[] = [
-		{ value: 60, label: '60 Gün' },
-		{ value: 180, label: '180 Gün' },
-		{ value: 365, label: '365 Gün' },
-	];
+	// Kayıtlı oyunun gerçek takvim günü (İstanbul) — "DEVAM ET" ekranında gösterilir.
+	const savedDay = initial ? daysElapsed(initial.game.createdAt, Date.now()) : 0;
 
 	const canShowCard = $derived(store.netWorthUsd !== null && store.vsUsdHoldUsd !== null);
+	const breakdown = $derived(dailyBreakdown(store.history));
 	const closingCardModel = $derived.by(() => {
 		if (store.netWorthUsd === null || store.vsUsdHoldUsd === null) return null;
 		return buildClosingCardModel(store.game, store.netWorthUsd, store.vsUsdHoldUsd, store.history, nowMs);
@@ -102,7 +100,6 @@
 	}
 
 	function handleStart() {
-		store.setPeriod(selectedPeriod);
 		void startTicking();
 	}
 
@@ -123,10 +120,10 @@
 	});
 </script>
 
-<div class="bg-term-bg text-term-text font-mono min-h-screen">
+<div class="bg-term-bg text-term-text font-mono min-h-[100dvh]">
 	{#if phase === 'intro'}
 		<!-- ── INTRO EKRANI ─────────────────────────────────────────────────────── -->
-		<main class="min-h-screen flex items-center justify-center px-4">
+		<main class="min-h-[100dvh] flex items-center justify-center px-4">
 			<div class="w-full max-w-sm space-y-6">
 				<!-- Başlık -->
 				<div class="text-center space-y-2">
@@ -148,7 +145,7 @@
 							Kayıtlı oyun bulundu
 						</div>
 						<div class="text-term-blue text-xs">
-							Gün {initial.game.clock.day} / {initial.game.clock.totalDays}
+							{savedDay}. günündesin
 						</div>
 					</div>
 
@@ -171,30 +168,7 @@
 						Sıfırla ve yeni oyun
 					</button>
 				{:else}
-					<!-- Periyot seçimi -->
-					<div class="bg-term-panel border border-term-border p-4 space-y-3">
-						<div class="text-term-text opacity-50 text-[10px] uppercase tracking-wider">
-							Oyun Süresi
-						</div>
-						<div class="space-y-2">
-							{#each periodOptions as opt (opt.value)}
-								<label class="flex items-center gap-3 cursor-pointer group">
-									<input
-										type="radio"
-										name="period"
-										value={opt.value}
-										bind:group={selectedPeriod}
-										class="accent-term-green"
-									/>
-									<span class="text-sm {selectedPeriod === opt.value ? 'text-term-green glow-text-green font-bold' : 'text-term-text group-hover:text-term-blue'}">
-										{opt.label}
-									</span>
-								</label>
-							{/each}
-						</div>
-					</div>
-
-					<!-- Başla butonu -->
+					<!-- Başla butonu (süre seçimi yok — açık uçlu gerçek-zaman) -->
 					<button
 						type="button"
 						onclick={handleStart}
@@ -267,7 +241,8 @@
 					</aside>
 
 					<!-- Bilgi panelleri (dikey yığın; md+ kendi içinde kayar) -->
-					<main class="p-3 space-y-3 md:flex-1 md:overflow-y-auto">
+					<!-- pb: iOS home çubuğu güvenli alanı (viewport-fit=cover ile içerik kenara uzanır) -->
+					<main class="px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] space-y-3 md:flex-1 md:overflow-y-auto">
 						<NetWorthMirror
 							netWorthUsd={store.netWorthUsd}
 							profitRate={store.profitRate}
@@ -279,6 +254,8 @@
 							usdTry={store.usdTry}
 							positions={store.positions}
 						/>
+
+						<DailyBreakdown rows={breakdown} />
 
 						<div id="trade-panel" class="scroll-mt-2">
 							<TradePanel

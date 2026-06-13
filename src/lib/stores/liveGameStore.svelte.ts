@@ -26,8 +26,6 @@ import type { SaveEnvelopeV1 } from './savegame';
 import { istanbulParts } from '../domain/calendar/calendar';
 import { computeAllocation, upsertSnapshot, type DailySnapshot } from '../domain/snapshot/dailySnapshot';
 
-export type PeriodDays = 60 | 180 | 365;
-
 /** PriceList satırı — canlı katalog fiyatı + market-açık rozeti + günlük % değişim. */
 export interface PriceRow {
   id: string;
@@ -53,10 +51,9 @@ export interface PositionRow {
 export interface LiveGameStoreOptions {
   playerId?: string;
   seed?: number;
-  periodDays?: PeriodDays;
-  /** localStorage'dan yüklenmiş kayıt — verilirse game/periodDays/activeBist bundan kurulur. */
+  /** localStorage'dan yüklenmiş kayıt — verilirse game/activeBist bundan kurulur. */
   initial?: SaveEnvelopeV1 | null;
-  /** Her durum değişikliğinde (apply/setPeriod/addBist) çağrılır — persistence buradan yapılır. */
+  /** Her durum değişikliğinde (apply/addBist) çağrılır — persistence buradan yapılır. */
   onPersist?: (envelope: SaveEnvelopeV1) => void;
   /** localStorage'dan yüklenmiş günlük kapanış geçmişi. */
   initialHistory?: DailySnapshot[];
@@ -82,12 +79,10 @@ export interface LiveGameStore {
   readonly asOf: number;
   readonly feedStatus: 'live' | 'stale';
   readonly lastError: string | null;
-  readonly selectedPeriodDays: PeriodDays;
   readonly history: DailySnapshot[];
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
   assetUsdPrice(assetId: string): number | undefined;
-  setPeriod(days: PeriodDays): void;
   addBist(symbol: string): void;
   start(): Promise<void>;
   stop(): void;
@@ -138,7 +133,6 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   let fxStale = $state(true);
   let feedStatus = $state<'live' | 'stale'>('stale');
   let lastError = $state<string | null>(null);
-  let selectedPeriodDays = $state<PeriodDays>(initial?.periodDays ?? opts.periodDays ?? 365);
   // Dinamik aktif BIST seti — başlangıç = katalog başlangıç hisseleri ∪ kayıtlı set ∪ holding'lerdeki
   // BIST sembolleri (yoksa on-demand alınan hissenin fiyatı poll edilmez → oracle throw → netWorth null).
   let activeBist = $state<string[]>(computeInitialActiveBist(initial));
@@ -248,7 +242,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   // --- persistence ---
   function persist(): void {
-    opts.onPersist?.({ v: 1, game, periodDays: selectedPeriodDays, activeBist });
+    opts.onPersist?.({ v: 1, game, activeBist });
   }
 
   // --- yazma aksiyonları (guard → reducer → immutable reassign + updatedAt damga → hata yüzeyle) ---
@@ -271,10 +265,6 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       return undefined;
     }
   }
-  const setPeriod = (days: PeriodDays) => {
-    selectedPeriodDays = days;
-    persist();
-  };
   // On-demand BIST: aktif sete ekle (normalize + idempotent) → hemen tek seferlik poll ile fiyatı getir.
   const addBist = (symbol: string) => {
     const s = symbol.trim().toUpperCase();
@@ -435,16 +425,12 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     get lastError() {
       return lastError;
     },
-    get selectedPeriodDays() {
-      return selectedPeriodDays;
-    },
     get history() {
       return history;
     },
     buy,
     sell,
     assetUsdPrice,
-    setPeriod,
     addBist,
     start,
     stop,

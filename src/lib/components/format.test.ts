@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -243,5 +243,16 @@ describe('CATEGORY_LABELS', () => {
 		expect(CATEGORY_LABELS.bist).toBe('BIST');
 		expect(CATEGORY_LABELS.commodity).toBe('ALTIN&GÜMÜŞ');
 		expect(CATEGORY_LABELS.fx).toBe('DÖVİZ');
+	});
+});
+
+describe('shortDate', () => {
+	it("'YYYY-MM-DD' → 'D Ay' (Türkçe kısa)", () => {
+		expect(shortDate('2026-06-13')).toBe('13 Haz');
+		expect(shortDate('2026-01-05')).toBe('5 Oca');
+		expect(shortDate('2026-12-31')).toBe('31 Ara');
+	});
+	it('geçersiz girdi → olduğu gibi döner', () => {
+		expect(shortDate('bozuk')).toBe('bozuk');
 	});
 });

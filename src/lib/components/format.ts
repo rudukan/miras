@@ -124,6 +124,18 @@ export function relativeTime(asOf: number, now: number): string {
 	return `${Math.floor(min / 60)} sa önce`;
 }
 
+const TR_MONTHS_SHORT: ReadonlyArray<string> = [
+	'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara',
+];
+
+/** 'YYYY-MM-DD' → '13 Haz' (Türkçe kısa tarih; gün-gün döküm satırı). */
+export function shortDate(dateKey: string): string {
+	const [, m, d] = dateKey.split('-');
+	const month = TR_MONTHS_SHORT[Number(m) - 1];
+	if (month === undefined || Number.isNaN(Number(d))) return dateKey;
+	return `${Number(d)} ${month}`;
+}
+
 /** Piyasa listesi grup/sekme sırası — sabit: kripto → bist → emtia → döviz. */
 const CATEGORY_ORDER: ReadonlyArray<string> = ['crypto', 'bist', 'commodity', 'fx'];
 

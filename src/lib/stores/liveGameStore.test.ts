@@ -289,16 +289,11 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(t.store.usdTry).toBe(40);
   });
 
-  it("19) persistence: buy/sell/setPeriod/addBist sonrası onPersist güncel envelope ile çağrılır", async () => {
+  it("19) persistence: buy/addBist sonrası onPersist güncel envelope ile çağrılır", async () => {
     const onPersist = vi.fn();
     const t = setup({ onPersist });
     await t.store.start();
     flushSync();
-
-    t.store.setPeriod(60);
-    expect(onPersist).toHaveBeenLastCalledWith(
-      expect.objectContaining({ v: 1, periodDays: 60 }),
-    );
 
     t.store.buy('THYAO', 100);
     flushSync();
@@ -317,7 +312,7 @@ describe('createLiveGameStore (USD-taban)', () => {
     );
   });
 
-  it('20) restore: initial.game/periodDays/activeBist kurulumda kullanılır, holding BIST sembolü activeBist\'te', async () => {
+  it('20) restore: initial.game/activeBist kurulumda kullanılır, holding BIST sembolü activeBist\'te', async () => {
     const initialGame = {
       playerId: 'p1',
       scenarioId: 'canli' as const,
@@ -329,10 +324,9 @@ describe('createLiveGameStore (USD-taban)', () => {
       updatedAt: 2000,
     };
     const t = setup({
-      initial: { v: 1, game: initialGame, periodDays: 60, activeBist: ['GARAN'] },
+      initial: { v: 1, game: initialGame, activeBist: ['GARAN'] },
     });
     expect(t.store.game.clock.day).toBe(5);
-    expect(t.store.selectedPeriodDays).toBe(60);
     expect(t.store.prices.some((p) => p.id === 'GARAN')).toBe(true);
   });
 
