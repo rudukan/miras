@@ -120,10 +120,10 @@
 	});
 </script>
 
-<div class="bg-term-bg text-term-text font-mono min-h-screen">
+<div class="bg-term-bg text-term-text font-mono min-h-[100dvh]">
 	{#if phase === 'intro'}
 		<!-- ── INTRO EKRANI ─────────────────────────────────────────────────────── -->
-		<main class="min-h-screen flex items-center justify-center px-4">
+		<main class="min-h-[100dvh] flex items-center justify-center px-4">
 			<div class="w-full max-w-sm space-y-6">
 				<!-- Başlık -->
 				<div class="text-center space-y-2">
