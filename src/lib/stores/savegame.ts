@@ -1,5 +1,4 @@
 import type { GameState } from './gameState';
-import type { PeriodDays } from './liveGameStore.svelte';
 import { usd } from '../domain/money';
 import type { DailySnapshot } from '../domain/snapshot/dailySnapshot';
 
@@ -10,7 +9,6 @@ const PLAYER_ID_KEY = 'miras.playerId';
 export interface SaveEnvelopeV1 {
   v: 1;
   game: GameState;
-  periodDays: PeriodDays;
   activeBist: string[];
 }
 

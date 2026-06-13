@@ -2,7 +2,6 @@
 	import { onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { createLiveGameStore } from '$lib/stores/liveGameStore.svelte';
-	import type { PeriodDays } from '$lib/stores/liveGameStore.svelte';
 	import {
 		loadGame,
 		saveGame,
@@ -12,6 +11,7 @@
 		saveHistory,
 	} from '$lib/stores/savegame';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
+	import { daysElapsed } from '$lib/domain/snapshot/dailySnapshot';
 	import { buildClosingCardModel } from '$lib/components/closingCard';
 	import type { ShareResult } from '$lib/share/share';
 	import { sendTelemetry, pingDailyVisit } from '$lib/api/telemetry';
@@ -45,17 +45,13 @@
 	});
 
 	let phase = $state<'intro' | 'playing'>('intro');
-	let selectedPeriod = $state<PeriodDays>(365);
 	let selectedAssetId = $state<string | null>(null);
 	let nowMs = $state(Date.now());
 	let showCard = $state(false);
 	let tick: ReturnType<typeof setInterval> | null = null;
 
-	const periodOptions: { value: PeriodDays; label: string }[] = [
-		{ value: 60, label: '60 Gün' },
-		{ value: 180, label: '180 Gün' },
-		{ value: 365, label: '365 Gün' },
-	];
+	// Kayıtlı oyunun gerçek takvim günü (İstanbul) — "DEVAM ET" ekranında gösterilir.
+	const savedDay = initial ? daysElapsed(initial.game.createdAt, Date.now()) : 0;
 
 	const canShowCard = $derived(store.netWorthUsd !== null && store.vsUsdHoldUsd !== null);
 	const closingCardModel = $derived.by(() => {
@@ -102,7 +98,6 @@
 	}
 
 	function handleStart() {
-		store.setPeriod(selectedPeriod);
 		void startTicking();
 	}
 
@@ -148,7 +143,7 @@
 							Kayıtlı oyun bulundu
 						</div>
 						<div class="text-term-blue text-xs">
-							Gün {initial.game.clock.day} / {initial.game.clock.totalDays}
+							{savedDay}. günündesin
 						</div>
 					</div>
 
@@ -171,30 +166,7 @@
 						Sıfırla ve yeni oyun
 					</button>
 				{:else}
-					<!-- Periyot seçimi -->
-					<div class="bg-term-panel border border-term-border p-4 space-y-3">
-						<div class="text-term-text opacity-50 text-[10px] uppercase tracking-wider">
-							Oyun Süresi
-						</div>
-						<div class="space-y-2">
-							{#each periodOptions as opt (opt.value)}
-								<label class="flex items-center gap-3 cursor-pointer group">
-									<input
-										type="radio"
-										name="period"
-										value={opt.value}
-										bind:group={selectedPeriod}
-										class="accent-term-green"
-									/>
-									<span class="text-sm {selectedPeriod === opt.value ? 'text-term-green glow-text-green font-bold' : 'text-term-text group-hover:text-term-blue'}">
-										{opt.label}
-									</span>
-								</label>
-							{/each}
-						</div>
-					</div>
-
-					<!-- Başla butonu -->
+					<!-- Başla butonu (süre seçimi yok — açık uçlu gerçek-zaman) -->
 					<button
 						type="button"
 						onclick={handleStart}

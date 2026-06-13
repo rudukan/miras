@@ -34,7 +34,7 @@ describe('savegame', () => {
   it('round-trip: save → load aynı envelope döner', () => {
     const storage = makeStorage();
     const game = createGameState('canli', 1, 'p1', 1000);
-    const envelope: SaveEnvelopeV1 = { v: 1, game, periodDays: 365, activeBist: ['THYAO', 'ASELS'] };
+    const envelope: SaveEnvelopeV1 = { v: 1, game, activeBist: ['THYAO', 'ASELS'] };
 
     saveGame(storage, envelope);
 
@@ -63,7 +63,7 @@ describe('savegame', () => {
     const storage = makeStorage();
     let game = createGameState('canli', 1, 'p1', 1000);
     game = { ...game, holdings: [{ assetId: 'BTC', units: 1, avgCost: usd(64000) }] };
-    const envelope: SaveEnvelopeV1 = { v: 1, game, periodDays: 365, activeBist: [] };
+    const envelope: SaveEnvelopeV1 = { v: 1, game, activeBist: [] };
 
     saveGame(storage, envelope);
     const loaded = loadGame(storage)!;
@@ -75,7 +75,7 @@ describe('savegame', () => {
   it('clearSave: kayıt silinir', () => {
     const storage = makeStorage();
     const game = createGameState('canli', 1, 'p1', 1000);
-    saveGame(storage, { v: 1, game, periodDays: 365, activeBist: [] });
+    saveGame(storage, { v: 1, game, activeBist: [] });
 
     clearSave(storage);
 
