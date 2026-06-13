@@ -8,6 +8,7 @@ import {
   changeSince,
   strategyBadge,
   daysElapsed,
+  dailyBreakdown,
   type DailySnapshot,
 } from './dailySnapshot';
 
@@ -174,5 +175,41 @@ describe('daysElapsed', () => {
     const created = new Date('2026-06-10T10:00:00+03:00').getTime();
     const now = new Date('2026-06-10T23:59:00+03:00').getTime(); // = 2026-06-10T20:59:00Z
     expect(daysElapsed(created, now)).toBe(1);
+  });
+});
+
+describe('dailyBreakdown', () => {
+  it('boş geçmiş → []', () => {
+    expect(dailyBreakdown([])).toEqual([]);
+  });
+
+  it('tek gün → delta yok (null)', () => {
+    const rows = dailyBreakdown([snapshot('2026-06-10', 1_000_000)]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deltaUsd).toBeNull();
+    expect(rows[0].deltaPct).toBeNull();
+  });
+
+  it('en yeni üstte; delta = bir önceki güne göre', () => {
+    const rows = dailyBreakdown([
+      snapshot('2026-06-10', 1_000_000),
+      snapshot('2026-06-11', 1_005_000),
+      snapshot('2026-06-12', 1_002_000),
+    ]);
+    expect(rows.map((r) => r.dateKey)).toEqual(['2026-06-12', '2026-06-11', '2026-06-10']);
+    expect(rows[0].deltaUsd?.amount).toBeCloseTo(-3_000, 2); // 12 Haz: 1.002M − 1.005M
+    expect(rows[1].deltaUsd?.amount).toBeCloseTo(5_000, 2); // 11 Haz: 1.005M − 1.0M
+    expect(rows[2].deltaUsd).toBeNull(); // 10 Haz: ilk gün
+  });
+
+  it('deltaPct yüzde puanı olarak hesaplanır', () => {
+    const rows = dailyBreakdown([snapshot('2026-06-10', 1_000_000), snapshot('2026-06-11', 1_005_000)]);
+    expect(rows[0].deltaPct).toBeCloseTo(0.5, 4); // +0.5%
+  });
+
+  it('önceki net servet 0 → deltaPct null (sıfıra bölme yok)', () => {
+    const rows = dailyBreakdown([snapshot('2026-06-10', 0), snapshot('2026-06-11', 1_000)]);
+    expect(rows[0].deltaUsd?.amount).toBeCloseTo(1_000, 2);
+    expect(rows[0].deltaPct).toBeNull();
   });
 });

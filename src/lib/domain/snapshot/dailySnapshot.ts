@@ -18,6 +18,13 @@ export interface SnapshotChange {
   readonly vsUsdHoldDeltaUsd: Money;
 }
 
+export interface DailyBreakdownRow {
+  readonly dateKey: string;
+  readonly netWorthUsd: Money;
+  readonly deltaUsd: Money | null; // bir önceki güne göre; ilk gün null
+  readonly deltaPct: number | null; // yüzde puanı (+0.5 = %0.5); önceki 0 ise null
+}
+
 const MAX_HISTORY = 60;
 const DAY_MS = 86_400_000;
 
@@ -105,4 +112,18 @@ export function daysElapsed(createdAtMs: number, nowMs: number): number {
   const createdMidnight = new Date(`${createdKey}T00:00:00Z`).getTime();
   const nowMidnight = new Date(`${nowKey}T00:00:00Z`).getTime();
   return Math.round((nowMidnight - createdMidnight) / DAY_MS) + 1;
+}
+
+/** Gün-gün döküm: her gün için bir önceki güne göre ±$/±%. En yeni üstte. */
+export function dailyBreakdown(history: ReadonlyArray<DailySnapshot>): DailyBreakdownRow[] {
+  const rows = history.map((s, i) => {
+    const prev = i > 0 ? history[i - 1] : null;
+    const deltaUsd = prev === null ? null : usd(s.netWorthUsd.amount - prev.netWorthUsd.amount);
+    const deltaPct =
+      prev === null || prev.netWorthUsd.amount === 0
+        ? null
+        : ((s.netWorthUsd.amount - prev.netWorthUsd.amount) / prev.netWorthUsd.amount) * 100;
+    return { dateKey: s.dateKey, netWorthUsd: s.netWorthUsd, deltaUsd, deltaPct };
+  });
+  return rows.reverse();
 }

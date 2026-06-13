@@ -11,7 +11,7 @@
 		saveHistory,
 	} from '$lib/stores/savegame';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
-	import { daysElapsed } from '$lib/domain/snapshot/dailySnapshot';
+	import { daysElapsed, dailyBreakdown } from '$lib/domain/snapshot/dailySnapshot';
 	import { buildClosingCardModel } from '$lib/components/closingCard';
 	import type { ShareResult } from '$lib/share/share';
 	import { sendTelemetry, pingDailyVisit } from '$lib/api/telemetry';
@@ -23,6 +23,7 @@
 	import TradePanel from '$lib/components/TradePanel.svelte';
 	import ContextCard from '$lib/components/ContextCard.svelte';
 	import ClosingCard from '$lib/components/ClosingCard.svelte';
+	import DailyBreakdown from '$lib/components/DailyBreakdown.svelte';
 
 	const CARD_SEEN_KEY = 'miras.cardSeen';
 
@@ -54,6 +55,7 @@
 	const savedDay = initial ? daysElapsed(initial.game.createdAt, Date.now()) : 0;
 
 	const canShowCard = $derived(store.netWorthUsd !== null && store.vsUsdHoldUsd !== null);
+	const breakdown = $derived(dailyBreakdown(store.history));
 	const closingCardModel = $derived.by(() => {
 		if (store.netWorthUsd === null || store.vsUsdHoldUsd === null) return null;
 		return buildClosingCardModel(store.game, store.netWorthUsd, store.vsUsdHoldUsd, store.history, nowMs);
@@ -251,6 +253,8 @@
 							usdTry={store.usdTry}
 							positions={store.positions}
 						/>
+
+						<DailyBreakdown rows={breakdown} />
 
 						<div id="trade-panel" class="scroll-mt-2">
 							<TradePanel
