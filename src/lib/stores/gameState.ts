@@ -1,9 +1,11 @@
 import type { Money } from '../domain/money';
-import { usd, add, subtract, multiply, gte } from '../domain/money';
+import { usd, tryM, add, subtract, multiply, gte } from '../domain/money';
 import type { GameMode } from '../domain/types';
 import type { GameClock } from '../domain/time/clock';
 import { createClock, advanceDay, isFinished } from '../domain/time/clock';
 import type { UsdPriceOracle } from '../domain/fx/usdOracle';
+import type { ActiveDeposit } from '../domain/deposit/deposit';
+import { DEPOSIT_ANNUAL_RATE, isMatured, maturityNetValueTry } from '../domain/deposit/deposit';
 
 export const STARTING_USD = 1_000_000;
 
@@ -20,6 +22,7 @@ export interface GameState {
   clock: GameClock;
   usdBalance: Money;
   holdings: AssetHolding[];
+  deposit: ActiveDeposit | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -37,6 +40,7 @@ export function createGameState(
     clock: createClock(scenarioId),
     usdBalance: usd(STARTING_USD),
     holdings: [],
+    deposit: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -117,4 +121,36 @@ export function profitRate(state: GameState, oracle: UsdPriceOracle): number {
 /** Kazanma çizgisi: doları büyüt — net servet $1M'ı geçti mi? */
 export function grewDollars(state: GameState, oracle: UsdPriceOracle): boolean {
   return netWorthUsd(state, oracle).amount > STARTING_USD;
+}
+
+/** USD nakitten TL vadeli mevduat aç (canlı kurla oto-takas, atomik). */
+export function openDeposit(
+  state: GameState,
+  usdTry: number,
+  usdAmount: number,
+  nowMs: number,
+): GameState {
+  if (state.deposit !== null) throw new Error('Deposit already active');
+  if (usdAmount <= 0) throw new Error('Amount must be positive');
+  if (usdTry <= 0) throw new Error('Invalid FX rate');
+  if (usdAmount > state.usdBalance.amount) throw new Error('Insufficient USD');
+  const deposit: ActiveDeposit = {
+    principalTry: tryM(usdAmount * usdTry),
+    usdAtOpen: usd(usdAmount),
+    usdTryAtOpen: usdTry,
+    openedAtMs: nowMs,
+    annualRate: DEPOSIT_ANNUAL_RATE,
+  };
+  return { ...state, usdBalance: subtract(state.usdBalance, usd(usdAmount)), deposit };
+}
+
+/** Mevduatı boz: vade dolduysa anapara+net faiz, erken ise yalnız anapara (faiz 0); TL→USD. */
+export function breakDeposit(state: GameState, usdTry: number, nowMs: number): GameState {
+  if (state.deposit === null) throw new Error('No active deposit');
+  if (usdTry <= 0) throw new Error('Invalid FX rate');
+  const payoutTry = isMatured(state.deposit, nowMs)
+    ? maturityNetValueTry(state.deposit)
+    : state.deposit.principalTry;
+  const payoutUsd = usd(payoutTry.amount / usdTry);
+  return { ...state, usdBalance: add(state.usdBalance, payoutUsd), deposit: null };
 }

@@ -8,9 +8,12 @@ import {
   netWorthUsd,
   profitRate,
   grewDollars,
+  openDeposit,
+  breakDeposit,
   STARTING_USD,
 } from './gameState';
 import { usd } from '../domain/money';
+import { TERM_DAYS, DEPOSIT_ANNUAL_RATE } from '../domain/deposit/deposit';
 import type { UsdPriceOracle } from '../domain/fx/usdOracle';
 
 // Sahte USD fiyat oracle'ı: sabit USD fiyatları (deterministik test).
@@ -166,5 +169,41 @@ describe('skor (USD)', () => {
       return netWorthUsd(s, ORACLE).amount;
     }
     expect(run()).toBe(run());
+  });
+});
+
+describe("mevduat reducer'ları", () => {
+  const DAY_MS = 86_400_000;
+  const base = createGameState('vasiyet', 1, 'p1', 0); // usdBalance $1M, deposit null
+
+  it('openDeposit: USD→TL oto-takas, nakit düşer, deposit kurulur', () => {
+    const s = openDeposit(base, 40, 10_000, 1000);
+    expect(s.usdBalance.amount).toBe(990_000);
+    expect(s.deposit?.principalTry.amount).toBe(400_000);
+    expect(s.deposit?.usdAtOpen.amount).toBe(10_000);
+    expect(s.deposit?.usdTryAtOpen).toBe(40);
+    expect(s.deposit?.openedAtMs).toBe(1000);
+    expect(s.deposit?.annualRate).toBe(DEPOSIT_ANNUAL_RATE);
+  });
+
+  it('openDeposit: yetersiz bakiye / sıfır tutar / aktif mevduat → throw', () => {
+    expect(() => openDeposit(base, 40, 2_000_000, 0)).toThrow();
+    expect(() => openDeposit(base, 40, 0, 0)).toThrow();
+    const withDep = openDeposit(base, 40, 10_000, 0);
+    expect(() => openDeposit(withDep, 40, 10_000, 0)).toThrow();
+  });
+
+  it('breakDeposit: erken bozma → sadece anapara TL→USD geri', () => {
+    const opened = openDeposit(base, 40, 10_000, 0);
+    const closed = breakDeposit(opened, 40, DAY_MS); // 1 gün, vade dolmadı
+    expect(closed.usdBalance.amount).toBe(1_000_000); // anapara aynen geri
+    expect(closed.deposit).toBeNull();
+  });
+
+  it('breakDeposit: vade dolunca anapara + net faiz geri', () => {
+    const opened = openDeposit(base, 40, 10_000, 0);
+    const closed = breakDeposit(opened, 40, TERM_DAYS * DAY_MS);
+    expect(closed.usdBalance.amount).toBeGreaterThan(1_000_000); // faiz eklendi
+    expect(closed.deposit).toBeNull();
   });
 });
