@@ -3,7 +3,7 @@ import { usd } from '../money';
 import type { AssetCategory } from '../scenario/types';
 import { istanbulParts } from '../calendar/calendar';
 
-export type AllocationKey = AssetCategory | 'usd';
+export type AllocationKey = AssetCategory | 'usd' | 'deposit';
 
 export interface DailySnapshot {
   readonly dateKey: string; // 'YYYY-MM-DD' (Europe/Istanbul) — istanbulParts(...).key
@@ -34,6 +34,7 @@ export function computeAllocation(
   holdings: ReadonlyArray<{ assetId: string; valueUsd: number }>,
   netWorthUsd: number,
   categoryOf: (assetId: string) => AssetCategory,
+  depositUsd = 0,
 ): Partial<Record<AllocationKey, number>> {
   if (netWorthUsd <= 0) return {};
   const result: Partial<Record<AllocationKey, number>> = {};
@@ -41,6 +42,7 @@ export function computeAllocation(
     result[key] = (result[key] ?? 0) + (valueUsd / netWorthUsd) * 100;
   };
   if (usdBalance > 0) add('usd', usdBalance);
+  if (depositUsd > 0) add('deposit', depositUsd);
   for (const h of holdings) {
     if (h.valueUsd <= 0) continue;
     add(categoryOf(h.assetId), h.valueUsd);
@@ -84,11 +86,12 @@ const STRATEGY_BADGES: Record<AllocationKey, string> = {
   bist: 'Borsacı',
   commodity: 'Altıncı',
   fx: 'Dövizci',
-  usd: 'Mevduatçı',
+  usd: 'Nakitçi',
+  deposit: 'Mevduatçı',
 };
 
 /** Eşitlikte sabit öncelik sırası (kripto en "renkli" anlatı → önce). */
-const BADGE_PRIORITY: ReadonlyArray<AllocationKey> = ['crypto', 'bist', 'commodity', 'fx', 'usd'];
+const BADGE_PRIORITY: ReadonlyArray<AllocationKey> = ['crypto', 'bist', 'commodity', 'fx', 'deposit', 'usd'];
 
 /** En büyük pay ≥%50 → o kategorinin rozeti; aksi halde "Temkinli". */
 export function strategyBadge(allocation: Partial<Record<AllocationKey, number>>): string {

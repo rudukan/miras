@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -255,4 +255,23 @@ describe('shortDate', () => {
 	it('geçersiz girdi → olduğu gibi döner', () => {
 		expect(shortDate('bozuk')).toBe('bozuk');
 	});
+});
+
+describe('countdownLabel', () => {
+  const DAY = 86_400_000;
+  const HOUR = 3_600_000;
+  it('gün kalınca "N gün kaldı"', () => {
+    expect(countdownLabel(28 * DAY)).toBe('28 gün kaldı');
+    expect(countdownLabel(DAY)).toBe('1 gün kaldı');
+  });
+  it('1 günden az → saat', () => {
+    expect(countdownLabel(5 * HOUR)).toBe('5 sa kaldı');
+  });
+  it('1 saatten az → dakika', () => {
+    expect(countdownLabel(12 * 60_000)).toBe('12 dk kaldı');
+  });
+  it('süre bitti → "vade doldu"', () => {
+    expect(countdownLabel(0)).toBe('vade doldu');
+    expect(countdownLabel(-1000)).toBe('vade doldu');
+  });
 });

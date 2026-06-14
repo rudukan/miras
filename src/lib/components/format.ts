@@ -124,6 +124,17 @@ export function relativeTime(asOf: number, now: number): string {
 	return `${Math.floor(min / 60)} sa önce`;
 }
 
+/** Vadeye kalan süre etiketi. <=0 → 'vade doldu'; gün/saat/dakika kademeli. */
+export function countdownLabel(msRemaining: number): string {
+	if (msRemaining <= 0) return 'vade doldu';
+	const totalMin = Math.floor(msRemaining / 60_000);
+	const days = Math.floor(totalMin / 1440);
+	if (days >= 1) return `${days} gün kaldı`;
+	const hours = Math.floor(totalMin / 60);
+	if (hours >= 1) return `${hours} sa kaldı`;
+	return `${totalMin} dk kaldı`;
+}
+
 const TR_MONTHS_SHORT: ReadonlyArray<string> = [
 	'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara',
 ];
