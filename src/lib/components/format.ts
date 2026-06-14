@@ -157,6 +157,7 @@ export const CATEGORY_LABELS: Readonly<Record<string, string>> = {
 	bist: 'BIST',
 	commodity: 'ALTIN&GÜMÜŞ',
 	fx: 'DÖVİZ',
+	deposit: 'MEVDUAT',
 	usd: 'DOLAR',
 };
 

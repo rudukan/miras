@@ -27,7 +27,7 @@ import type { FxValue } from '../api/types';
 import type { SaveEnvelopeV1 } from './savegame';
 import { istanbulParts } from '../domain/calendar/calendar';
 import { computeAllocation, upsertSnapshot, type DailySnapshot } from '../domain/snapshot/dailySnapshot';
-import { currentValueTry } from '../domain/deposit/deposit';
+import { currentValueTry, type ActiveDeposit } from '../domain/deposit/deposit';
 
 /** PriceList satırı — canlı katalog fiyatı + market-açık rozeti + günlük % değişim. */
 export interface PriceRow {
@@ -83,8 +83,11 @@ export interface LiveGameStore {
   readonly feedStatus: 'live' | 'stale';
   readonly lastError: string | null;
   readonly history: DailySnapshot[];
+  readonly deposit: ActiveDeposit | null;
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
+  openDeposit(usdAmount: number): void;
+  breakDeposit(): void;
   assetUsdPrice(assetId: string): number | undefined;
   addBist(symbol: string): void;
   start(): Promise<void>;

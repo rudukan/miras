@@ -17,6 +17,7 @@ export const TERM_COLORS = {
   red: '#ff3366',
   amber: '#f59e0b',
   blue: '#00e1ff',
+  violet: '#a855f7',
   text: '#a3b8cc',
 } as const;
 
