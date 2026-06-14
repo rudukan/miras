@@ -9,7 +9,7 @@ import {
   type SaveEnvelopeV1,
 } from './savegame';
 import { createGameState } from './gameState';
-import { usd } from '../domain/money';
+import { usd, tryM } from '../domain/money';
 import type { DailySnapshot } from '../domain/snapshot/dailySnapshot';
 
 function makeStorage(): Storage {
@@ -127,6 +127,40 @@ describe('savegame', () => {
 
       expect(loaded.history[1].netWorthUsd).toEqual({ amount: 1_015_000, currency: 'USD' });
       expect(loaded.history[1].vsUsdHoldUsd).toEqual({ amount: 15_000, currency: 'USD' });
+    });
+  });
+
+  describe('mevduat persistence', () => {
+    it('reviveEnvelope: deposit Money alanlarını yeniden sarar (round2 + tip garantisi)', () => {
+      const storage = makeStorage();
+      // Yuvarlanmamış tutarlar: revive tryM/usd ile round2 uygulamalı (ham spread yetmez).
+      const game = {
+        ...createGameState('vasiyet', 1, 'p1', 0),
+        deposit: {
+          principalTry: { amount: 400_000.999, currency: 'TRY' as const },
+          usdAtOpen: { amount: 10_000.555, currency: 'USD' as const },
+          usdTryAtOpen: 40,
+          openedAtMs: 123,
+          annualRate: 0.5,
+        },
+      };
+      saveGame(storage, { v: 1, game, activeBist: [] });
+      const loaded = loadGame(storage);
+
+      expect(loaded?.game.deposit?.principalTry).toEqual({ amount: 400_001, currency: 'TRY' });
+      expect(loaded?.game.deposit?.usdAtOpen).toEqual({ amount: 10_000.56, currency: 'USD' });
+    });
+
+    it('loadGame: deposit alanı olmayan eski kayıt → deposit null', () => {
+      const storage = makeStorage();
+      const raw = {
+        v: 1,
+        game: { ...createGameState('vasiyet', 1, 'p1', 0), deposit: undefined },
+        activeBist: [],
+      };
+      storage.setItem('miras.save.v1', JSON.stringify(raw));
+
+      expect(loadGame(storage)?.game.deposit ?? null).toBeNull();
     });
   });
 

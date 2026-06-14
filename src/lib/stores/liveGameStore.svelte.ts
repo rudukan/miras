@@ -6,6 +6,8 @@ import {
   buyAsset,
   sellAsset,
   netWorthUsd as netWorthUsdFn,
+  openDeposit,
+  breakDeposit,
   STARTING_USD,
 } from './gameState';
 import type { LivePriceSource } from '../domain/fx/liveFx';
@@ -25,6 +27,7 @@ import type { FxValue } from '../api/types';
 import type { SaveEnvelopeV1 } from './savegame';
 import { istanbulParts } from '../domain/calendar/calendar';
 import { computeAllocation, upsertSnapshot, type DailySnapshot } from '../domain/snapshot/dailySnapshot';
+import { currentValueTry, type ActiveDeposit } from '../domain/deposit/deposit';
 
 /** PriceList satırı — canlı katalog fiyatı + market-açık rozeti + günlük % değişim. */
 export interface PriceRow {
@@ -80,8 +83,11 @@ export interface LiveGameStore {
   readonly feedStatus: 'live' | 'stale';
   readonly lastError: string | null;
   readonly history: DailySnapshot[];
+  readonly deposit: ActiveDeposit | null;
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
+  openDeposit(usdAmount: number): void;
+  breakDeposit(): void;
   assetUsdPrice(assetId: string): number | undefined;
   addBist(symbol: string): void;
   start(): Promise<void>;
@@ -176,11 +182,15 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   // --- türev değerler ($derived; render bunlardan, setInterval yalnız cache'i besler) ---
   // netWorth: holding fiyatı yoksa reducer throw eder → try/catch ile null'a düşürülür (UI "—").
+  // Mevduat USD değeri (mark-to-market): anapara + birikmiş net faiz / canlı kur.
+  const depositUsd = $derived(
+    game.deposit === null ? 0 : currentValueTry(game.deposit, now()).amount / effectiveUsdTry(),
+  );
   const netWorth = $derived.by<Money | null>(() => {
     try {
-      return netWorthUsdFn(game, oracle);
+      return usd(netWorthUsdFn(game, oracle).amount + depositUsd);
     } catch {
-      return null;
+      return game.deposit !== null ? usd(depositUsd) : null;
     }
   });
   const profit = $derived(netWorth === null ? null : netWorth.amount / STARTING_USD);
@@ -257,6 +267,9 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   }
   const buy = (assetId: string, units: number) => apply(() => buyAsset(game, oracle, assetId, units));
   const sell = (assetId: string, units: number) => apply(() => sellAsset(game, oracle, assetId, units));
+  const openDepositAction = (usdAmount: number) =>
+    apply(() => openDeposit(game, effectiveUsdTry(), usdAmount, now()));
+  const breakDepositAction = () => apply(() => breakDeposit(game, effectiveUsdTry(), now()));
   /** Seçili varlığın USD fiyatı (TradePanel MAX + maliyet yankısı için); fiyat yoksa undefined. */
   function assetUsdPrice(assetId: string): number | undefined {
     try {
@@ -363,6 +376,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
         positions.map((p) => ({ assetId: p.assetId, valueUsd: p.valueUsd ?? 0 })),
         netWorth.amount,
         (id) => CATALOG[id]?.category ?? 'bist',
+        depositUsd,
       ),
       recordedAt: now(),
     };
@@ -428,8 +442,13 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     get history() {
       return history;
     },
+    get deposit() {
+      return game.deposit;
+    },
     buy,
     sell,
+    openDeposit: openDepositAction,
+    breakDeposit: breakDepositAction,
     assetUsdPrice,
     addBist,
     start,

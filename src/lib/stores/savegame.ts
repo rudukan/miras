@@ -1,5 +1,5 @@
 import type { GameState } from './gameState';
-import { usd } from '../domain/money';
+import { usd, tryM } from '../domain/money';
 import type { DailySnapshot } from '../domain/snapshot/dailySnapshot';
 
 const SAVE_KEY = 'miras.save.v1';
@@ -41,6 +41,13 @@ function reviveEnvelope(raw: SaveEnvelopeV1): SaveEnvelopeV1 {
       ...raw.game,
       usdBalance: usd(raw.game.usdBalance.amount),
       holdings: raw.game.holdings.map((h) => ({ ...h, avgCost: usd(h.avgCost.amount) })),
+      deposit: raw.game.deposit
+        ? {
+            ...raw.game.deposit,
+            principalTry: tryM(raw.game.deposit.principalTry.amount),
+            usdAtOpen: usd(raw.game.deposit.usdAtOpen.amount),
+          }
+        : null,
     },
   };
 }

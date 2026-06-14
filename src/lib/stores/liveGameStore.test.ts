@@ -372,4 +372,29 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(t.store.netWorthUsd).toBeNull();
     expect(t.store.history).toHaveLength(1); // büyümedi
   });
+
+  it('mevduat: açınca net servet korunur (para taşındı, kaybolmadı)', async () => {
+    const t = setup(); // usdTry 40
+    await t.store.start();
+    flushSync();
+    const before = t.store.netWorthUsd?.amount ?? 0;
+    t.store.openDeposit(100_000);
+    flushSync();
+    expect(t.store.game.usdBalance.amount).toBe(900_000);
+    expect(t.store.deposit?.principalTry.amount).toBe(4_000_000); // 100k × 40
+    // açılış anında accrued 0 → net servet ~aynı (yuvarlama toleransı)
+    expect(t.store.netWorthUsd?.amount ?? 0).toBeCloseTo(before, 0);
+  });
+
+  it('mevduat: erken bozma nakdi geri getirir, deposit null olur', async () => {
+    const t = setup();
+    await t.store.start();
+    flushSync();
+    t.store.openDeposit(100_000);
+    flushSync();
+    t.store.breakDeposit();
+    flushSync();
+    expect(t.store.game.usdBalance.amount).toBe(1_000_000);
+    expect(t.store.deposit).toBeNull();
+  });
 });

@@ -15,7 +15,7 @@ import { signedUsd, pnlClass, CATEGORY_LABELS } from './format';
 export const DISCLAIMER = 'SANAL OYUN — GERÇEK PARA DEĞİL';
 
 /** Yatay yığılmış dağılım barı sırası — kripto en "renkli" anlatı → önce, nakit en sona. */
-const SEGMENT_ORDER: ReadonlyArray<AllocationKey> = ['crypto', 'bist', 'commodity', 'fx', 'usd'];
+const SEGMENT_ORDER: ReadonlyArray<AllocationKey> = ['crypto', 'bist', 'commodity', 'fx', 'deposit', 'usd'];
 
 /** Segment rengi — yalnız term.* token'ları (CLAUDE.md: hard-coded #hex yasak). */
 const SEGMENT_COLOR_CLASS: Readonly<Record<AllocationKey, string>> = {
@@ -23,6 +23,7 @@ const SEGMENT_COLOR_CLASS: Readonly<Record<AllocationKey, string>> = {
   bist: 'bg-term-blue',
   commodity: 'bg-term-green',
   fx: 'bg-term-red',
+  deposit: 'bg-term-violet',
   usd: 'bg-term-text',
 };
 

@@ -146,7 +146,7 @@ describe('strategyBadge', () => {
   });
 
   it('en büyük pay tam %50 → eşik, rozet kazanır', () => {
-    expect(strategyBadge({ crypto: 49.9, usd: 50.1 })).toBe('Mevduatçı');
+    expect(strategyBadge({ crypto: 49.9, usd: 50.1 })).toBe('Nakitçi');
     expect(strategyBadge({ crypto: 50, usd: 50 })).toBe("Kripto'cu"); // eşitlik → sabit öncelik (crypto)
     expect(strategyBadge({ bist: 50, fx: 50 })).toBe('Borsacı');
   });
@@ -154,7 +154,7 @@ describe('strategyBadge', () => {
   it('kategori → rozet eşlemesi', () => {
     expect(strategyBadge({ commodity: 70 })).toBe('Altıncı');
     expect(strategyBadge({ fx: 80 })).toBe('Dövizci');
-    expect(strategyBadge({ usd: 100 })).toBe('Mevduatçı');
+    expect(strategyBadge({ usd: 100 })).toBe('Nakitçi');
   });
 });
 
@@ -211,5 +211,22 @@ describe('dailyBreakdown', () => {
     const rows = dailyBreakdown([snapshot('2026-06-10', 0), snapshot('2026-06-11', 1_000)]);
     expect(rows[0].deltaUsd?.amount).toBeCloseTo(1_000, 2);
     expect(rows[0].deltaPct).toBeNull();
+  });
+});
+
+describe('mevduat allocation + rozet', () => {
+  it('computeAllocation: depositUsd payı eklenir', () => {
+    // net servet 100: 40 nakit + 60 mevduat
+    const a = computeAllocation(40, [], 100, () => 'bist', 60);
+    expect(a.deposit).toBeCloseTo(60);
+    expect(a.usd).toBeCloseTo(40);
+  });
+
+  it('strategyBadge: mevduat ≥%50 → Mevduatçı', () => {
+    expect(strategyBadge({ deposit: 60, usd: 40 })).toBe('Mevduatçı');
+  });
+
+  it('strategyBadge: nakit ≥%50 → Nakitçi', () => {
+    expect(strategyBadge({ usd: 80, bist: 20 })).toBe('Nakitçi');
   });
 });
