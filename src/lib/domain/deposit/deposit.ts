@@ -1,44 +1,44 @@
 import type { Money } from '../money';
-import { tryM, multiply, add } from '../money';
+import { tryM, add } from '../money';
 
-export interface Deposit {
-  readonly id: string;
-  readonly principal: Money;
-  readonly termDays: 30 | 90 | 180;
-  readonly openedDay: number;
+/** Aktif tek mevduat (TL anapara, zaman-damgası tabanlı). */
+export interface ActiveDeposit {
+  readonly principalTry: Money;   // TL anapara (açılışta USD→TL)
+  readonly usdAtOpen: Money;      // açılışta ödenen USD (dürüst-ayna kıyası)
+  readonly usdTryAtOpen: number;  // açılış kuru
+  readonly openedAtMs: number;    // gerçek zaman damgası
   readonly annualRate: number;
 }
 
+export const TERM_DAYS = 32;
+export const DEPOSIT_ANNUAL_RATE = 0.5; // quant kalibre edecek
 export const WITHHOLDING_TAX = 0.075;
 
-export function openDeposit(
-  id: string,
-  principal: Money,
-  termDays: 30 | 90 | 180,
-  currentDay: number,
-  rate: number,
-): Deposit {
-  if (principal.currency !== 'TRY') throw new Error('Deposit must be in TRY');
-  if (principal.amount <= 0) throw new Error('Principal must be positive');
-  return { id, principal, termDays, openedDay: currentDay, annualRate: rate };
+const DAY_MS = 86_400_000;
+
+/** Açılıştan bu yana geçen gün (kesirli); negatif → 0. */
+export function elapsedDays(d: ActiveDeposit, nowMs: number): number {
+  return Math.max(0, (nowMs - d.openedAtMs) / DAY_MS);
 }
 
-export function isMatured(deposit: Deposit, currentDay: number): boolean {
-  return currentDay >= deposit.openedDay + deposit.termDays;
+export function isMatured(d: ActiveDeposit, nowMs: number): boolean {
+  return elapsedDays(d, nowMs) >= TERM_DAYS;
 }
 
-export function calculateGrossInterest(deposit: Deposit, currentDay: number): Money {
-  if (!isMatured(deposit, currentDay)) return tryM(0);
-  const dayFraction = deposit.termDays / 365;
-  return multiply(deposit.principal, deposit.annualRate * dayFraction);
+/** Lineer birikmiş NET faiz (stopaj sonrası); TERM_DAYS'te tavanlanır. */
+export function accruedNetInterest(d: ActiveDeposit, nowMs: number): Money {
+  const days = Math.min(elapsedDays(d, nowMs), TERM_DAYS);
+  const gross = d.principalTry.amount * d.annualRate * (days / 365);
+  return tryM(gross * (1 - WITHHOLDING_TAX));
 }
 
-export function calculateNetInterest(deposit: Deposit, currentDay: number): Money {
-  const gross = calculateGrossInterest(deposit, currentDay);
-  return multiply(gross, 1 - WITHHOLDING_TAX);
+/** Anapara + o ana kadar birikmiş net faiz (vitrin + mark-to-market tabanı). */
+export function currentValueTry(d: ActiveDeposit, nowMs: number): Money {
+  return add(d.principalTry, accruedNetInterest(d, nowMs));
 }
 
-export function closeDeposit(deposit: Deposit, currentDay: number): Money {
-  if (!isMatured(deposit, currentDay)) return deposit.principal;
-  return add(deposit.principal, calculateNetInterest(deposit, currentDay));
+/** Vade dolunca alınacak net değer (anapara + tam dönem net faiz). */
+export function maturityNetValueTry(d: ActiveDeposit): Money {
+  const gross = d.principalTry.amount * d.annualRate * (TERM_DAYS / 365);
+  return add(d.principalTry, tryM(gross * (1 - WITHHOLDING_TAX)));
 }
