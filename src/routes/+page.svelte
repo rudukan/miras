@@ -253,6 +253,7 @@
 						<WalletSummary
 							game={store.game}
 							usdTry={store.usdTry}
+							liveUsdTry={store.liveUsdTry}
 							positions={store.positions}
 						/>
 

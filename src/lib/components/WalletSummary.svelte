@@ -7,12 +7,16 @@
 	interface Props {
 		game: GameState;
 		usdTry: number;
+		liveUsdTry?: number;
 		positions: PositionRow[];
 	}
 
-	let { game, usdTry, positions }: Props = $props();
+	let { game, usdTry, liveUsdTry, positions }: Props = $props();
 
 	const usdRate = $derived(usdTry.toFixed(2));
+	const liveRate = $derived(liveUsdTry === undefined ? null : liveUsdTry.toFixed(2));
+	// Canlı piyasa ipucu yalnız mühürden farklıysa gösterilir (gürültü yok).
+	const showLive = $derived(liveRate !== null && liveRate !== usdRate);
 </script>
 
 <div class="bg-term-panel border border-term-border p-3 font-mono text-xs space-y-3">
@@ -30,9 +34,15 @@
 			</span>
 		</div>
 		<div class="flex justify-between items-center pt-0.5">
-			<span class="text-term-text opacity-50 text-[10px]">USD/TRY (parite)</span>
+			<span class="text-term-text opacity-50 text-[10px]">USD/TRY (günün kuru)</span>
 			<span class="text-term-blue text-[10px]">₺{usdRate}</span>
 		</div>
+		{#if showLive}
+			<div class="flex justify-between items-center">
+				<span class="text-term-text opacity-40 text-[10px]">piyasa (canlı)</span>
+				<span class="text-term-text opacity-50 text-[10px]">₺{liveRate}</span>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Pozisyonlar (USD değer + K/Z) -->
