@@ -164,6 +164,32 @@ describe('savegame', () => {
     });
   });
 
+  describe('sealedFx persistence', () => {
+    it('round-trip: sealedFx save → load korunur', () => {
+      const storage = makeStorage();
+      const game = createGameState('canli', 1, 'p1', 1000);
+      const envelope: SaveEnvelopeV1 = {
+        v: 1,
+        game,
+        activeBist: [],
+        sealedFx: { dateKey: '2026-06-17', rate: 41.25 },
+      };
+
+      saveGame(storage, envelope);
+
+      expect(loadGame(storage)?.sealedFx).toEqual({ dateKey: '2026-06-17', rate: 41.25 });
+    });
+
+    it('sealedFx olmayan eski kayıt → sealedFx undefined', () => {
+      const storage = makeStorage();
+      const game = createGameState('canli', 1, 'p1', 1000);
+
+      saveGame(storage, { v: 1, game, activeBist: [] });
+
+      expect(loadGame(storage)?.sealedFx).toBeUndefined();
+    });
+  });
+
   describe('getOrCreatePlayerId', () => {
     it('ilk çağrıda üretir ve kalıcı kaydeder', () => {
       const storage = makeStorage();

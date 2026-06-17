@@ -6,10 +6,18 @@ const SAVE_KEY = 'miras.save.v1';
 const HISTORY_KEY = 'miras.history.v1';
 const PLAYER_ID_KEY = 'miras.playerId';
 
+/** Günlük mühürlü operatif kur — İstanbul gün-anahtarı + o gün için yakalanan USD/TRY. */
+export interface SealedFx {
+  dateKey: string; // 'YYYY-MM-DD' (Europe/Istanbul)
+  rate: number;    // o günün operatif USD/TRY kuru
+}
+
 export interface SaveEnvelopeV1 {
   v: 1;
   game: GameState;
   activeBist: string[];
+  /** Opsiyonel — eski kayıtlarda yok (undefined → store ilk poll'da mühürler). */
+  sealedFx?: SealedFx;
 }
 
 export function saveGame(storage: Storage, envelope: SaveEnvelopeV1): void {
