@@ -27,12 +27,24 @@
 
 	// ── Al/Sat durumu ────────────────────────────────────────────────────────────
 	let units = $state(0);
+	let dollarAmount = $state(0);
+
+	function syncDollarFromUnits() {
+		dollarAmount = selectedAssetUsd !== undefined ? Math.round(units * selectedAssetUsd * 100) / 100 : 0;
+	}
+	function syncUnitsFromDollar() {
+		if (selectedAssetUsd !== undefined && selectedAssetUsd > 0) {
+			units = Math.floor((dollarAmount / selectedAssetUsd) * 10000) / 10000;
+		}
+	}
 
 	function maxUnits() {
 		units = maxUnitsAffordable(usdBalance, selectedAssetUsd);
+		syncDollarFromUnits();
 	}
 	function allUnits() {
 		units = heldUnitsSel;
+		syncDollarFromUnits();
 	}
 
 	const assetLabel = $derived(
@@ -43,12 +55,14 @@
 		if (!selectedAssetId || units <= 0) return;
 		store.buy(selectedAssetId, units);
 		units = 0;
+		dollarAmount = 0;
 	}
 
 	function handleSell() {
 		if (!selectedAssetId || units <= 0) return;
 		store.sell(selectedAssetId, units);
 		units = 0;
+		dollarAmount = 0;
 	}
 </script>
 
@@ -77,7 +91,7 @@
 				<span class="text-term-text opacity-50 font-normal ml-1 text-[10px]">({selectedAssetId})</span>
 			</div>
 
-			<div class="space-y-1">
+			<div class="space-y-1.5">
 				<div class="flex items-center gap-2">
 					<label for="trade-units" class="text-term-text opacity-50 shrink-0 w-20">Adet</label>
 					<input
@@ -86,6 +100,7 @@
 						id="trade-units"
 						step="0.0001"
 						bind:value={units}
+						oninput={syncDollarFromUnits}
 						class="flex-1 bg-term-bg border border-term-border px-2 py-1 text-term-text
 						       focus:outline-none focus:border-term-borderGlow text-xs w-full"
 					/>
@@ -94,10 +109,18 @@
 						<button type="button" onclick={allUnits} class="shrink-0 {chipCls}">TÜMÜ</button>
 					{/if}
 				</div>
-				<div class="flex justify-end">
-					<span class="text-term-text opacity-50 text-[10px]">
-						≈ {displayUsd(selectedAssetUsd !== undefined ? usd(units * selectedAssetUsd) : null)}
-					</span>
+				<div class="flex items-center gap-2">
+					<label for="trade-dollars" class="text-term-text opacity-50 shrink-0 w-20">Tutar ($)</label>
+					<input
+						type="number"
+						min="0"
+						id="trade-dollars"
+						step="1"
+						bind:value={dollarAmount}
+						oninput={syncUnitsFromDollar}
+						class="flex-1 bg-term-bg border border-term-border px-2 py-1 text-term-text
+						       focus:outline-none focus:border-term-borderGlow text-xs w-full"
+					/>
 				</div>
 			</div>
 
