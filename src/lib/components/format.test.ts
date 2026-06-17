@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -274,4 +274,17 @@ describe('countdownLabel', () => {
     expect(countdownLabel(0)).toBe('vade doldu');
     expect(countdownLabel(-1000)).toBe('vade doldu');
   });
+});
+
+// ── investedUsd ─────────────────────────────────────────────────────────────────
+describe('investedUsd', () => {
+	it('net servet − nakit = yatırımdaki güncel değer', () => {
+		expect(investedUsd(usd(1_008_634), usd(732_995))).toEqual(usd(275_639));
+	});
+	it('netWorth null → null (fiyat eksik)', () => {
+		expect(investedUsd(null, usd(500_000))).toBeNull();
+	});
+	it('hiç yatırım yok → $0 (nakit = net servet)', () => {
+		expect(investedUsd(usd(1_000_000), usd(1_000_000))).toEqual(usd(0));
+	});
 });

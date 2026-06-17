@@ -1,5 +1,5 @@
 import type { Money } from '../domain/money';
-import { tryM, formatMoney } from '../domain/money';
+import { usd, tryM, formatMoney } from '../domain/money';
 
 /**
  * Saf gösterim yardımcıları — runes yok, jsdom yok, node'da test edilebilir.
@@ -16,6 +16,16 @@ export function displayTry(n: number | undefined): string {
 export function displayUsd(m: Money | null): string {
 	if (m === null) return '—';
 	return formatMoney(m);
+}
+
+/**
+ * Net servetin yatırımda olan kısmı = net servet − kenardaki nakit.
+ * (pozisyonlar + mevduatın GÜNCEL değeri toplamı; nakit + yatırım = net servet.)
+ * netWorth null (fiyat eksik) → null ('—' gösterilir).
+ */
+export function investedUsd(netWorthUsd: Money | null, cashUsd: Money): Money | null {
+	if (netWorthUsd === null) return null;
+	return usd(netWorthUsd.amount - cashUsd.amount);
 }
 
 /**
