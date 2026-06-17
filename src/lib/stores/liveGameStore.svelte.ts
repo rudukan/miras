@@ -24,7 +24,7 @@ import {
   type BinanceFeed,
 } from '../api/binance';
 import type { FxValue } from '../api/types';
-import type { SaveEnvelopeV1 } from './savegame';
+import type { SaveEnvelopeV1, SealedFx } from './savegame';
 import { istanbulParts } from '../domain/calendar/calendar';
 import { computeAllocation, upsertSnapshot, type DailySnapshot } from '../domain/snapshot/dailySnapshot';
 import { currentValueTry, type ActiveDeposit } from '../domain/deposit/deposit';
@@ -78,6 +78,7 @@ export interface LiveGameStore {
   readonly positions: PositionRow[];
   readonly prices: PriceRow[];
   readonly usdTry: number;
+  readonly liveUsdTry: number;
   readonly dataStale: boolean;
   readonly asOf: number;
   readonly feedStatus: 'live' | 'stale';
@@ -146,10 +147,15 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   let liveUsdTry = $state<number | undefined>(undefined);
   // Günlük kapanış geçmişi — pollFx sonunda netWorth biliniyorsa upsert edilir.
   let history = $state<DailySnapshot[]>(opts.initialHistory ?? []);
+  // Günlük mühürlü operatif kur: İstanbul gün-anahtarı değişince bir kez yakalanır.
+  // Net servet/işlem bunu kullanır → gün-içi canlı kur gürültüsü net serveti oynatmaz.
+  let sealedFx = $state<SealedFx | null>(initial?.sealedFx ?? null);
 
   // WS canlı + tick var → WS; aksi halde Yahoo (fxCache); o da yoksa FALLBACK_FX.usdTry.
   const effectiveUsdTry = (): number =>
     feedStatus === 'live' && liveUsdTry !== undefined ? liveUsdTry : fxCache.usdTry;
+  // Operatif kur (işlem + değerleme) — mühür yoksa (ilk poll öncesi kısa pencere) canlı kura düşülür.
+  const sealedUsdTry = (): number => sealedFx?.rate ?? effectiveUsdTry();
 
   // Canlı fiyat kaynağı — rune okur → her zaman güncel; createLiveFxEngine tek seam.
   const source: LivePriceSource = {
@@ -158,7 +164,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       // Kripto: USD fiyatını canlı kurla TRY'ye çevir.
       if (CRYPTO_SET.has(id)) {
         const u = cryptoUsd[id];
-        return u === undefined ? undefined : u * effectiveUsdTry();
+        return u === undefined ? undefined : u * sealedUsdTry();
       }
       // Diğer her şey (BIST/emtia/döviz) proxy'den zaten TRY gelir — CATALOG üyeliği gerekmez
       // (on-demand aranan BIST sembolleri de böyle çözülür).
@@ -176,7 +182,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       }
       const t = fxCache.prices[id];
       if (t === undefined) throw new Error(`No live price: ${id}`);
-      return usd(t / effectiveUsdTry());
+      return usd(t / sealedUsdTry());
     },
   };
 
@@ -184,7 +190,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   // netWorth: holding fiyatı yoksa reducer throw eder → try/catch ile null'a düşürülür (UI "—").
   // Mevduat USD değeri (mark-to-market): anapara + birikmiş net faiz / canlı kur.
   const depositUsd = $derived(
-    game.deposit === null ? 0 : currentValueTry(game.deposit, now()).amount / effectiveUsdTry(),
+    game.deposit === null ? 0 : currentValueTry(game.deposit, now()).amount / sealedUsdTry(),
   );
   const netWorth = $derived.by<Money | null>(() => {
     try {
@@ -252,7 +258,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   // --- persistence ---
   function persist(): void {
-    opts.onPersist?.({ v: 1, game, activeBist });
+    opts.onPersist?.({ v: 1, game, activeBist, sealedFx: sealedFx ?? undefined });
   }
 
   // --- yazma aksiyonları (guard → reducer → immutable reassign + updatedAt damga → hata yüzeyle) ---
@@ -268,8 +274,8 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   const buy = (assetId: string, units: number) => apply(() => buyAsset(game, oracle, assetId, units));
   const sell = (assetId: string, units: number) => apply(() => sellAsset(game, oracle, assetId, units));
   const openDepositAction = (usdAmount: number) =>
-    apply(() => openDeposit(game, effectiveUsdTry(), usdAmount, now()));
-  const breakDepositAction = () => apply(() => breakDeposit(game, effectiveUsdTry(), now()));
+    apply(() => openDeposit(game, sealedUsdTry(), usdAmount, now()));
+  const breakDepositAction = () => apply(() => breakDeposit(game, sealedUsdTry(), now()));
   /** Seçili varlığın USD fiyatı (TradePanel MAX + maliyet yankısı için); fiyat yoksa undefined. */
   function assetUsdPrice(assetId: string): number | undefined {
     try {
@@ -361,7 +367,20 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     } catch {
       /* fallback başarısız — sessiz; fxStale/dataStale zaten "veri eski" yüzeyliyor */
     }
+    ensureSeal();
     recordSnapshot();
+  }
+
+  // Gün-anahtarı (İstanbul) değişince operatif kuru yeniden mühürle — yalnız GÜVENİLİR kurla
+  // (canlı WS veya taze Yahoo). Stale fallback (₺40 zemini) mühürlenmez → tüm gün sahte kalmaz.
+  function ensureSeal(): void {
+    const haveRealFx = (feedStatus === 'live' && liveUsdTry !== undefined) || !fxStale;
+    if (!haveRealFx) return;
+    const key = istanbulParts(new Date(now())).key;
+    if (sealedFx === null || sealedFx.dateKey !== key) {
+      sealedFx = { dateKey: key, rate: effectiveUsdTry() };
+      persist();
+    }
   }
 
   // Fiyat eksikse (netWorth null) ATLA — çöp veri yazılmaz.
@@ -425,6 +444,9 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       return prices;
     },
     get usdTry() {
+      return sealedUsdTry();
+    },
+    get liveUsdTry() {
       return effectiveUsdTry();
     },
     get dataStale() {

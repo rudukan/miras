@@ -3,6 +3,7 @@ import { flushSync } from 'svelte';
 import { createLiveGameStore } from './liveGameStore.svelte';
 import type { Cached, FxValue, CryptoValue } from '../api/types';
 import type { BinanceFeedOptions, BinanceFeed } from '../api/binance';
+import type { SaveEnvelopeV1 } from './savegame';
 
 // 2026-06-01 12:00 Europe/Istanbul = Pazartesi, BIST açık saat
 const FIXED_NOW = new Date('2026-06-01T12:00:00+03:00').getTime();
@@ -266,7 +267,7 @@ describe('createLiveGameStore (USD-taban)', () => {
     t.feed.onStatus?.('live');
     t.feed.onFxRate?.('USDTTRY', 50);
     flushSync();
-    expect(t.store.usdTry).toBe(50); // Yahoo 40 yerine WS 50
+    expect(t.store.liveUsdTry).toBe(50); // Yahoo 40 yerine WS 50 (canlı/operatif tohum; usdTry mühürlü kalır)
   });
 
   it('17) hibrit: WS stale olunca Yahoo usdTry\'a düşer', async () => {
@@ -275,10 +276,10 @@ describe('createLiveGameStore (USD-taban)', () => {
     t.feed.onStatus?.('live');
     t.feed.onFxRate?.('USDTTRY', 50);
     flushSync();
-    expect(t.store.usdTry).toBe(50);
+    expect(t.store.liveUsdTry).toBe(50);
     t.feed.onStatus?.('stale');
     flushSync();
-    expect(t.store.usdTry).toBe(40); // Yahoo fallback
+    expect(t.store.liveUsdTry).toBe(40); // Yahoo fallback
   });
 
   it('18) hibrit: liveUsdTry yokken Yahoo kullanılır (regresyon yok)', async () => {
@@ -396,5 +397,82 @@ describe('createLiveGameStore (USD-taban)', () => {
     flushSync();
     expect(t.store.game.usdBalance.amount).toBe(1_000_000);
     expect(t.store.deposit).toBeNull();
+  });
+
+  describe('günlük mühürlü kur', () => {
+    it('canlı USD/TRY tiki net serveti oynatmaz (mevduat sealed kurla değerlenir)', async () => {
+      const t = setup(); // yahoo usdTry 40
+      await t.store.start(); // ilk poll → mühür { 2026-06-01, 40 }
+      flushSync();
+      expect(t.store.usdTry).toBe(40); // operatif = sealed
+      expect(t.store.netWorthUsd?.amount).toBeCloseTo(1_000_000, 0);
+
+      t.store.openDeposit(500_000); // $500k → sealed 40 ile ₺20M mevduat
+      flushSync();
+      expect(t.store.lastError).toBeNull();
+      const before = t.store.netWorthUsd!.amount;
+      expect(before).toBeCloseTo(1_000_000, 0);
+
+      // Canlı kur fırlar (WS): operatif kur mühürlü kaldığı için net servet OYNAMAZ.
+      t.feed.onStatus?.('live');
+      t.feed.onFxRate?.('USDTTRY', 50);
+      flushSync();
+      expect(t.store.liveUsdTry).toBe(50); // canlı gösterim güncel
+      expect(t.store.usdTry).toBe(40); // operatif hâlâ mühürlü
+      expect(t.store.netWorthUsd?.amount).toBeCloseTo(before, 0); // jitter yok
+    });
+
+    it('gün içi ikinci poll mührü değiştirmez', async () => {
+      vi.useFakeTimers();
+      const t = setup(); // pollMs 5000
+      await t.store.start();
+      expect(t.store.usdTry).toBe(40);
+
+      // Aynı gün, Yahoo kuru değişse bile mühür sabit kalır.
+      t.setYahoo({
+        value: { usdTry: 55, prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45 } },
+        asOf: 222,
+        stale: false,
+      });
+      await vi.advanceTimersByTimeAsync(5000);
+      flushSync();
+
+      expect(t.store.usdTry).toBe(40); // mühür değişmedi
+      expect(t.store.liveUsdTry).toBe(55); // canlı (Yahoo) güncel (feedStatus stale → effective=fxCache)
+    });
+
+    it('gün-anahtarı değişince reseal eder', async () => {
+      vi.useFakeTimers();
+      let clock = new Date('2026-06-01T12:00:00+03:00').getTime();
+      const t = setup({ now: () => clock });
+      await t.store.start();
+      expect(t.store.usdTry).toBe(40);
+
+      t.setYahoo({
+        value: { usdTry: 45, prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45 } },
+        asOf: 222,
+        stale: false,
+      });
+      clock = new Date('2026-06-02T12:00:00+03:00').getTime(); // ertesi gün
+      await vi.advanceTimersByTimeAsync(5000);
+      flushSync();
+
+      expect(t.store.usdTry).toBe(45); // yeni günün kuru mühürlendi
+    });
+
+    it('mühür persist edilir ve initial.sealedFx restore edilir', async () => {
+      const saved: SaveEnvelopeV1[] = [];
+      const t = setup({ onPersist: (e: SaveEnvelopeV1) => saved.push(e) });
+      await t.store.start();
+      flushSync();
+      const last = saved[saved.length - 1];
+      expect(last.sealedFx).toEqual({ dateKey: '2026-06-01', rate: 40 });
+
+      // Restore: kayıttaki mühürle yeni store → start() öncesi bile operatif kur restore edilendir.
+      const t2 = setup({
+        initial: { v: 1, game: last.game, activeBist: last.activeBist, sealedFx: { dateKey: '2026-06-01', rate: 38 } },
+      });
+      expect(t2.store.usdTry).toBe(38);
+    });
   });
 });
