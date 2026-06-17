@@ -1,18 +1,21 @@
 <script lang="ts">
 	import type { Money } from '$lib/domain/money';
-	import { displayUsd, pnlClass, signedPercent, signedUsd } from './format';
+	import { displayUsd, pnlClass, signedPercent, signedUsd, investedUsd } from './format';
 
 	interface Props {
 		netWorthUsd: Money | null;
 		profitRate: number | null;
 		vsUsdHoldUsd: Money | null;
+		cashUsd: Money;
 	}
 
-	let { netWorthUsd, profitRate, vsUsdHoldUsd }: Props = $props();
+	let { netWorthUsd, profitRate, vsUsdHoldUsd, cashUsd }: Props = $props();
 
 	const netLabel = $derived(displayUsd(netWorthUsd));
 	const pctLabel = $derived(signedPercent(profitRate));
 	const vsLabel = $derived(signedUsd(vsUsdHoldUsd));
+	const cashLabel = $derived(displayUsd(cashUsd));
+	const investedLabel = $derived(displayUsd(investedUsd(netWorthUsd, cashUsd)));
 
 	// Renk sınıfları
 	const netColor = $derived(
@@ -55,6 +58,26 @@
 			</div>
 			<div class="text-sm font-bold {vsColor}">
 				{vsLabel}
+			</div>
+		</div>
+	</div>
+
+	<!-- Dağılım: kenardaki nakit vs yatırımdaki güncel değer (toplamı = net servet) -->
+	<div class="grid grid-cols-2 gap-2 pt-1 border-t border-term-border">
+		<div class="text-center">
+			<div class="text-[10px] text-term-text opacity-50 uppercase tracking-wider mb-0.5">
+				Kalan Nakit
+			</div>
+			<div class="text-sm font-bold text-term-green">
+				{cashLabel}
+			</div>
+		</div>
+		<div class="text-center">
+			<div class="text-[10px] text-term-text opacity-50 uppercase tracking-wider mb-0.5">
+				Yatırımda
+			</div>
+			<div class="text-sm font-bold text-term-blue">
+				{investedLabel}
 			</div>
 		</div>
 	</div>

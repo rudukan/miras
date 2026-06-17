@@ -248,6 +248,7 @@
 							netWorthUsd={store.netWorthUsd}
 							profitRate={store.profitRate}
 							vsUsdHoldUsd={store.vsUsdHoldUsd}
+							cashUsd={store.game.usdBalance}
 						/>
 
 						<WalletSummary
