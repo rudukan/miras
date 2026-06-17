@@ -9,9 +9,10 @@
 		usdTry: number;
 		liveUsdTry?: number;
 		positions: PositionRow[];
+		onSelect?: (assetId: string) => void;
 	}
 
-	let { game, usdTry, liveUsdTry, positions }: Props = $props();
+	let { game, usdTry, liveUsdTry, positions, onSelect }: Props = $props();
 
 	const usdRate = $derived(usdTry.toFixed(2));
 	const liveRate = $derived(liveUsdTry === undefined ? null : liveUsdTry.toFixed(2));
@@ -59,7 +60,13 @@
 				{#each positions as p (p.assetId)}
 					{@const pnl = positionPnl(p.units, p.avgCostUsd, p.valueUsd)}
 					{@const pctBadge = dailyChangeBadge(pnl.pnlPct)}
-					<div class="flex justify-between items-start gap-2 border-b border-term-border border-opacity-30 pb-1 last:border-0 last:pb-0">
+					<button
+						type="button"
+						onclick={() => onSelect?.(p.assetId)}
+						class="w-full text-left flex justify-between items-start gap-2 border-b border-term-border border-opacity-30 pb-1 last:border-0 last:pb-0
+						       hover:bg-term-panelLight hover:border-term-borderGlow focus:outline-none focus:bg-term-panelLight
+						       transition-colors duration-75 cursor-pointer"
+					>
 						<div class="flex flex-col">
 							<span class="text-term-text font-bold">{p.assetId}</span>
 							<span class="text-term-text opacity-50 text-[10px]">
@@ -73,7 +80,7 @@
 								{#if pctBadge}<span class={pctBadge.cls}>({pctBadge.text})</span>{/if}
 							</div>
 						</div>
-					</div>
+					</button>
 				{/each}
 			</div>
 		{/if}
