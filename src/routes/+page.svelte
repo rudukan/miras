@@ -76,8 +76,8 @@
 
 	function handleSelectAsset(id: string) {
 		selectedAssetId = id;
-		// Mobil: liste üstte, işlem paneli görünmez alanda — seçimde panele kaydır.
-		if (browser && window.innerWidth < 768) {
+		// İşlem paneli her zaman ana akışın altında (mobil de desktop da) — seçimde panele kaydır.
+		if (browser) {
 			document.getElementById('trade-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 		}
 	}
