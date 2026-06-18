@@ -199,6 +199,16 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       return game.deposit !== null ? usd(depositUsd) : null;
     }
   });
+  // Mevduat açıkken bir holding fiyatı eksikse netWorth depositUsd'a düşer (null DEĞİL) —
+  // recordSnapshot bu eksik durumu ayrıca bilmeli, yoksa degrade değer history'yi ezer.
+  const netWorthDataComplete = $derived.by<boolean>(() => {
+    try {
+      netWorthUsdFn(game, oracle);
+      return true;
+    } catch {
+      return false;
+    }
+  });
   const profit = $derived(netWorth === null ? null : netWorth.amount / STARTING_USD);
   const vsUsdHold = $derived(netWorth === null ? null : usd(netWorth.amount - STARTING_USD));
 
@@ -383,9 +393,10 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     }
   }
 
-  // Fiyat eksikse (netWorth null) ATLA — çöp veri yazılmaz.
+  // Fiyat eksikse ATLA — çöp veri yazılmaz (mevduat açıkken netWorth null DEĞİL, depositUsd'a
+  // düşer; bu yüzden netWorthDataComplete ayrıca kontrol edilir).
   function recordSnapshot(): void {
-    if (netWorth === null || vsUsdHold === null) return;
+    if (netWorth === null || vsUsdHold === null || !netWorthDataComplete) return;
     const snap: DailySnapshot = {
       dateKey: istanbulParts(new Date(now())).key,
       netWorthUsd: netWorth,

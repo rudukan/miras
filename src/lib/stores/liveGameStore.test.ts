@@ -374,6 +374,28 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(t.store.history).toHaveLength(1); // büyümedi
   });
 
+  it('24) günlük snapshot: mevduat açıkken fiyat eksikse history kirletilmez (degrade deger yazılmaz)', async () => {
+    vi.useFakeTimers();
+    const t = setup();
+    await t.store.start();
+    t.store.buy('THYAO', 100);
+    t.store.openDeposit(100_000);
+    flushSync();
+    expect(t.store.history).toHaveLength(1);
+    // Bu an netWorth tam (nakit + THYAO + mevduat) ~$1M olmalı.
+    expect(t.store.history[0].netWorthUsd.amount).toBeCloseTo(1_000_000, 0);
+
+    // THYAO fiyatı geçici olarak kayboluyor (oracle throw) — ama mevduat açık olduğu için
+    // bug'lı kodda netWorth null DEĞİL, yalnız mevduat değerine düşüyor ve history'yi eziyor.
+    t.setYahoo({ value: { usdTry: 40, prices: { ASELS: 200, XAUGRAM: 5000, EUR: 45 } }, asOf: 222, stale: false });
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+
+    expect(t.store.history).toHaveLength(1); // büyümedi
+    // Eksik veri anında ezilmemiş olmalı — hâlâ tam (önceki doğru) değer.
+    expect(t.store.history[0].netWorthUsd.amount).toBeCloseTo(1_000_000, 0);
+  });
+
   it('mevduat: açınca net servet korunur (para taşındı, kaybolmadı)', async () => {
     const t = setup(); // usdTry 40
     await t.store.start();
