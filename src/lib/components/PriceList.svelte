@@ -9,9 +9,10 @@
 		onSelect: (id: string) => void;
 		onAddBist: (symbol: string) => void;
 		onHover?: (id: string | null) => void;
+		onOpenPopover?: (row: PriceRowData, anchor: DOMRect, variant: 'desktop' | 'mobile') => void;
 	}
 
-	let { prices, onSelect, onAddBist, onHover }: Props = $props();
+	let { prices, onSelect, onAddBist, onHover, onOpenPopover }: Props = $props();
 
 	let q = $state('');
 	let tab = $state('all');
@@ -95,7 +96,7 @@
 					{CATEGORY_LABELS[g.category] ?? g.category}{#if g.category === 'bist'}<span class="normal-case tracking-normal opacity-70"> · ~15 dk gecikmeli</span>{/if}
 				</div>
 				{#each g.rows as row (row.id)}
-					<PriceRow {row} {onSelect} {onHover} />
+					<PriceRow {row} {onSelect} {onHover} {onOpenPopover} />
 				{/each}
 			{/each}
 		{/if}

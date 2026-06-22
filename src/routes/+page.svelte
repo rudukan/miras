@@ -25,6 +25,8 @@
 	import ContextCard from '$lib/components/ContextCard.svelte';
 	import ClosingCard from '$lib/components/ClosingCard.svelte';
 	import DailyBreakdown from '$lib/components/DailyBreakdown.svelte';
+	import AssetPopover from '$lib/components/AssetPopover.svelte';
+	import type { PriceRow } from '$lib/stores/liveGameStore.svelte';
 
 	const CARD_SEEN_KEY = 'miras.cardSeen';
 
@@ -52,6 +54,40 @@
 	let nowMs = $state(Date.now());
 	let showCard = $state(false);
 	let tick: ReturnType<typeof setInterval> | null = null;
+
+	let popoverRow = $state<PriceRow | null>(null);
+	let popoverAnchor = $state<DOMRect | null>(null);
+	let popoverVariant = $state<'desktop' | 'mobile'>('desktop');
+	let popoverPinned = $state(false);
+
+	function openPopover(row: PriceRow, anchor: DOMRect, variant: 'desktop' | 'mobile') {
+		popoverRow = row;
+		popoverAnchor = anchor;
+		popoverVariant = variant;
+		popoverPinned = variant === 'mobile'; // mobil sheet zaten kalıcı; masaüstü tıklayınca pinlenir
+	}
+	function closePopover() {
+		popoverRow = null;
+		popoverPinned = false;
+	}
+	// Masaüstü: pop-up dışına çıkınca (ve pinli değilse) kapan.
+	function onPopoverLeave() {
+		if (!popoverPinned) closePopover();
+	}
+	// Pencere konumu kayınca anchor bayatlar → basitçe kapat.
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') closePopover();
+	}
+
+	// Masaüstü konumlandırma: satırın sağına, ekran taşarsa soluna.
+	const popoverStyle = $derived.by(() => {
+		if (!popoverAnchor || popoverVariant === 'mobile') return '';
+		const W = 300, GAP = 8;
+		const a = popoverAnchor;
+		const left = a.right + GAP + W > window.innerWidth ? a.left - GAP - W : a.right + GAP;
+		const top = Math.min(a.top, window.innerHeight - 320);
+		return `position:fixed;left:${Math.max(8, left)}px;top:${Math.max(8, top)}px;z-index:50;`;
+	});
 
 	// Kayıtlı oyunun gerçek takvim günü (İstanbul) — "DEVAM ET" ekranında gösterilir.
 	const savedDay = initial ? daysElapsed(initial.game.createdAt, Date.now()) : 0;
@@ -121,6 +157,8 @@
 		if (tick) clearInterval(tick);
 	});
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="bg-term-bg text-term-text font-mono min-h-[100dvh]">
 	{#if phase === 'intro'}
@@ -236,6 +274,7 @@
 							prices={store.prices}
 							onSelect={handleSelectAsset}
 							onHover={(id) => (hoveredAssetId = id)}
+							onOpenPopover={openPopover}
 							onAddBist={(symbol) => {
 								store.addBist(symbol);
 								handleSelectAsset(symbol);
@@ -276,6 +315,27 @@
 				</div>
 			</div>
 		</div>
+
+		{#if popoverRow}
+			{#if popoverVariant === 'mobile'}
+				<!-- Mobil: arka örtü + alt sheet -->
+				<button type="button" class="fixed inset-0 bg-black/50 z-40" aria-label="Kapat" onclick={closePopover}></button>
+				<div class="fixed inset-x-0 bottom-0 z-50">
+					<AssetPopover {store} row={popoverRow} variant="mobile" onClose={closePopover} />
+				</div>
+			{:else}
+				<!-- Masaüstü: anchor'a konumlu, içine girince pinle, dışına çıkınca kapat -->
+				<div
+					style={popoverStyle}
+					role="dialog"
+					tabindex="-1"
+					onmouseenter={() => (popoverPinned = true)}
+					onmouseleave={onPopoverLeave}
+				>
+					<AssetPopover {store} row={popoverRow} variant="desktop" onClose={closePopover} />
+				</div>
+			{/if}
+		{/if}
 
 		{#if showCard && closingCardModel}
 			<ClosingCard

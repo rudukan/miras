@@ -7,20 +7,44 @@
 		row: PriceRow;
 		onSelect: (id: string) => void;
 		onHover?: (id: string | null) => void;
+		onOpenPopover?: (row: PriceRow, anchor: DOMRect, variant: 'desktop' | 'mobile') => void;
 	}
 
-	let { row, onSelect, onHover }: Props = $props();
+	let { row, onSelect, onHover, onOpenPopover }: Props = $props();
 
 	const hasPrice = $derived(row.priceTry !== undefined);
 	// Fiyat henüz gelmediyse % rozeti de gizlenir ("—" + canlı rozet tutarsızlığı olmaz).
 	const chg = $derived(hasPrice ? dailyChangeBadge(row.changePct) : null);
+
+	let el: HTMLButtonElement | null = $state(null);
+	let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+	const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 768;
+
+	function handleEnter() {
+		onHover?.(row.id);
+		if (isMobile() || !el) return;
+		// Masaüstü: 1 sn beklet → yanlışlıkla satır üstünden geçişte açılmaz.
+		hoverTimer = setTimeout(() => onOpenPopover?.(row, el!.getBoundingClientRect(), 'desktop'), 1000);
+	}
+	function handleLeave() {
+		onHover?.(null);
+		if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+	}
+	function handleClick() {
+		if (isMobile() && el) {
+			onOpenPopover?.(row, el.getBoundingClientRect(), 'mobile');
+			return;
+		}
+		onSelect(row.id);
+	}
 </script>
 
 <button
 	type="button"
-	onclick={() => onSelect(row.id)}
-	onmouseenter={() => onHover?.(row.id)}
-	onmouseleave={() => onHover?.(null)}
+	bind:this={el}
+	onclick={handleClick}
+	onmouseenter={handleEnter}
+	onmouseleave={handleLeave}
 	class="w-full text-left px-3 py-2 border-b border-term-border border-opacity-40
 	       hover:bg-term-panelLight hover:border-term-borderGlow
 	       focus:outline-none focus:bg-term-panelLight
