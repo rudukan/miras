@@ -13,8 +13,9 @@
 		row: PriceRow;
 		variant?: 'desktop' | 'mobile';
 		onClose: () => void;
+		onTradeSuccess?: (message: string) => void;
 	}
-	let { store, row, variant = 'desktop', onClose }: Props = $props();
+	let { store, row, variant = 'desktop', onClose, onTradeSuccess }: Props = $props();
 
 	let period = $state<PeriodId>('1G');
 	let points = $state<PricePoint[]>([]);
@@ -36,10 +37,7 @@
 
 	const chg = $derived(dailyChangeBadge(row.changePct));
 	const held = $derived(heldUnits(store.positions, row.id));
-	const heldUsd = $derived(() => {
-		const pos = store.positions.find((p) => p.assetId === row.id);
-		return pos?.valueUsd;
-	});
+	const heldUsd = $derived(store.positions.find((p) => p.assetId === row.id)?.valueUsd);
 </script>
 
 <div
@@ -94,9 +92,9 @@
 	<!-- Bakiye / pozisyon -->
 	<div class="text-[10px] text-term-text opacity-70 border-t border-term-border pt-1">
 		Bende: <span class="opacity-100 font-bold">{held.toFixed(4)}</span> adet
-		{#if heldUsd() !== undefined} · {displayUsd(usd(heldUsd()!))}{/if}
+		{#if heldUsd !== undefined} · {displayUsd(usd(heldUsd))}{/if}
 	</div>
 
 	<!-- Gerçek işlem -->
-	<TradeForm {store} assetId={row.id} />
+	<TradeForm {store} assetId={row.id} {onTradeSuccess} />
 </div>

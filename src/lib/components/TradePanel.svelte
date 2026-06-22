@@ -5,8 +5,9 @@
 	interface Props {
 		store: LiveGameStore;
 		selectedAssetId: string | null;
+		onTradeSuccess?: (message: string) => void;
 	}
-	let { store, selectedAssetId }: Props = $props();
+	let { store, selectedAssetId, onTradeSuccess }: Props = $props();
 </script>
 
 <div class="bg-term-panel border border-term-border p-3 font-mono text-xs space-y-4">
@@ -19,6 +20,6 @@
 		<div class="text-term-amber text-[10px] leading-relaxed">
 			Tüm işlemler USD nakitten yapılır. BIST/altın/gümüş alımında kur otomatik takas edilir.
 		</div>
-		<TradeForm {store} assetId={selectedAssetId} emptyText="Soldan bir varlık seç" />
+		<TradeForm {store} assetId={selectedAssetId} emptyText="Soldan bir varlık seç" {onTradeSuccess} />
 	</div>
 </div>

@@ -16,6 +16,7 @@
 	import type { ShareResult } from '$lib/share/share';
 	import { sendTelemetry, pingDailyVisit } from '$lib/api/telemetry';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import Toast from '$lib/components/Toast.svelte';
 	import NetWorthMirror from '$lib/components/NetWorthMirror.svelte';
 	import NetWorthMini from '$lib/components/NetWorthMini.svelte';
 	import WalletSummary from '$lib/components/WalletSummary.svelte';
@@ -60,6 +61,15 @@
 	let popoverVariant = $state<'desktop' | 'mobile'>('desktop');
 	let popoverPinned = $state(false);
 	let desktopPopoverEl: HTMLElement | null = $state(null);
+
+	let toastMessage = $state<string | null>(null);
+	let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showToast(message: string) {
+		toastMessage = message;
+		if (toastTimer) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => (toastMessage = null), 5000);
+	}
 
 	function openPopover(row: PriceRow, anchor: DOMRect, variant: 'desktop' | 'mobile') {
 		popoverRow = row;
@@ -170,10 +180,12 @@
 	onDestroy(() => {
 		store.stop();
 		if (tick) clearInterval(tick);
+		if (toastTimer) clearTimeout(toastTimer);
 	});
 </script>
 
 <svelte:window onkeydown={onKeydown} onclick={onWindowClick} />
+<Toast message={toastMessage} />
 
 <div class="bg-term-bg text-term-text font-mono min-h-[100dvh]">
 	{#if phase === 'intro'}
@@ -324,6 +336,7 @@
 							<TradePanel
 								{store}
 								{selectedAssetId}
+								onTradeSuccess={showToast}
 							/>
 						</div>
 					</main>
@@ -336,7 +349,7 @@
 				<!-- Mobil: arka örtü + alt sheet -->
 				<button type="button" class="fixed inset-0 bg-black/50 z-40" aria-label="Kapat" onclick={closePopover}></button>
 				<div class="fixed inset-x-0 bottom-0 z-50">
-					<AssetPopover {store} row={popoverRow} variant="mobile" onClose={closePopover} />
+					<AssetPopover {store} row={popoverRow} variant="mobile" onClose={closePopover} onTradeSuccess={showToast} />
 				</div>
 			{:else}
 				<!-- Masaüstü: anchor'a konumlu; içine tıkla/odaklan = pinle, pinliyken dışa tıkla/Esc/✕ kapatır -->
@@ -349,7 +362,7 @@
 					onclick={pinPopover}
 					onfocusin={pinPopover}
 				>
-					<AssetPopover {store} row={popoverRow} variant="desktop" onClose={closePopover} />
+					<AssetPopover {store} row={popoverRow} variant="desktop" onClose={closePopover} onTradeSuccess={showToast} />
 				</div>
 			{/if}
 		{/if}

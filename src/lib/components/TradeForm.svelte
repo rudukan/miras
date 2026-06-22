@@ -1,19 +1,18 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
 	import type { LiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import { usd } from '$lib/domain/money';
 	import { CATALOG } from '$lib/catalog/liveAssets';
 	import { bistName } from '$lib/catalog/bist100';
 	import { maxUnitsAffordable, heldUnits, tradeToastMessage } from './format';
-	import Toast from './Toast.svelte';
 
 	interface Props {
 		store: LiveGameStore;
 		assetId: string | null;
 		/** Boş durumda gösterilecek metin (panel: "Soldan bir varlık seç"). */
 		emptyText?: string;
+		onTradeSuccess?: (message: string) => void;
 	}
-	let { store, assetId, emptyText = 'Bir varlık seç' }: Props = $props();
+	let { store, assetId, emptyText = 'Bir varlık seç', onTradeSuccess }: Props = $props();
 
 	const chipCls =
 		'px-1.5 py-0.5 bg-term-bg border border-term-border text-term-blue text-[10px] ' +
@@ -53,17 +52,6 @@
 		syncDollarFromUnits();
 	}
 
-	let toastMessage = $state<string | null>(null);
-	let toastTimer: ReturnType<typeof setTimeout> | null = null;
-	function showToast(message: string) {
-		toastMessage = message;
-		if (toastTimer) clearTimeout(toastTimer);
-		toastTimer = setTimeout(() => (toastMessage = null), 5000);
-	}
-	onDestroy(() => {
-		if (toastTimer) clearTimeout(toastTimer);
-	});
-
 	function handleBuy() {
 		if (!assetId || units <= 0) return;
 		const id = assetId;
@@ -72,7 +60,7 @@
 		store.buy(id, u);
 		units = 0;
 		dollarAmount = 0;
-		if (store.lastError === null) showToast(tradeToastMessage('buy', id, u, amt));
+		if (store.lastError === null) onTradeSuccess?.(tradeToastMessage('buy', id, u, amt));
 	}
 	function handleSell() {
 		if (!assetId || units <= 0) return;
@@ -82,11 +70,9 @@
 		store.sell(id, u);
 		units = 0;
 		dollarAmount = 0;
-		if (store.lastError === null) showToast(tradeToastMessage('sell', id, u, amt));
+		if (store.lastError === null) onTradeSuccess?.(tradeToastMessage('sell', id, u, amt));
 	}
 </script>
-
-<Toast message={toastMessage} />
 
 {#if assetId === null}
 	<div class="text-term-text opacity-40 italic py-2 text-center">{emptyText}</div>
