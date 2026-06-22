@@ -29,7 +29,7 @@
 		if (!g) return;
 		ctx.beginPath();
 		g.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-		ctx.strokeStyle = g.rising ? cssVar('--color-term-green', '#4ade80') : cssVar('--color-term-red', '#f87171');
+		ctx.strokeStyle = g.rising ? cssVar('--color-term-green', '#00ff66') : cssVar('--color-term-red', '#ff3366');
 		ctx.lineWidth = 1.5;
 		ctx.stroke();
 	});
