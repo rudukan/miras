@@ -68,3 +68,40 @@ describe('fetchSeries — 15D Yahoo 1d/1m çekiminden dilimlenir', () => {
 		expect(url).toContain('interval=1m');
 	});
 });
+
+describe('fetchSeries — 15D gercekten dilimler', () => {
+	it('1d/1m yanitindan son 15 dakikayi alir, eskileri atar', async () => {
+		const fetchFn = vi.fn(async () =>
+			resp({
+				chart: {
+					result: [
+						{
+							// saniye cinsinden: 0, 5, 10, 15, 20 dakika
+							timestamp: [0, 300, 600, 900, 1200],
+							indicators: { quote: [{ close: [10, 11, 12, 13, 14] }] },
+						},
+					],
+				},
+			}),
+		) as unknown as typeof fetch;
+		const out = await fetchSeries('THYAO', 'yahoo', '15D', fetchFn);
+		// son noktadan (t=1200000ms) geriye 15dk (900000ms) penceresi: t=0 (300000ms'den eski) atilir.
+		expect(out).toEqual([
+			{ t: 300_000, price: 11 },
+			{ t: 600_000, price: 12 },
+			{ t: 900_000, price: 13 },
+			{ t: 1_200_000, price: 14 },
+		]);
+	});
+});
+
+describe('fetchSeries — HTTP hata yollari', () => {
+	it('Yahoo HTTP hatasi -> symbol+status iceren throw', async () => {
+		const fetchFn = vi.fn(async () => ({ ok: false, status: 500 })) as unknown as typeof fetch;
+		await expect(fetchSeries('THYAO', 'yahoo', '1G', fetchFn)).rejects.toThrow('Yahoo THYAO.IS: HTTP 500');
+	});
+	it('Binance HTTP hatasi -> symbol+status iceren throw', async () => {
+		const fetchFn = vi.fn(async () => ({ ok: false, status: 404 })) as unknown as typeof fetch;
+		await expect(fetchSeries('BTC', 'crypto', '1G', fetchFn)).rejects.toThrow('Binance BTCUSDT: HTTP 404');
+	});
+});
