@@ -6,9 +6,10 @@
 	interface Props {
 		row: PriceRow;
 		onSelect: (id: string) => void;
+		onHover?: (id: string | null) => void;
 	}
 
-	let { row, onSelect }: Props = $props();
+	let { row, onSelect, onHover }: Props = $props();
 
 	const hasPrice = $derived(row.priceTry !== undefined);
 	// Fiyat henüz gelmediyse % rozeti de gizlenir ("—" + canlı rozet tutarsızlığı olmaz).
@@ -18,6 +19,8 @@
 <button
 	type="button"
 	onclick={() => onSelect(row.id)}
+	onmouseenter={() => onHover?.(row.id)}
+	onmouseleave={() => onHover?.(null)}
 	class="w-full text-left px-3 py-2 border-b border-term-border border-opacity-40
 	       hover:bg-term-panelLight hover:border-term-borderGlow
 	       focus:outline-none focus:bg-term-panelLight

@@ -8,9 +8,10 @@
 		prices: PriceRowData[];
 		onSelect: (id: string) => void;
 		onAddBist: (symbol: string) => void;
+		onHover?: (id: string | null) => void;
 	}
 
-	let { prices, onSelect, onAddBist }: Props = $props();
+	let { prices, onSelect, onAddBist, onHover }: Props = $props();
 
 	let q = $state('');
 	let tab = $state('all');
@@ -94,7 +95,7 @@
 					{CATEGORY_LABELS[g.category] ?? g.category}{#if g.category === 'bist'}<span class="normal-case tracking-normal opacity-70"> · ~15 dk gecikmeli</span>{/if}
 				</div>
 				{#each g.rows as row (row.id)}
-					<PriceRow {row} {onSelect} />
+					<PriceRow {row} {onSelect} {onHover} />
 				{/each}
 			{/each}
 		{/if}

@@ -10,9 +10,10 @@
 		liveUsdTry?: number;
 		positions: PositionRow[];
 		onSelect?: (assetId: string) => void;
+		highlightAssetId?: string | null;
 	}
 
-	let { game, usdTry, liveUsdTry, positions, onSelect }: Props = $props();
+	let { game, usdTry, liveUsdTry, positions, onSelect, highlightAssetId }: Props = $props();
 
 	const usdRate = $derived(usdTry.toFixed(2));
 	const liveRate = $derived(liveUsdTry === undefined ? null : liveUsdTry.toFixed(2));
@@ -65,7 +66,8 @@
 						onclick={() => onSelect?.(p.assetId)}
 						class="w-full text-left flex justify-between items-start gap-2 border-b border-term-border border-opacity-30 pb-1 last:border-0 last:pb-0
 						       hover:bg-term-panelLight hover:border-term-borderGlow focus:outline-none focus:bg-term-panelLight
-						       transition-colors duration-75 cursor-pointer"
+						       transition-colors duration-75 cursor-pointer
+						       {p.assetId === highlightAssetId ? 'bg-term-panelLight border-term-borderGlow' : ''}"
 					>
 						<div class="flex flex-col">
 							<span class="text-term-text font-bold">{p.assetId}</span>

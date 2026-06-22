@@ -48,6 +48,7 @@
 
 	let phase = $state<'intro' | 'playing'>('intro');
 	let selectedAssetId = $state<string | null>(null);
+	let hoveredAssetId = $state<string | null>(null);
 	let nowMs = $state(Date.now());
 	let showCard = $state(false);
 	let tick: ReturnType<typeof setInterval> | null = null;
@@ -234,6 +235,7 @@
 						<PriceList
 							prices={store.prices}
 							onSelect={handleSelectAsset}
+							onHover={(id) => (hoveredAssetId = id)}
 							onAddBist={(symbol) => {
 								store.addBist(symbol);
 								handleSelectAsset(symbol);
@@ -257,6 +259,7 @@
 							liveUsdTry={store.liveUsdTry}
 							positions={store.positions}
 							onSelect={handleSelectAsset}
+							highlightAssetId={hoveredAssetId}
 						/>
 
 						<DepositCard {store} nowMs={nowMs} />
