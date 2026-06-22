@@ -59,11 +59,11 @@ describe('fetchSeries — Binance', () => {
 
 describe('fetchSeries — 15D Yahoo 1d/1m çekiminden dilimlenir', () => {
 	it('15D için 1m interval istenir', async () => {
-		const fetchFn = vi.fn(async () =>
+		const mockFn = vi.fn(async () =>
 			resp({ chart: { result: [{ timestamp: [60], indicators: { quote: [{ close: [10] }] } }] } }),
-		) as unknown as typeof fetch;
-		await fetchSeries('THYAO', 'yahoo', '15D', fetchFn);
-		const url = (fetchFn as unknown as vi.Mock).mock.calls[0][0] as string;
+		);
+		await fetchSeries('THYAO', 'yahoo', '15D', mockFn as unknown as typeof fetch);
+		const [url] = mockFn.mock.calls[0] as unknown as [string];
 		expect(url).toContain('range=1d');
 		expect(url).toContain('interval=1m');
 	});
