@@ -59,22 +59,37 @@
 	let popoverAnchor = $state<DOMRect | null>(null);
 	let popoverVariant = $state<'desktop' | 'mobile'>('desktop');
 	let popoverPinned = $state(false);
+	let desktopPopoverEl: HTMLElement | null = $state(null);
 
 	function openPopover(row: PriceRow, anchor: DOMRect, variant: 'desktop' | 'mobile') {
 		popoverRow = row;
 		popoverAnchor = anchor;
 		popoverVariant = variant;
-		popoverPinned = variant === 'mobile'; // mobil sheet zaten kalıcı; masaüstü tıklayınca pinlenir
+		popoverPinned = variant === 'mobile'; // mobil sheet zaten kalıcı; masaüstü tıkla/odaklan ile pinlenir
 	}
 	function closePopover() {
 		popoverRow = null;
 		popoverPinned = false;
 	}
-	// Masaüstü: pop-up dışına çıkınca (ve pinli değilse) kapan.
+	// Masaüstü: önizleme aşamasında (henüz pinlenmemiş) pop-up dışına çıkınca kapan.
 	function onPopoverLeave() {
 		if (!popoverPinned) closePopover();
 	}
-	// Pencere konumu kayınca anchor bayatlar → basitçe kapat.
+	// Masaüstü: pop-up içine tıkla/odaklan = sabitlen (spec: "içine tıkla/odaklan = sabitlenir").
+	function pinPopover() {
+		if (popoverVariant === 'desktop') popoverPinned = true;
+	}
+	// Masaüstü: pinliyken dışına tıklama kapatır (üçüncü zorunlu kapama tetikleyicisi).
+	function onWindowClick(e: MouseEvent) {
+		if (
+			popoverVariant === 'desktop' &&
+			popoverPinned &&
+			desktopPopoverEl &&
+			!desktopPopoverEl.contains(e.target as Node)
+		) {
+			closePopover();
+		}
+	}
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') closePopover();
 	}
@@ -158,7 +173,7 @@
 	});
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onclick={onWindowClick} />
 
 <div class="bg-term-bg text-term-text font-mono min-h-[100dvh]">
 	{#if phase === 'intro'}
@@ -324,13 +339,15 @@
 					<AssetPopover {store} row={popoverRow} variant="mobile" onClose={closePopover} />
 				</div>
 			{:else}
-				<!-- Masaüstü: anchor'a konumlu, içine girince pinle, dışına çıkınca kapat -->
+				<!-- Masaüstü: anchor'a konumlu; içine tıkla/odaklan = pinle, pinliyken dışa tıkla/Esc/✕ kapatır -->
 				<div
+					bind:this={desktopPopoverEl}
 					style={popoverStyle}
 					role="dialog"
 					tabindex="-1"
-					onmouseenter={() => (popoverPinned = true)}
 					onmouseleave={onPopoverLeave}
+					onclick={pinPopover}
+					onfocusin={pinPopover}
 				>
 					<AssetPopover {store} row={popoverRow} variant="desktop" onClose={closePopover} />
 				</div>
