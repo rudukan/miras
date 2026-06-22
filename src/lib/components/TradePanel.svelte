@@ -1,9 +1,11 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import type { LiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import { usd } from '$lib/domain/money';
 	import { CATALOG } from '$lib/catalog/liveAssets';
 	import { bistName } from '$lib/catalog/bist100';
-	import { displayUsd, maxUnitsAffordable, heldUnits } from './format';
+	import { displayUsd, maxUnitsAffordable, heldUnits, tradeToastMessage } from './format';
+	import Toast from './Toast.svelte';
 
 	interface Props {
 		store: LiveGameStore;
@@ -51,20 +53,44 @@
 		selectedAssetId ? (CATALOG[selectedAssetId]?.label ?? bistName(selectedAssetId)) : null,
 	);
 
+	// ── Bildirim (al/sat sonrası geçici toast) ──────────────────────────────────
+	let toastMessage = $state<string | null>(null);
+	let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showToast(message: string) {
+		toastMessage = message;
+		if (toastTimer) clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => (toastMessage = null), 5000);
+	}
+
+	onDestroy(() => {
+		if (toastTimer) clearTimeout(toastTimer);
+	});
+
 	function handleBuy() {
 		if (!selectedAssetId || units <= 0) return;
-		store.buy(selectedAssetId, units);
+		const assetId = selectedAssetId;
+		const boughtUnits = units;
+		const boughtUsd = dollarAmount;
+		store.buy(assetId, units);
 		units = 0;
 		dollarAmount = 0;
+		if (store.lastError === null) showToast(tradeToastMessage('buy', assetId, boughtUnits, boughtUsd));
 	}
 
 	function handleSell() {
 		if (!selectedAssetId || units <= 0) return;
-		store.sell(selectedAssetId, units);
+		const assetId = selectedAssetId;
+		const soldUnits = units;
+		const soldUsd = dollarAmount;
+		store.sell(assetId, units);
 		units = 0;
 		dollarAmount = 0;
+		if (store.lastError === null) showToast(tradeToastMessage('sell', assetId, soldUnits, soldUsd));
 	}
 </script>
+
+<Toast message={toastMessage} />
 
 <div class="bg-term-panel border border-term-border p-3 font-mono text-xs space-y-4">
 	<!-- Başlık -->

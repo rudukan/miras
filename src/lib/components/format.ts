@@ -180,6 +180,17 @@ export interface CategoryGroup<T> {
  * Satırları sabit kategori sırasıyla gruplar (grup içi giriş sırası korunur).
  * Bilinmeyen kategoriler sona, giriş sırasıyla. Boş grup üretilmez.
  */
+/** Al/sat sonrası geçici bildirim metni — gerçekleşen işlemin özeti. */
+export function tradeToastMessage(
+	kind: 'buy' | 'sell',
+	assetId: string,
+	units: number,
+	amountUsd: number,
+): string {
+	const verb = kind === 'buy' ? 'ALINDI' : 'SATILDI';
+	return `✓ ${assetId} ${verb} — ${units.toFixed(4)} adet · ${displayUsd(usd(amountUsd))}`;
+}
+
 export function groupByCategory<T extends { category: string }>(
 	rows: ReadonlyArray<T>,
 ): CategoryGroup<T>[] {

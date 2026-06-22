@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd, tradeToastMessage } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -286,5 +286,19 @@ describe('investedUsd', () => {
 	});
 	it('hiç yatırım yok → $0 (nakit = net servet)', () => {
 		expect(investedUsd(usd(1_000_000), usd(1_000_000))).toEqual(usd(0));
+	});
+});
+
+// ── tradeToastMessage ─────────────────────────────────────────────────────────
+describe('tradeToastMessage', () => {
+	it('alım mesajı: varlık + adet + tutar', () => {
+		expect(tradeToastMessage('buy', 'THYAO', 100, 750)).toBe(
+			'✓ THYAO ALINDI — 100.0000 adet · $750.00',
+		);
+	});
+	it('satım mesajı: varlık + adet + tutar', () => {
+		expect(tradeToastMessage('sell', 'BTC', 0.5, 32000)).toBe(
+			'✓ BTC SATILDI — 0.5000 adet · $32,000.00',
+		);
 	});
 });
