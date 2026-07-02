@@ -373,6 +373,15 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       cryptoChange = c.value.change ?? {};
       if (feedStatus === 'stale') {
         cryptoUsd = { ...cryptoUsd, ...c.value.prices };
+      } else {
+        // WS canlıyken fiyat otoritesi WS'tedir — ama cold-start'ta (WS ilk poll yanıtından
+        // önce açılırsa) düşük hacimli coin ilk trade tick'ine dek '—' kalır ve alım
+        // "No live price" ile reddedilir. Yalnız henüz hiç tick almamış coin'leri tohumla.
+        const seed: Record<string, number> = {};
+        for (const [id, p] of Object.entries(c.value.prices)) {
+          if (cryptoUsd[id] === undefined && pending[id] === undefined) seed[id] = p;
+        }
+        if (Object.keys(seed).length > 0) cryptoUsd = { ...seed, ...cryptoUsd };
       }
     } catch {
       /* fallback başarısız — sessiz; fxStale/dataStale zaten "veri eski" yüzeyliyor */

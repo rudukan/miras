@@ -137,6 +137,20 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(t.fetchFn).toHaveBeenCalledWith('/api/crypto?coins=BTC,ETH,SOL,XRP,DOGE,AVAX');
   });
 
+  it('6b) cold-start: WS ilk poll bitmeden açılırsa tick almamış coin snapshot ile tohumlanır', async () => {
+    const t = setup();
+    const startP = t.store.start(); // feed senkron kurulur; pollFx içeride fetch bekliyor
+    t.feed.onStatus?.('live'); // WS, ilk poll yanıtı işlenmeden ÖNCE canlı (yarış)
+    t.feed.onPrice('BTC', 64000); // BTC tick aldı; ETH hiç tick almadı
+    await startP;
+    flushSync();
+
+    const eth = t.store.prices.find((p) => p.id === 'ETH');
+    const btc = t.store.prices.find((p) => p.id === 'BTC');
+    expect(eth?.priceTry).toBe(3000 * 40); // snapshot tohumu — yoksa ilk tick'e dek '—' kalırdı
+    expect(btc?.priceTry).toBe(64_000 * 40); // WS otoritesi snapshot ile EZİLMEZ
+  });
+
   it('7) guard: fiyat yok / yetersiz USD / holding yok → lastError, game değişmez', async () => {
     const t = setup();
     await t.store.start();
