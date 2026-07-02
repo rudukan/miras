@@ -156,6 +156,8 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 5. **Küçük düzeltmeler:** eksik favicon (prod'da 404 düşüyordu) eklendi; İŞLEM PANELİ yazım hatası + tek a11y uyarısı giderildi (`svelte-check` 0/0).
 6. Backlog'da commit'lenmemiş iki tamamlanmış plan dokümanı (cüzdan/net servet UX, günlük mühürlü kur) commit'lendi.
 7. Her şey test edildi (391/391 birim test yeşil), typecheck temiz, prod'a push'landı ve deploy doğrulandı (miras-one.vercel.app, commit cc4f0e7).
+8. `CHANGELOG.md` oluşturuldu — aylık/tema-bazlı geliştirme özeti artık orada birikiyor (bkz. Bölüm 6.C).
+9. Market grafik pop-up'una pozisyon maliyeti + K/Z satırı eklendi ("Maliyet: $X/adet · +-Y (%)"), WalletSummary'deki aynı `positionPnl`/`pnlClass` helper'larıyla — yeni domain mantığı yok.
 
 ### B. Yakın Dönem Sinyaller (henüz iş başlamadı — bkz. Bölüm 4 Faz 4)
 Supabase geçişi, gerçek kullanıcı hesapları, Amerikan borsası. Açıkça istenmeden büyük mimari değişikliğe girişilmeyecek.
@@ -166,6 +168,6 @@ Aylık tema-bazlı özet artık `CHANGELOG.md`'de birikiyor (bu bölümün aksin
 ### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
 1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`) — legacy `node server.js` artık geçerli değil.
 2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum (Vercel'in kendi Linux build'inde sorun çıkarmıyor).
-3. **Sıradaki olası adımlar:** CANLI SEANS'ın veri kapsamını/doğruluğunu artırmaya devam, ya da B'deki sinyallerden biri somutlaşırsa oradan devam.
+3. **Sıradaki olası adımlar:** CANLI SEANS'ın veri kapsamını/doğruluğunu artırmaya devam (ör. market pop-up grafiğinin görsel güncellemesi — kullanıcı "sonra" dedi, henüz iş açılmadı), ya da B'deki sinyallerden biri somutlaşırsa oradan devam.
 4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** (Save) yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
