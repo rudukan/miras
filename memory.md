@@ -19,16 +19,20 @@ Bu doküman, "Miras Oyunu" projesinin tasarım kararlarını, teknik mimarisini,
 
 ---
 
-## 2. Mevcut Teknik Mimari (v3.0.0)
+## 2. Mevcut Teknik Mimari
 
-Uygulama, hem bağımsız bir tarayıcı uygulaması olarak çalışabilen hem de gerçek zamanlı BIST fiyat akışları için yerel bir Node.js proxy sunucusu (`server.js`) ile entegre olabilen hafif bir mimaridir.
+> **Güncelleme notu (2026-07-02):** Proje Mayıs 2026'da vanilla JS'ten (`server.js`/`app.js`/`index.html`) SvelteKit 2 + Svelte 5 + TypeScript'e tamamen yeniden yazıldı. Eski dosyalar artık yalnız `legacy/` altında referans olarak duruyor, build'e dahil değil. Aşağıdaki "Dosya Dağılımı" güncel; **B-H alt başlıklarındaki ekonomi mekanikleri (emlak/tapu/rüşvet, vergi, Tech Agent) legacy'de tamamlanmıştı ama SvelteKit'e henüz portlanmadı** — CLAUDE.md'nin "Ekonomi Kanonları" bölümündeki sayılarla tutarlı, hâlâ kanonik tasarım referansı, sadece kod tabanında karşılığı yok. SvelteKit'te şu an gerçekten var olanlar için Bölüm 2.I'e bak.
 
-### Dosya Dağılımı
-* **[server.js](file:///c:/Users/Test/Desktop/miras/server.js)**: [NEW] Yerleşik Node.js modülleriyle çalışan, CORS engelsiz ve 5s önbellekli BIST/Altın Yahoo Finance proxy sunucusu.
-* **[index.html](file:///c:/Users/Test/Desktop/miras/index.html)**: Tüm ekran yapıları, Tailwind CSS panel düzenleri, grafik çizim canvas'ı, girdi alanları ve oyun sonu pencereleri.
-* **[app.js](file:///c:/Users/Test/Desktop/miras/app.js)**: Oyun motoru, ses sentezleyici, tarihsel veri setleri, işlem mekanikleri, denge çarpanları ve durum yönetimi (state machine).
+### Dosya Dağılımı (güncel — SvelteKit)
+* **`src/lib/domain/`** — Saf TS iş mantığı (money, fx, deposit, snapshot, scenario, series, calendar, time), UI'sız, TDD ile test edilir.
+* **`src/lib/stores/`** — Svelte 5 runes store'ları; sistemler arası tek iletişim kanalı. `liveGameStore.svelte.ts` oyunun kalbi.
+* **`src/lib/components/`** — Svelte component'lar (panels/, chart/, ui/); `format.ts` saf gösterim yardımcıları (node'da test edilir).
+* **`src/lib/api/`** — Dış API client'ları: `yahoo.ts`, `binance.ts`, `fx.ts`.
+* **`src/routes/api/`** — Sunucu tarafı proxy endpoint'leri (`/api/yahoo`, `/api/crypto`, `/api/series`, `/api/telemetry`), 5s cache.
+* **`legacy/`** — Eski vanilla-JS uygulama (server.js/app.js/index.html), build'den hariç, referans için tutuluyor.
+* Deploy: GitHub push (main) → Vercel otomatik prod deploy → miras-one.vercel.app.
 
-### Önemli Teknik Bileşenler
+### Önemli Teknik Bileşenler (B-H: legacy'de tamamlanmış, SvelteKit'e henüz portlanmamış kanonik tasarım)
 
 #### A. Tarihsel Veri Seti (Jan 2024 - Jan 2025)
 Türkiye'nin 2024 yılına ait 52 haftalık gerçek verileri (USD/TRY kuru, Merkez Bankası politika faiz kararları, KFE konut endeksi ve hisse fiyatları) doğrusal interpolasyon (linear interpolation) ile JS içerisine entegre edilmiştir.
@@ -73,6 +77,17 @@ Amcanızdan kalan AI yazılım startup'ını uyandırmak ($50,000) ve yükseltme
 #### H. Web Audio Sentezleyici
 Harici ses dosyası yüklemeden, tarayıcının yerleşik ses API'siyle sentezlenen sesler (Daktilo sesleri, beeper, system hum).
 
+#### I. SvelteKit'te Şu An Gerçekten Var Olanlar (2026-07-02 itibarıyla)
+Yukarıdaki B-H'nin aksine, aşağıdakiler mevcut SvelteKit kod tabanında gerçekten çalışıyor:
+* **USD-taban para modeli:** Her şey `Money` tipiyle (`src/lib/domain/money.ts`) USD üzerinden tutulur; TRY yalnız gösterim/çevrim anı.
+* **Günlük mühürlü + eşikli operatif kur:** `liveGameStore`'da `sealedUsdTry()` — canlı kur günde bir mühürlenir (net servet gürültüden etkilenmesin), ama mühürden %0.75'ten fazla sapan GERÇEK hareket aynı gün yeniden mühürlenir (`resealThresholdPct`). Canlı piyasa kuru ayrıca bilgi amaçlı her zaman görünür ("piyasa (canlı)" satırı).
+* **Hibrit canlı veri:** Kripto Binance WS (birincil, throttle 500ms) + `/api/crypto` snapshot (WS kopukken fallback + cold-start tohumlama). BIST/altın/gümüş/döviz `/api/yahoo` poll (20s), ~15dk gecikmeli (Yahoo Finance ücretsiz feed sınırı).
+* **Mevduat (TL vadeli):** streaming yield + mark-to-market, stopaj dahil.
+* **Cüzdan/Net Servet UX:** Net servet paneli "Kalan Nakit / Yatırımda" dağılımı gösterir; cüzdandaki pozisyonlara tıklayınca İŞLEM PANELİ'nde seçilir.
+* **Market grafik + işlem pop-up:** Piyasa satırına hover/tap (1sn) ile canvas çizgi grafik + gerçek AL/SAT içeren pop-up.
+* **Al/Sat miktar girişi:** Adet ve Tutar ($) alanları yazarken binlik virgülüyle canlı gruplanır, imleç konumu korunur.
+* Emlak/tapu/rüşvet, vergi denetimi, Tech Agent — **henüz yok** (bkz. yukarıdaki not).
+
 ---
 
 ## 3. Tasarım Standartları ve Token'ları
@@ -91,6 +106,8 @@ Bloomberg Terminali ve Binance estetiğini korumak için belirlenen kurallar:
 
 ## 4. Gelecek Sürümler Yol Haritası (Roadmap)
 
+> **Öncelik notu (2026-07-02):** Aktif geliştirme odağı CANLI SEANS'ın veri doğruluğuna kaydı. VASİYET SEFERİ + Faz 2 (2001 Kriz, 2018 Kur Şoku) aşağıda roadmap'te duruyor ama aktif çalışma yok — kullanıcı açıkça istemedikçe bu modlara dokunulmuyor.
+
 ### Ara Faz: 52 Haftalık "Vasiyet Seferi" Kampanya Modu (v2.4.0)
 * **Tarihsel Kampanya:** Oyunun 365 günlük tycoon yapısını korumak amacıyla, Mayıs 2025 - Mayıs 2026 arasındaki 1 yıllık gerçek verileri ve haftalık gerçek haber başlıklarını ön-paketleyen statik veri modeli (`macroData.js`). 
 
@@ -104,6 +121,11 @@ Bloomberg Terminali ve Binance estetiğini korumak için belirlenen kurallar:
 ### Faz 3: Sosyal ve Rekabetçi Katman
 * **Günlük Mücadele (Daily Challenge):** Her sabah saat 10:00'da tüm oyunculara aynı piyasa verileri ve 1M USD verilir. Liderlik tablosu güncellenir.
 * **Skor Paylaşımı:** Twitter (X) entegrasyonlu komik mahkeme beratı paylaşım görselleri üretmek.
+
+### Faz 4: Altyapı ve Kapsam Genişletme (sinyal var, iş başlamadı)
+* **Supabase geçişi:** Firebase (anon auth + Firestore) yerine Supabase — muhtemelen gerçek kullanıcı hesapları (Faz 3'ün ötesinde, Supabase Auth) ile birlikte gelir.
+* **Gerçek kullanıcı hesapları:** Anonim auth'tan kayıtlı kullanıcıya geçiş — olumlu geri bildirim aldığı izlenimi var.
+* **Amerikan borsası:** S&P 500/NASDAQ hisseleri yeni varlık sınıfı olarak. Muhtemel entegrasyon noktası: mevcut `/api/yahoo` proxy kalıbı + `liveAssets.ts` kataloğu (Yahoo Finance ABD hisselerini de destekliyor).
 
 ---
 
@@ -122,29 +144,25 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti (v3.1.0) & Kaldığımız Yer
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-02)
 
-Bu oturumda, kullanıcıyla pair programming yapılarak **v3.1.0** sürümü tamamlanmıştır. Yeni chat'te devam edilmek üzere tüm mimari durumlar kaydedilmiştir.
+> Bu bölüm en son 2026-05-24'te güncellenmişti (o zamanki v3.1.0 legacy vanilla-JS mimarisini anlatıyordu — bkz. Bölüm 2'deki güncelleme notu). Aradan geçen sürede proje SvelteKit'e tamamen yeniden yazıldı; bu bölüm artık bugünkü oturumu anlatıyor ve her "s" (save) komutunda üzerine yazılır.
 
-### A. Tamamlanan Özellikler ve Hata Gidermeleri (v3.1.0)
-1. **Gerçek Zamanlı BIST 100 & Altın API Entegrasyonu:**
-   * Node.js yerleşik modülleriyle çalışan lightweight `server.js` sunucusu kuruldu. Sunucu, Yahoo Finance API'den canlı BIST 100 verilerini ve spot altını paralel olarak çekmekte, canlı kur üzerinden Gram Altın fiyatını hesaplamakta ve tarayıcıya CORS hatasız aktarmaktadır.
-   * Aşırı API isteklerini önlemek için sunucu tarafında **5 saniyelik önbellek (caching)** mekanizması kuruldu.
-2. **Graceful Fallback & UI Durum Göstergesi:**
-   * Sunucu kapalıyken veya ağ kesildiğinde oyun kilitlenmeden otomatik olarak hibrid drift simülasyonuna geçmektedir. Sunucu açıldığında ise anında canlı fiyatlara geri bağlanır.
-   * Sunucu bağlandığında durum göstergesi **`[ ● LIVE + BIST ]`** olarak parıldar, sunucu koptuğunda ise **`[ ● LIVE ]`** ibaresine geri döner.
-3. **Sayfa Kaydırma Problemi Çözümü:**
-   * Ekran çözünürlüğü dar olan cihazlarda emlak listesinin alt tarafta kalıp kaydırılamaması problemi giderildi. Grid panelleri ve sütunlar dikey kaydırılabilir (**`overflow-y-auto lg:h-full`**) hale getirildi.
-4. **Emlak Arama & Smooth Scroll Focus:**
-   * Autocomplete arama kutusuna gayrimenkuller dahil edildi. Arama sonucunda bir emlak tıklandığında ekran o karta yumuşak bir şekilde kayar ve kartın kenarlığı 2.5 saniye boyunca parıldayan yeşil neon bir çerçeveyle (`glow-border-green`) vurgulanır.
+### A. Bu Oturumda Tamamlananlar
+1. **Ürün önceliği netleşti:** VASİYET SEFERİ + Faz 2 senaryoları roadmap'te duruyor ama aktif geliştirme durduruldu — tüm efor CANLI SEANS'ın veri doğruluğuna gidiyor (bkz. Bölüm 4).
+2. **Eşikli mühür (günlük kur):** `ensureSeal()` artık canlı kur mühürden %0.75'ten fazla saparsa aynı gün (dateKey değişmeden) de reseal ediyor — küçük tik gürültüsünde net servet sakin kalır, gerçek bir kur hareketinde (ör. MB kararı) ertesi günü beklemeden aynı gün yakalanır. Kullanıcıya iki senaryo (gürültü vs gerçek hareket) grafikle karşılaştırılıp onay alındı.
+3. **Kripto cold-start fix:** Binance WS ilk poll yanıtından önce bağlanırsa, düşük hacimli coin'ler (ör. AVAX) ilk trade tick'ine kadar fiyatsız kalıp alım reddediliyordu. Poll snapshot'ı artık yalnız henüz hiç fiyatı olmayan coin'leri tohumluyor.
+4. **Al/Sat miktar girişi okunaklılığı:** Adet/Tutar alanları yazarken binlik virgülüyle canlı gruplanıyor (62,161,390 gibi uzun sayılar artık okunuyor), imleç konumu korunuyor. 4 saf fonksiyon TDD ile eklendi (`format.ts`).
+5. **Küçük düzeltmeler:** eksik favicon (prod'da 404 düşüyordu) eklendi; İŞLEM PANELİ yazım hatası + tek a11y uyarısı giderildi (`svelte-check` 0/0).
+6. Backlog'da commit'lenmemiş iki tamamlanmış plan dokümanı (cüzdan/net servet UX, günlük mühürlü kur) commit'lendi.
+7. Her şey test edildi (391/391 birim test yeşil), typecheck temiz, prod'a push'landı ve deploy doğrulandı (miras-one.vercel.app, commit cc4f0e7).
 
-### B. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi (Resume "r" için)
-Oyuncu yeni bir chat penceresi açıp **"r"** yazdığında, sıradaki adımlar şunlardır:
-1. **Faz 2 (Tarihsel Senaryo Paketleri):**
-   * Gecelik faizlerin %7500'e fırladığı **2001 Kriz Paketi**'nin matematiksel faiz/kur modelini ve olay manşetlerini kodlamak.
-   * **2018 Kur Şoku** (Rahip Brunson krizi) senaryosunu kurgulamak.
-2. **Faz 3 (Sosyal & Skor Katmanı):**
-   * Liderlik tablosu ve X (Twitter) görsel tescil beratı paylaşımını zenginleştirmek.
-3. **Nasıl Çalıştırılır:**
-   * Geliştirme aşamasında terminalden `node server.js` komutu verilerek yerel sunucu ayağa kaldırılır ve `http://localhost:3000` adresinden canlı testler gerçekleştirilir.
+### B. Yakın Dönem Sinyaller (henüz iş başlamadı — bkz. Bölüm 4 Faz 4)
+Supabase geçişi, gerçek kullanıcı hesapları, Amerikan borsası. Açıkça istenmeden büyük mimari değişikliğe girişilmeyecek.
+
+### C. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
+1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`) — legacy `node server.js` artık geçerli değil.
+2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum (Vercel'in kendi Linux build'inde sorun çıkarmıyor).
+3. **Sıradaki olası adımlar:** CANLI SEANS'ın veri kapsamını/doğruluğunu artırmaya devam, ya da B'deki sinyallerden biri somutlaşırsa oradan devam.
+4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** (Save) yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
