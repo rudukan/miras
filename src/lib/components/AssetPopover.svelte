@@ -4,7 +4,7 @@
 	import { PERIODS, type PeriodId, type PricePoint } from '$lib/domain/series/series';
 	import { fetchPriceSeries } from '$lib/api/seriesClient';
 	import { usd } from '$lib/domain/money';
-	import { displayTry, displayUsd, dailyChangeBadge, heldUnits } from './format';
+	import { displayTry, displayUsd, dailyChangeBadge, heldUnits, positionPnl, pnlClass, signedUsd } from './format';
 	import PriceChart from './chart/PriceChart.svelte';
 	import TradeForm from './TradeForm.svelte';
 
@@ -38,6 +38,12 @@
 	const chg = $derived(dailyChangeBadge(row.changePct));
 	const held = $derived(heldUnits(store.positions, row.id));
 	const heldUsd = $derived(store.positions.find((p) => p.assetId === row.id)?.valueUsd);
+	// Maliyet + K/Z (WalletSummary ile aynı hesap) — pozisyon yoksa undefined, satır gizlenir.
+	const posPnl = $derived.by(() => {
+		const avgCostUsd = store.positions.find((p) => p.assetId === row.id)?.avgCostUsd;
+		if (avgCostUsd === undefined || heldUsd === undefined) return undefined;
+		return { avgCostUsd, ...positionPnl(held, avgCostUsd, heldUsd) };
+	});
 </script>
 
 <div
@@ -94,6 +100,17 @@
 		Bende: <span class="opacity-100 font-bold">{held.toFixed(4)}</span> adet
 		{#if heldUsd !== undefined} · {displayUsd(usd(heldUsd))}{/if}
 	</div>
+	{#if posPnl}
+		{@const pctBadge = dailyChangeBadge(posPnl.pnlPct)}
+		<div class="text-[10px] text-term-text opacity-70 flex items-center gap-1.5">
+			<span>Maliyet: {displayUsd(usd(posPnl.avgCostUsd))}/adet</span>
+			<span class="opacity-40">·</span>
+			<span class={pnlClass(posPnl.pnl ?? null)}>
+				{signedUsd(posPnl.pnl === undefined ? null : usd(posPnl.pnl))}
+			</span>
+			{#if pctBadge}<span class={pctBadge.cls}>({pctBadge.text})</span>{/if}
+		</div>
+	{/if}
 
 	<!-- Gerçek işlem -->
 	<TradeForm {store} assetId={row.id} {onTradeSuccess} />
