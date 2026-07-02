@@ -160,7 +160,10 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 ### B. Yakın Dönem Sinyaller (henüz iş başlamadı — bkz. Bölüm 4 Faz 4)
 Supabase geçişi, gerçek kullanıcı hesapları, Amerikan borsası. Açıkça istenmeden büyük mimari değişikliğe girişilmeyecek.
 
-### C. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
+### C. Değişiklik Geçmişi
+Aylık tema-bazlı özet artık `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz). Bu dosya (Bölüm 6) hep yalnız SON oturumu tutar — küçük kalır.
+
+### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
 1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`) — legacy `node server.js` artık geçerli değil.
 2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum (Vercel'in kendi Linux build'inde sorun çıkarmıyor).
 3. **Sıradaki olası adımlar:** CANLI SEANS'ın veri kapsamını/doğruluğunu artırmaya devam, ya da B'deki sinyallerden biri somutlaşırsa oradan devam.

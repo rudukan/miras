@@ -1,7 +1,7 @@
 # Miras Oyunu
 
 Türkiye'nin 2025 makro koşullarında 1M USD mirası 365 günde işletme finansal simülasyonu.
-Detaylı proje hafızası için `memory.md`. Sprint planı için `.claude/plans/` dizinine bak.
+Detaylı proje hafızası için `memory.md` (güncel durum, son oturum özeti — küçük tutulur). Aylık değişiklik geçmişi için `CHANGELOG.md` (yalnız geçmiş sorulunca okunur). Sprint planı için `.claude/plans/` dizinine bak.
 
 ## Tech Stack
 SvelteKit 2 + Svelte 5 + TypeScript (strict) + Vite + Tailwind CSS 3 + Firebase (anon auth + Firestore).
