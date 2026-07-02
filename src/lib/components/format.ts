@@ -191,6 +191,51 @@ export function tradeToastMessage(
 	return `✓ ${assetId} ${verb} — ${units.toFixed(4)} adet · ${displayUsd(usd(amountUsd))}`;
 }
 
+/**
+ * Yazarken girilen ham metni (binlik virgülü + ondalık nokta) sayıya çevirir.
+ * Eksi işareti yok sayılır (miktar alanları hep pozitif). Geçersiz/boş → 0.
+ */
+export function parseTypedAmount(raw: string): number {
+	const cleaned = raw.replace(/,/g, '').replace(/-/g, '').trim();
+	if (cleaned === '' || cleaned === '.') return 0;
+	const n = Number(cleaned);
+	return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Yazarken canlı binlik-virgül gösterimi. Tam kısmı gruplar, ondalık kısmı
+ * (varsa) OLDUĞU GİBİ bırakır — "1.5" yazarken ara adım "1." kaybolmasın diye.
+ */
+export function formatTypedAmount(raw: string): string {
+	const cleaned = raw.replace(/,/g, '').replace(/-/g, '');
+	const [intPart, ...rest] = cleaned.split('.');
+	const groupedInt = intPart === '' ? '' : Number(intPart).toLocaleString('en-US');
+	const decPart = rest.length > 0 ? '.' + rest.join('') : '';
+	return groupedInt + decPart;
+}
+
+/** `text`'te `caret`'ten önceki virgül-olmayan karakter sayısı (caret'i yeniden konumlamak için). */
+export function countNonCommaBefore(text: string, caret: number): number {
+	let count = 0;
+	for (let i = 0; i < caret && i < text.length; i++) {
+		if (text[i] !== ',') count++;
+	}
+	return count;
+}
+
+/** `text` içinde ilk `nonCommaCount` virgül-olmayan karakterden hemen sonraki index. */
+export function caretAfterNonComma(text: string, nonCommaCount: number): number {
+	if (nonCommaCount <= 0) return 0;
+	let seen = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] !== ',') {
+			seen++;
+			if (seen === nonCommaCount) return i + 1;
+		}
+	}
+	return text.length;
+}
+
 export function groupByCategory<T extends { category: string }>(
 	rows: ReadonlyArray<T>,
 ): CategoryGroup<T>[] {

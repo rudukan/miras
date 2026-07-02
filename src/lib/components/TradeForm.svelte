@@ -1,9 +1,18 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { LiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import { usd } from '$lib/domain/money';
 	import { CATALOG } from '$lib/catalog/liveAssets';
 	import { bistName } from '$lib/catalog/bist100';
-	import { maxUnitsAffordable, heldUnits, tradeToastMessage } from './format';
+	import {
+		maxUnitsAffordable,
+		heldUnits,
+		tradeToastMessage,
+		parseTypedAmount,
+		formatTypedAmount,
+		countNonCommaBefore,
+		caretAfterNonComma,
+	} from './format';
 
 	interface Props {
 		store: LiveGameStore;
@@ -25,31 +34,57 @@
 		assetId ? (CATALOG[assetId]?.label ?? bistName(assetId)) : null,
 	);
 
-	let units = $state(0);
-	let dollarAmount = $state(0);
+	// Kaynak: yazılan biçimlendirilmiş metin (binlik virgüllü). Sayısal değerler bundan türer —
+	// büyük tutarlar (ör. 62,161,390) yazarken basamak sayısı okunur kalsın diye.
+	let unitsRaw = $state('');
+	let dollarRaw = $state('');
+	const units = $derived(parseTypedAmount(unitsRaw));
+	const dollarAmount = $derived(parseTypedAmount(dollarRaw));
 
 	// Varlık değişince formu sıfırla (pop-up farklı varlık açtığında eski değer kalmasın).
 	$effect(() => {
 		void assetId;
-		units = 0;
-		dollarAmount = 0;
+		unitsRaw = '';
+		dollarRaw = '';
 	});
 
 	function syncDollarFromUnits() {
-		dollarAmount = assetUsd !== undefined ? Math.round(units * assetUsd * 100) / 100 : 0;
+		dollarRaw =
+			assetUsd !== undefined ? formatTypedAmount(String(Math.round(units * assetUsd * 100) / 100)) : '';
 	}
 	function syncUnitsFromDollar() {
 		if (assetUsd !== undefined && assetUsd > 0) {
-			units = Math.floor((dollarAmount / assetUsd) * 10000) / 10000;
+			unitsRaw = formatTypedAmount(String(Math.floor((dollarAmount / assetUsd) * 10000) / 10000));
 		}
 	}
 	function maxUnits() {
-		units = maxUnitsAffordable(usdBalance, assetUsd);
+		unitsRaw = formatTypedAmount(String(maxUnitsAffordable(usdBalance, assetUsd)));
 		syncDollarFromUnits();
 	}
 	function allUnits() {
-		units = heldUnitsSel;
+		unitsRaw = formatTypedAmount(String(heldUnitsSel));
 		syncDollarFromUnits();
+	}
+
+	/** Yazarken binlik virgülünü canlı uygular; imleci (caret) doğru konumda tutar. */
+	function reformatInput(e: Event, setRaw: (formatted: string) => void) {
+		const input = e.currentTarget as HTMLInputElement;
+		const caret = input.selectionStart ?? input.value.length;
+		const keep = countNonCommaBefore(input.value, caret);
+		const formatted = formatTypedAmount(input.value);
+		setRaw(formatted);
+		void tick().then(() => {
+			const pos = caretAfterNonComma(formatted, keep);
+			input.setSelectionRange(pos, pos);
+		});
+	}
+	function handleUnitsInput(e: Event) {
+		reformatInput(e, (f) => (unitsRaw = f));
+		syncDollarFromUnits();
+	}
+	function handleDollarInput(e: Event) {
+		reformatInput(e, (f) => (dollarRaw = f));
+		syncUnitsFromDollar();
 	}
 
 	function handleBuy() {
@@ -58,8 +93,8 @@
 		const u = units;
 		const amt = dollarAmount;
 		store.buy(id, u);
-		units = 0;
-		dollarAmount = 0;
+		unitsRaw = '';
+		dollarRaw = '';
 		if (store.lastError === null) onTradeSuccess?.(tradeToastMessage('buy', id, u, amt));
 	}
 	function handleSell() {
@@ -68,8 +103,8 @@
 		const u = units;
 		const amt = dollarAmount;
 		store.sell(id, u);
-		units = 0;
-		dollarAmount = 0;
+		unitsRaw = '';
+		dollarRaw = '';
 		if (store.lastError === null) onTradeSuccess?.(tradeToastMessage('sell', id, u, amt));
 	}
 </script>
@@ -86,12 +121,12 @@
 		<div class="flex items-center gap-2">
 			<label for="trade-units-{assetId}" class="text-term-text opacity-50 shrink-0 w-20">Adet</label>
 			<input
-				type="number"
-				min="0"
+				type="text"
+				inputmode="decimal"
 				id="trade-units-{assetId}"
-				step="0.0001"
-				bind:value={units}
-				oninput={syncDollarFromUnits}
+				value={unitsRaw}
+				oninput={handleUnitsInput}
+				placeholder="0"
 				class="flex-1 bg-term-bg border border-term-border px-2 py-1 text-term-text
 				       focus:outline-none focus:border-term-borderGlow text-xs w-full"
 			/>
@@ -103,12 +138,12 @@
 		<div class="flex items-center gap-2">
 			<label for="trade-dollars-{assetId}" class="text-term-text opacity-50 shrink-0 w-20">Tutar ($)</label>
 			<input
-				type="number"
-				min="0"
+				type="text"
+				inputmode="decimal"
 				id="trade-dollars-{assetId}"
-				step="1"
-				bind:value={dollarAmount}
-				oninput={syncUnitsFromDollar}
+				value={dollarRaw}
+				oninput={handleDollarInput}
+				placeholder="0"
 				class="flex-1 bg-term-bg border border-term-border px-2 py-1 text-term-text
 				       focus:outline-none focus:border-term-borderGlow text-xs w-full"
 			/>

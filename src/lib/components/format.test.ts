@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd, tradeToastMessage } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd, tradeToastMessage, parseTypedAmount, formatTypedAmount, countNonCommaBefore, caretAfterNonComma } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -300,5 +300,80 @@ describe('tradeToastMessage', () => {
 		expect(tradeToastMessage('sell', 'BTC', 0.5, 32000)).toBe(
 			'✓ BTC SATILDI — 0.5000 adet · $32,000.00',
 		);
+	});
+});
+
+// ── parseTypedAmount ──────────────────────────────────────────────────────────
+describe('parseTypedAmount', () => {
+	it('binlik virgülünü temizleyip sayıya çevirir', () => {
+		expect(parseTypedAmount('62,161,390')).toBe(62161390);
+	});
+	it('virgülsüz sayıyı da doğru çevirir', () => {
+		expect(parseTypedAmount('1000')).toBe(1000);
+	});
+	it('ondalıklı sayıyı korur', () => {
+		expect(parseTypedAmount('1,234.56')).toBe(1234.56);
+	});
+	it('boş string → 0', () => {
+		expect(parseTypedAmount('')).toBe(0);
+	});
+	it('sadece nokta (yazım ortası) → 0', () => {
+		expect(parseTypedAmount('.')).toBe(0);
+	});
+	it('eksi işareti yok sayılır (miktar hep pozitif)', () => {
+		expect(parseTypedAmount('-500')).toBe(500);
+	});
+});
+
+// ── formatTypedAmount ─────────────────────────────────────────────────────────
+describe('formatTypedAmount', () => {
+	it('4+ haneli tam sayıya binlik virgül ekler', () => {
+		expect(formatTypedAmount('62161390')).toBe('62,161,390');
+	});
+	it('3 haneli sayıya virgül eklemez', () => {
+		expect(formatTypedAmount('999')).toBe('999');
+	});
+	it('yazım ortasındaki ondalık nokta kaybolmaz ("1.5" yazarken "1." korunur)', () => {
+		expect(formatTypedAmount('1.')).toBe('1.');
+	});
+	it('ondalıklı kısmı gruplamadan aynen bırakır', () => {
+		expect(formatTypedAmount('1000.5')).toBe('1,000.5');
+	});
+	it('zaten virgüllü girdiyi tutarlı biçimde yeniden hesaplar', () => {
+		expect(formatTypedAmount('1,000')).toBe('1,000');
+	});
+	it('boş string → boş string', () => {
+		expect(formatTypedAmount('')).toBe('');
+	});
+	it('başlangıç sıfırlarını sadeleştirir', () => {
+		expect(formatTypedAmount('007')).toBe('7');
+	});
+});
+
+// ── countNonCommaBefore / caretAfterNonComma (yazarken imleç konumu) ───────────
+describe('countNonCommaBefore', () => {
+	it('virgülsüz metinde caret konumuyla aynı sayıyı döner', () => {
+		expect(countNonCommaBefore('1000', 4)).toBe(4);
+	});
+	it('virgülleri saymaz', () => {
+		expect(countNonCommaBefore('1,000', 5)).toBe(4);
+	});
+	it('caret ortadaysa yalnız öncesini sayar', () => {
+		expect(countNonCommaBefore('15,000', 2)).toBe(2);
+	});
+});
+
+describe('caretAfterNonComma', () => {
+	it('hedef sayıya ulaşınca hemen sonrasını döner', () => {
+		expect(caretAfterNonComma('1,000', 4)).toBe(5);
+	});
+	it('yeniden biçimlenmiş metinde imleci doğru karaktere yerleştirir', () => {
+		expect(caretAfterNonComma('15,000', 2)).toBe(2);
+	});
+	it('0 → başa döner', () => {
+		expect(caretAfterNonComma('1,000', 0)).toBe(0);
+	});
+	it('sayı metinden büyükse sona sabitler', () => {
+		expect(caretAfterNonComma('1,000', 99)).toBe(5);
 	});
 });
