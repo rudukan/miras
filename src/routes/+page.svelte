@@ -353,6 +353,7 @@
 				</div>
 			{:else}
 				<!-- Masaüstü: anchor'a konumlu; içine tıkla/odaklan = pinle, pinliyken dışa tıkla/Esc/✕ kapatır -->
+				<!-- svelte-ignore a11y_click_events_have_key_events (klavye eşleniği onfocusin: Tab ile odaklanmak da pinler) -->
 				<div
 					bind:this={desktopPopoverEl}
 					style={popoverStyle}

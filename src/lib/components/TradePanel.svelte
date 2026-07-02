@@ -12,7 +12,7 @@
 
 <div class="bg-term-panel border border-term-border p-3 font-mono text-xs space-y-4">
 	<div class="text-term-blue tracking-widest uppercase text-[10px] font-bold border-b border-term-border pb-1">
-		İŞLEM PANELI
+		İŞLEM PANELİ
 	</div>
 
 	<div class="space-y-2">
