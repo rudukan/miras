@@ -68,6 +68,9 @@ export interface LiveGameStoreOptions {
   now?: () => number;
   pollMs?: number;
   throttleMs?: number;
+  /** Gün içi mühür-yenileme eşiği (oran, örn. 0.0075 = %0.75). Canlı kur mühürden bu kadar
+   *  saparsa aynı gün (dateKey değişmeden) reseal edilir — gürültüde sakin, gerçek harekette hızlı. */
+  resealThresholdPct?: number;
 }
 
 export interface LiveGameStore {
@@ -126,6 +129,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   // Kripto WS push ile hızlı kalır; bu poll yalnız FX + kripto 24s%/WS-stale fallback içindir.
   const pollMs = opts.pollMs ?? 20000;
   const throttleMs = opts.throttleMs ?? 500;
+  const resealThresholdPct = opts.resealThresholdPct ?? 0.0075;
   const fetchFn = opts.fetchFn ?? fetch;
   const makeFeed = opts.makeFeed ?? ((o: BinanceFeedOptions) => createBinanceFeed(o));
 
@@ -392,12 +396,21 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   // Gün-anahtarı (İstanbul) değişince operatif kuru yeniden mühürle — yalnız GÜVENİLİR kurla
   // (canlı WS veya taze Yahoo). Stale fallback (₺40 zemini) mühürlenmez → tüm gün sahte kalmaz.
+  // Eşikli mühür: gün içinde kur mühürden resealThresholdPct'ten fazla saparsa (gerçek hareket)
+  // dateKey değişmeden de reseal edilir — küçük tik gürültüsü mührü etkilemez, büyük gerçek
+  // hareket ise ertesi güne kadar beklemeden aynı gün yakalanır.
   function ensureSeal(): void {
     const haveRealFx = (feedStatus === 'live' && liveUsdTry !== undefined) || !fxStale;
     if (!haveRealFx) return;
     const key = istanbulParts(new Date(now())).key;
-    if (sealedFx === null || sealedFx.dateKey !== key) {
-      sealedFx = { dateKey: key, rate: effectiveUsdTry() };
+    const live = effectiveUsdTry();
+    const dateChanged = sealedFx === null || sealedFx.dateKey !== key;
+    const driftedTooFar =
+      sealedFx !== null &&
+      !dateChanged &&
+      Math.abs(live - sealedFx.rate) / sealedFx.rate > resealThresholdPct;
+    if (dateChanged || driftedTooFar) {
+      sealedFx = { dateKey: key, rate: live };
       persist();
     }
   }

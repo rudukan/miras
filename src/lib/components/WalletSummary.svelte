@@ -36,7 +36,7 @@
 			</span>
 		</div>
 		<div class="flex justify-between items-center pt-0.5">
-			<span class="text-term-text opacity-50 text-[10px]">USD/TRY (günün kuru)</span>
+			<span class="text-term-text opacity-50 text-[10px]">USD/TRY (işlem kuru)</span>
 			<span class="text-term-blue text-[10px]">₺{usdRate}</span>
 		</div>
 		{#if showLive}

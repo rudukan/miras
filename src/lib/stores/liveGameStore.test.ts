@@ -458,13 +458,32 @@ describe('createLiveGameStore (USD-taban)', () => {
       expect(t.store.netWorthUsd?.amount).toBeCloseTo(before, 0); // jitter yok
     });
 
-    it('gün içi ikinci poll mührü değiştirmez', async () => {
+    it('gün içi küçük kur sapması (eşik altı) mührü değiştirmez', async () => {
       vi.useFakeTimers();
       const t = setup(); // pollMs 5000
       await t.store.start();
       expect(t.store.usdTry).toBe(40);
 
-      // Aynı gün, Yahoo kuru değişse bile mühür sabit kalır.
+      // Aynı gün, %0.5 sapma (eşik %0.75'in altı) — gürültü, mühür sabit kalır.
+      t.setYahoo({
+        value: { usdTry: 40.2, prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45 } },
+        asOf: 222,
+        stale: false,
+      });
+      await vi.advanceTimersByTimeAsync(5000);
+      flushSync();
+
+      expect(t.store.usdTry).toBe(40); // mühür değişmedi
+      expect(t.store.liveUsdTry).toBe(40.2); // canlı (Yahoo) güncel (feedStatus stale → effective=fxCache)
+    });
+
+    it('gün içi büyük kur sapması (eşik üstü) aynı gün yeniden mühürler', async () => {
+      vi.useFakeTimers();
+      const t = setup(); // pollMs 5000
+      await t.store.start();
+      expect(t.store.usdTry).toBe(40);
+
+      // Aynı gün, %37.5 sapma (eşik %0.75'in çok üstü) — gerçek hareket, aynı gün reseal.
       t.setYahoo({
         value: { usdTry: 55, prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45 } },
         asOf: 222,
@@ -473,8 +492,8 @@ describe('createLiveGameStore (USD-taban)', () => {
       await vi.advanceTimersByTimeAsync(5000);
       flushSync();
 
-      expect(t.store.usdTry).toBe(40); // mühür değişmedi
-      expect(t.store.liveUsdTry).toBe(55); // canlı (Yahoo) güncel (feedStatus stale → effective=fxCache)
+      expect(t.store.usdTry).toBe(55); // eşik aşıldı → aynı gün (dateKey değişmeden) reseal
+      expect(t.store.liveUsdTry).toBe(55);
     });
 
     it('gün-anahtarı değişince reseal eder', async () => {
