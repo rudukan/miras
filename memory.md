@@ -109,15 +109,16 @@ Bloomberg Terminali ve Binance estetiğini korumak için belirlenen kurallar:
 
 > **Öncelik notu (2026-07-02):** Aktif geliştirme odağı CANLI SEANS'a kaydı. VASİYET SEFERİ + Faz 2 (2001 Kriz, 2018 Kur Şoku) aşağıda roadmap'te duruyor ama aktif çalışma yok — kullanıcı açıkça istemedikçe bu modlara dokunulmuyor.
 
-### Aktif Plan: Oyun Derinliği + Bağımlılık Katmanı (2026-07-03 karar)
-CANLI SEANS içinde veri doğruluğundan sonraki adım: oyunu geri-dönüş sebebi olan bir "oyun" yapmak. Süreç kuralı basit tutulacak — **küçük dilim → bitir → deploy → sonraki**, her dilim kendi mini planını alır (CLAUDE.md kanonları bu plan kapsamında esnetilebilir, bkz. memory `feedback_claudemd_esnek`). Sıra:
-1. **Emlak süper sade + kira kasası** — [TAMAMLANDI, commit `b33d673`] (bkz. Bölüm 2.I)
-2. **Haftalık sezon ligi v1** — anonim auth + takma ad; pazartesi herkes $1M ile başlar, cuma BIST kapanışında skor kilitlenir (günlük challenge yerine bu seçildi — canlı piyasada tek gün kısa/şanslı kalıyordu)
-3. **Tapu bekleme + rüşvet katmanı** — hiciv kimliği emlağın üstüne geri gelir
-4. **Paylaşım kartı** — lig sonucu → WhatsApp'a atılacak görsel
-5. **Araya serpme adayları** — TEFAS para piyasası fonu, Eurobond, haber/olay akışı (fiziki altın çeşitleri + VIOP/kaldıraç + KKM de değerlendirildi, sıraya girmedi)
+### Aktif Plan: Oyun Derinliği + Bağımlılık Katmanı (2026-07-03 karar, aynı gün pivot edildi)
+CANLI SEANS içinde veri doğruluğundan sonraki adım: oyunu geri-dönüş sebebi olan bir "oyun" yapmak. Süreç kuralı basit tutulacak — **küçük dilim → bitir → deploy → sonraki** (CLAUDE.md kanonları bu plan kapsamında esnetilebilir, bkz. memory `feedback_claudemd_esnek`).
 
-Bağımlılık mekaniği olarak **kasa + TAHSİL ET** (idle-game döngüsü) seçildi; günlük seri (streak) ve FOMO fırsat pencereleri değerlendirildi ama ertelendi.
+**Orijinal 5 adımlık sıra kesildi** (emlak bitince kullanıcı yön değiştirdi):
+1. ~~Emlak süper sade + kira kasası~~ — TAMAMLANDI (commit `b33d673`) ama sonra **GİZLENDİ** (commit `02df9fc`) — kullanıcı "canlıda görmek istemiyorum, sonra bakacağız" dedi. Kod/test SİLİNMEDİ, yalnız `+page.svelte`'deki `PropertyCard` mount kaldırıldı (geri açmak 2 satır).
+2. ~~Haftalık sezon ligi~~, 3. ~~Tapu/rüşvet~~, 4. ~~Paylaşım kartı~~, 5. ~~Araya serpme~~ — hepsi RAFA KALKTI, açıkça istenmeden dönülmeyecek.
+
+**Yeni aktif iş: Amerikan Borsası** (ABD hisseleri, yeni varlık sınıfı) — kullanıcı "en iyisi Amerikan borsası ekleyelim" dedi. Detaylı, uygulamaya hazır plan: **`.claude/plans/amerikan-borsasi.md`** (dosya yolları, fonksiyon imzaları, ~48 hisselik katalog önerisi, NYSE tatil tarihleri, DST-duyarlı seans saati mantığı — hepsi kod okunarak doğrulandı). Kullanıcı onayladı ama "token bitiyor, sonra devam" dedi — **UYGULAMA HENÜZ BAŞLAMADI**, yeni oturum doğrudan bu plan dosyasından TDD ile başlayabilir.
+
+Karar özeti (plan dosyasında detaylı): aranabilir hisse kataloğu (BIST100 arama kalıbı, sabit varsayılan yok), tam hassas NYSE seans saatleri (DST + 2026 tatil takvimi).
 
 ### Ara Faz: 52 Haftalık "Vasiyet Seferi" Kampanya Modu (v2.4.0)
 * **Tarihsel Kampanya:** Oyunun 365 günlük tycoon yapısını korumak amacıyla, Mayıs 2025 - Mayıs 2026 arasındaki 1 yıllık gerçek verileri ve haftalık gerçek haber başlıklarını ön-paketleyen statik veri modeli (`macroData.js`). 
@@ -182,6 +183,6 @@ Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzer
 ### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
 1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`).
 2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum.
-3. **Sıradaki adım:** Bölüm 4 "Aktif Plan" #2 — **Haftalık sezon ligi v1** (anonim auth + takma ad, pazartesi-cuma). Sonrasında #3 tapu/rüşvet, #4 paylaşım kartı, #5 araya serpme (TEFAS/Eurobond/haber akışı).
+3. **Sıradaki adım (ONAYLANDI, uygulama bekliyor):** `.claude/plans/amerikan-borsasi.md` — Amerikan Borsası (ABD hisseleri) yeni varlık sınıfı. Plan tam detaylı (dosya dosya kod değişikliği, imzalar, katalog/tatil verisi) — keşfe gerek yok, doğrudan TDD ile uygulamaya başla. Emlak dilimi (Bölüm 4'te not) gizli kaldı, dönülmeyecek.
 4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
