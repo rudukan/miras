@@ -21,7 +21,6 @@
 	import NetWorthMini from '$lib/components/NetWorthMini.svelte';
 	import WalletSummary from '$lib/components/WalletSummary.svelte';
 	import DepositCard from '$lib/components/DepositCard.svelte';
-	import PropertyCard from '$lib/components/PropertyCard.svelte';
 	import PriceList from '$lib/components/PriceList.svelte';
 	import TradePanel from '$lib/components/TradePanel.svelte';
 	import ContextCard from '$lib/components/ContextCard.svelte';
@@ -330,8 +329,6 @@
 						/>
 
 						<DepositCard {store} nowMs={nowMs} />
-
-						<PropertyCard {store} nowMs={nowMs} />
 
 						<DailyBreakdown rows={breakdown} />
 
