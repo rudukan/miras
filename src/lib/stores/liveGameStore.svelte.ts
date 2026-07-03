@@ -8,6 +8,9 @@ import {
   netWorthUsd as netWorthUsdFn,
   openDeposit,
   breakDeposit,
+  buyProperty,
+  sellProperty,
+  collectPropertyRent,
   STARTING_USD,
 } from './gameState';
 import type { LivePriceSource } from '../domain/fx/liveFx';
@@ -28,6 +31,7 @@ import type { SaveEnvelopeV1, SealedFx } from './savegame';
 import { istanbulParts } from '../domain/calendar/calendar';
 import { computeAllocation, upsertSnapshot, type DailySnapshot } from '../domain/snapshot/dailySnapshot';
 import { currentValueTry, type ActiveDeposit } from '../domain/deposit/deposit';
+import { accruedRentTry, type OwnedProperty } from '../domain/property/property';
 
 /** PriceList satırı — canlı katalog fiyatı + market-açık rozeti + günlük % değişim. */
 export interface PriceRow {
@@ -88,10 +92,14 @@ export interface LiveGameStore {
   readonly lastError: string | null;
   readonly history: DailySnapshot[];
   readonly deposit: ActiveDeposit | null;
+  readonly properties: OwnedProperty[];
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
   openDeposit(usdAmount: number): void;
   breakDeposit(): void;
+  buyProperty(propertyId: string): void;
+  sellProperty(propertyId: string): void;
+  collectRent(propertyId: string): void;
   assetUsdPrice(assetId: string): number | undefined;
   addBist(symbol: string): void;
   start(): Promise<void>;
@@ -196,11 +204,21 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   const depositUsd = $derived(
     game.deposit === null ? 0 : currentValueTry(game.deposit, now()).amount / sealedUsdTry(),
   );
+  // Emlak USD değeri: bedel (TL sabit) + kasadaki birikmiş kira, mühürlü kurdan.
+  const propertiesUsd = $derived.by<number>(() => {
+    let total = 0;
+    for (const p of game.properties) {
+      total += (p.priceTryAtBuy.amount + accruedRentTry(p, now()).amount) / sealedUsdTry();
+    }
+    return total;
+  });
   const netWorth = $derived.by<Money | null>(() => {
     try {
-      return usd(netWorthUsdFn(game, oracle).amount + depositUsd);
+      return usd(netWorthUsdFn(game, oracle).amount + depositUsd + propertiesUsd);
     } catch {
-      return game.deposit !== null ? usd(depositUsd) : null;
+      return game.deposit !== null || game.properties.length > 0
+        ? usd(depositUsd + propertiesUsd)
+        : null;
     }
   });
   // Mevduat açıkken bir holding fiyatı eksikse netWorth depositUsd'a düşer (null DEĞİL) —
@@ -290,6 +308,12 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   const openDepositAction = (usdAmount: number) =>
     apply(() => openDeposit(game, sealedUsdTry(), usdAmount, now()));
   const breakDepositAction = () => apply(() => breakDeposit(game, sealedUsdTry(), now()));
+  const buyPropertyAction = (propertyId: string) =>
+    apply(() => buyProperty(game, sealedUsdTry(), propertyId, now()));
+  const sellPropertyAction = (propertyId: string) =>
+    apply(() => sellProperty(game, sealedUsdTry(), propertyId, now()));
+  const collectRentAction = (propertyId: string) =>
+    apply(() => collectPropertyRent(game, sealedUsdTry(), propertyId, now()));
   /** Seçili varlığın USD fiyatı (TradePanel MAX + maliyet yankısı için); fiyat yoksa undefined. */
   function assetUsdPrice(assetId: string): number | undefined {
     try {
@@ -500,10 +524,16 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     get deposit() {
       return game.deposit;
     },
+    get properties() {
+      return game.properties;
+    },
     buy,
     sell,
     openDeposit: openDepositAction,
     breakDeposit: breakDepositAction,
+    buyProperty: buyPropertyAction,
+    sellProperty: sellPropertyAction,
+    collectRent: collectRentAction,
     assetUsdPrice,
     addBist,
     start,

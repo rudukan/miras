@@ -6,6 +6,8 @@ import { createClock, advanceDay, isFinished } from '../domain/time/clock';
 import type { UsdPriceOracle } from '../domain/fx/usdOracle';
 import type { ActiveDeposit } from '../domain/deposit/deposit';
 import { DEPOSIT_ANNUAL_RATE, isMatured, maturityNetValueTry } from '../domain/deposit/deposit';
+import type { OwnedProperty } from '../domain/property/property';
+import { propertyDef, collectRent, accruedRentTry } from '../domain/property/property';
 
 export const STARTING_USD = 1_000_000;
 
@@ -23,6 +25,7 @@ export interface GameState {
   usdBalance: Money;
   holdings: AssetHolding[];
   deposit: ActiveDeposit | null;
+  properties: OwnedProperty[];
   createdAt: number;
   updatedAt: number;
 }
@@ -41,6 +44,7 @@ export function createGameState(
     usdBalance: usd(STARTING_USD),
     holdings: [],
     deposit: null,
+    properties: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -153,4 +157,69 @@ export function breakDeposit(state: GameState, usdTry: number, nowMs: number): G
     : state.deposit.principalTry;
   const payoutUsd = usd(payoutTry.amount / usdTry);
   return { ...state, usdBalance: add(state.usdBalance, payoutUsd), deposit: null };
+}
+
+/** Emlak satın al: bedel USD nakitten kurla düşer, tapu anında geçer (süper sade dilim). */
+export function buyProperty(
+  state: GameState,
+  usdTry: number,
+  propertyId: string,
+  nowMs: number,
+): GameState {
+  if (usdTry <= 0) throw new Error('Invalid FX rate');
+  if (state.properties.some((p) => p.propertyId === propertyId))
+    throw new Error('Property already owned');
+  const def = propertyDef(propertyId); // bilinmeyen id -> throw
+  const usdCost = usd(def.priceTry.amount / usdTry);
+  if (!gte(state.usdBalance, usdCost)) throw new Error('Insufficient USD');
+  const owned: OwnedProperty = {
+    propertyId,
+    priceTryAtBuy: def.priceTry,
+    usdPaid: usdCost,
+    boughtAtMs: nowMs,
+    lastCollectedAtMs: nowMs,
+  };
+  return {
+    ...state,
+    usdBalance: subtract(state.usdBalance, usdCost),
+    properties: [...state.properties, owned],
+  };
+}
+
+/** Kira kasasını tahsil et: birikmiş TL kira kurla USD nakite geçer, kasa sıfırlanır. */
+export function collectPropertyRent(
+  state: GameState,
+  usdTry: number,
+  propertyId: string,
+  nowMs: number,
+): GameState {
+  if (usdTry <= 0) throw new Error('Invalid FX rate');
+  const owned = state.properties.find((p) => p.propertyId === propertyId);
+  if (!owned) throw new Error('Property not owned');
+  const { property, rentTry } = collectRent(owned, nowMs);
+  const rentUsd = usd(rentTry.amount / usdTry);
+  return {
+    ...state,
+    usdBalance: add(state.usdBalance, rentUsd),
+    properties: state.properties.map((p) => (p.propertyId === propertyId ? property : p)),
+  };
+}
+
+/** Emlak sat: alım bedeli (TL sabit) + kasadaki kira birlikte USD'ye döner. */
+export function sellProperty(
+  state: GameState,
+  usdTry: number,
+  propertyId: string,
+  nowMs: number,
+): GameState {
+  if (usdTry <= 0) throw new Error('Invalid FX rate');
+  const owned = state.properties.find((p) => p.propertyId === propertyId);
+  if (!owned) throw new Error('Property not owned');
+  const payoutTry = add(owned.priceTryAtBuy, accruedRentTry(owned, nowMs));
+  const payoutUsd = usd(payoutTry.amount / usdTry);
+  return {
+    ...state,
+    usdBalance: add(state.usdBalance, payoutUsd),
+    properties: state.properties.filter((p) => p.propertyId !== propertyId),
+  };
 }

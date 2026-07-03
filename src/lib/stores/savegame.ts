@@ -56,6 +56,12 @@ function reviveEnvelope(raw: SaveEnvelopeV1): SaveEnvelopeV1 {
             usdAtOpen: usd(raw.game.deposit.usdAtOpen.amount),
           }
         : null,
+      // Eski kayıtlarda alan yok → boş liste (sealedFx kalıbı, v bump gerekmez).
+      properties: (raw.game.properties ?? []).map((p) => ({
+        ...p,
+        priceTryAtBuy: tryM(p.priceTryAtBuy.amount),
+        usdPaid: usd(p.usdPaid.amount),
+      })),
     },
   };
 }

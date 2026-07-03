@@ -10,10 +10,14 @@ import {
   grewDollars,
   openDeposit,
   breakDeposit,
+  buyProperty,
+  sellProperty,
+  collectPropertyRent,
   STARTING_USD,
 } from './gameState';
 import { usd } from '../domain/money';
 import { TERM_DAYS, DEPOSIT_ANNUAL_RATE } from '../domain/deposit/deposit';
+import { accruedRentTry, vaultCapTry } from '../domain/property/property';
 import type { UsdPriceOracle } from '../domain/fx/usdOracle';
 
 // Sahte USD fiyat oracle'ı: sabit USD fiyatları (deterministik test).
@@ -41,6 +45,9 @@ describe('createGameState', () => {
   });
   it('boş portföy', () => {
     expect(s.holdings).toEqual([]);
+  });
+  it('boş emlak listesi', () => {
+    expect(s.properties).toEqual([]);
   });
   it('kimlik ve zaman alanları', () => {
     expect(s.playerId).toBe('player-1');
@@ -205,5 +212,73 @@ describe("mevduat reducer'ları", () => {
     const closed = breakDeposit(opened, 40, TERM_DAYS * DAY_MS);
     expect(closed.usdBalance.amount).toBeGreaterThan(1_000_000); // faiz eklendi
     expect(closed.deposit).toBeNull();
+  });
+});
+
+describe("emlak reducer'ları (kira kasası)", () => {
+  const HOUR_MS = 3_600_000;
+  const base = createGameState('canli', 1, 'p1', 0); // $1M nakit, properties []
+  const ARSA = 'arsa-ic-anadolu'; // ₺1.2M
+
+  it('buyProperty: bedel USD nakitten mühürlü kurla düşer, emlak listeye girer', () => {
+    const s = buyProperty(base, 40, ARSA, 1000);
+    expect(s.usdBalance.amount).toBeCloseTo(1_000_000 - 1_200_000 / 40, 2); // -$30,000
+    expect(s.properties).toHaveLength(1);
+    const p = s.properties[0];
+    expect(p.propertyId).toBe(ARSA);
+    expect(p.priceTryAtBuy).toEqual({ amount: 1_200_000, currency: 'TRY' });
+    expect(p.usdPaid.amount).toBeCloseTo(30_000, 2);
+    expect(p.boughtAtMs).toBe(1000);
+    expect(p.lastCollectedAtMs).toBe(1000); // kasa alım anından birikmeye başlar
+  });
+
+  it('buyProperty: aynı emlaktan ikincisi / bilinmeyen id / yetersiz bakiye / geçersiz kur → throw', () => {
+    const owned = buyProperty(base, 40, ARSA, 0);
+    expect(() => buyProperty(owned, 40, ARSA, 0)).toThrow('already owned');
+    expect(() => buyProperty(base, 40, 'yok-boyle', 0)).toThrow('Unknown property');
+    expect(() => buyProperty(base, 0.01, 'isletme-kadikoy-kafe', 0)).toThrow('Insufficient USD'); // ₺15M / 0.01 = $1.5Mrd
+    expect(() => buyProperty(base, 0, ARSA, 0)).toThrow('Invalid FX rate');
+  });
+
+  it('collectPropertyRent: kasadaki kira USD nakite geçer, kasa sıfırlanır', () => {
+    const s0 = buyProperty(base, 40, ARSA, 0);
+    const rentTl = accruedRentTry(s0.properties[0], 24 * HOUR_MS).amount;
+    const s1 = collectPropertyRent(s0, 40, ARSA, 24 * HOUR_MS);
+    // Money kuralı: USD'ye çevrim usd() ile 2 haneye yuvarlanır
+    expect(s1.usdBalance.amount).toBeCloseTo(s0.usdBalance.amount + usd(rentTl / 40).amount, 2);
+    expect(s1.properties[0].lastCollectedAtMs).toBe(24 * HOUR_MS);
+    expect(accruedRentTry(s1.properties[0], 24 * HOUR_MS).amount).toBe(0);
+  });
+
+  it('collectPropertyRent: sahip olunmayan emlak → throw', () => {
+    expect(() => collectPropertyRent(base, 40, ARSA, 0)).toThrow('not owned');
+  });
+
+  it('sellProperty: bedel + kasadaki kira USD olarak döner, emlak listeden çıkar', () => {
+    const s0 = buyProperty(base, 40, ARSA, 0);
+    const rentTl = accruedRentTry(s0.properties[0], 24 * HOUR_MS).amount;
+    const s1 = sellProperty(s0, 40, ARSA, 24 * HOUR_MS);
+    expect(s1.properties).toHaveLength(0);
+    expect(s1.usdBalance.amount).toBeCloseTo(
+      s0.usdBalance.amount + usd((1_200_000 + rentTl) / 40).amount,
+      2,
+    );
+  });
+
+  it('sellProperty: kur değişse de bedel TL sabit — düşen kurda USD karşılığı artar', () => {
+    const s0 = buyProperty(base, 40, ARSA, 0); // $30,000 ödendi
+    const s1 = sellProperty(s0, 30, ARSA, 0);  // TL değerlendi: ₺1.2M / 30 = $40,000
+    expect(s1.usdBalance.amount).toBeCloseTo(s0.usdBalance.amount + 40_000, 2);
+  });
+
+  it('sellProperty: sahip olunmayan emlak → throw', () => {
+    expect(() => sellProperty(base, 40, ARSA, 0)).toThrow('not owned');
+  });
+
+  it('kasa tavanı reducer üzerinden de görünür: uzun süre sonra tahsil = tavan', () => {
+    const s0 = buyProperty(base, 40, ARSA, 0);
+    const cap = vaultCapTry(s0.properties[0]).amount;
+    const s1 = collectPropertyRent(s0, 40, ARSA, 1000 * HOUR_MS);
+    expect(s1.usdBalance.amount).toBeCloseTo(s0.usdBalance.amount + cap / 40, 2);
   });
 });

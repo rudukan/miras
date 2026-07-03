@@ -164,6 +164,42 @@ describe('savegame', () => {
     });
   });
 
+  describe('emlak persistence', () => {
+    it('reviveEnvelope: properties Money alanlarını yeniden sarar (round2 + tip garantisi)', () => {
+      const storage = makeStorage();
+      const game = {
+        ...createGameState('canli', 1, 'p1', 0),
+        properties: [
+          {
+            propertyId: 'arsa-ic-anadolu',
+            priceTryAtBuy: { amount: 1_200_000.999, currency: 'TRY' as const },
+            usdPaid: { amount: 30_000.555, currency: 'USD' as const },
+            boughtAtMs: 123,
+            lastCollectedAtMs: 456,
+          },
+        ],
+      };
+      saveGame(storage, { v: 1, game, activeBist: [] });
+      const loaded = loadGame(storage);
+
+      expect(loaded?.game.properties[0].priceTryAtBuy).toEqual({
+        amount: 1_200_001,
+        currency: 'TRY',
+      });
+      expect(loaded?.game.properties[0].usdPaid).toEqual({ amount: 30_000.56, currency: 'USD' });
+      expect(loaded?.game.properties[0].lastCollectedAtMs).toBe(456);
+    });
+
+    it('loadGame: properties alanı olmayan eski kayıt → boş liste (kırılmaz)', () => {
+      const storage = makeStorage();
+      const game = { ...createGameState('canli', 1, 'p1', 0) } as Record<string, unknown>;
+      delete game.properties; // eski kayıt simülasyonu
+      storage.setItem('miras.save.v1', JSON.stringify({ v: 1, game, activeBist: [] }));
+
+      expect(loadGame(storage)?.game.properties).toEqual([]);
+    });
+  });
+
   describe('sealedFx persistence', () => {
     it('round-trip: sealedFx save → load korunur', () => {
       const storage = makeStorage();

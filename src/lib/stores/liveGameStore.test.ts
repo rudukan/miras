@@ -531,3 +531,60 @@ describe('createLiveGameStore (USD-taban)', () => {
     });
   });
 });
+
+describe('emlak (kira kasası) store entegrasyonu', () => {
+  const HOUR_MS = 3_600_000;
+  const ARSA = 'arsa-ic-anadolu'; // ₺1.2M, kur 40 → $30,000
+
+  it('buyProperty: nakit düşer, net servet korunur (bedel değer olarak geri gelir)', async () => {
+    const t = setup();
+    await t.store.start(); // poll: usdTry 40 taze → mühür 40
+    flushSync();
+    t.store.buyProperty(ARSA);
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.usdBalance.amount).toBeCloseTo(970_000, 2);
+    expect(t.store.game.properties).toHaveLength(1);
+    expect(t.store.netWorthUsd?.amount).toBeCloseTo(1_000_000, 0);
+  });
+
+  it('collectRent: 24 saat sonra kasadaki kira nakde geçer, net servet kasayı zaten sayıyordu', async () => {
+    let clock = FIXED_NOW;
+    const t = setup({ now: () => clock });
+    await t.store.start();
+    flushSync();
+    t.store.buyProperty(ARSA);
+    flushSync();
+
+    clock += 24 * HOUR_MS;
+    t.store.collectRent(ARSA);
+    flushSync();
+
+    const rentTl = 1_200_000 * 0.6 * (24 / (24 * 365)); // ≈ ₺1972.60
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.usdBalance.amount).toBeCloseTo(970_000 + rentTl / 40, 1);
+    // tahsil = kasadan nakde taşıma; net servet değişmez (kasa zaten sayılıyordu)
+    expect(t.store.netWorthUsd?.amount).toBeCloseTo(1_000_000 + rentTl / 40, 0);
+  });
+
+  it('sellProperty: bedel + kasa nakde döner, properties boşalır ve persist edilir', async () => {
+    const saved: SaveEnvelopeV1[] = [];
+    let clock = FIXED_NOW;
+    const t = setup({ now: () => clock, onPersist: (e: SaveEnvelopeV1) => saved.push(e) });
+    await t.store.start();
+    flushSync();
+    t.store.buyProperty(ARSA);
+    flushSync();
+    expect(saved[saved.length - 1].game.properties).toHaveLength(1);
+
+    clock += 24 * HOUR_MS;
+    t.store.sellProperty(ARSA);
+    flushSync();
+
+    const rentTl = 1_200_000 * 0.6 * (24 / (24 * 365));
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.properties).toHaveLength(0);
+    expect(t.store.game.usdBalance.amount).toBeCloseTo(1_000_000 + rentTl / 40, 1);
+    expect(saved[saved.length - 1].game.properties).toHaveLength(0);
+  });
+});
