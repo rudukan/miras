@@ -255,6 +255,36 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(pos?.avgCostUsd).toBeCloseTo(3, 2);
   });
 
+  it('12b) on-demand: addUs + fiyat gelince oto-takas buy çalışır (addBist ile mirror)', async () => {
+    const t = setup();
+    await t.store.start();
+    flushSync();
+    expect(t.store.prices.some((p) => p.id === 'AAPL')).toBe(false);
+
+    t.setYahoo({
+      value: { usdTry: 40, prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45, AAPL: 7600 } },
+      asOf: 222,
+      stale: false,
+    });
+    t.store.addUs('aapl');
+    await new Promise((r) => setTimeout(r, 0));
+    flushSync();
+
+    expect(t.fetchFn).toHaveBeenCalledWith('/api/yahoo?bist=THYAO,ASELS&us=AAPL');
+    const aapl = t.store.prices.find((p) => p.id === 'AAPL');
+    expect(aapl?.priceTry).toBe(7600);
+    expect(aapl?.category).toBe('us');
+
+    t.store.buy('AAPL', 10); // 7600 TRY / 40 = $190 → 10 × $190 = $1900
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'AAPL' && h.units === 10)).toBe(true);
+
+    const pos = t.store.positions.find((p) => p.assetId === 'AAPL');
+    expect(pos?.label).toBe('Apple');
+    expect(pos?.avgCostUsd).toBeCloseTo(190, 2);
+  });
+
   it('14) prices satırları USD karşılığını taşır (kripto kayıpsız, BIST = TRY/kur)', async () => {
     const t = setup();
     await t.store.start();
@@ -273,6 +303,14 @@ describe('createLiveGameStore (USD-taban)', () => {
     t.store.addBist('THYAO');
     flushSync();
     expect(t.store.prices.filter((p) => p.id === 'THYAO').length).toBe(1);
+  });
+
+  it('15b) addUs tekrarı yinelenmez (idempotent, addBist ile mirror)', async () => {
+    const t = setup();
+    await t.store.start();
+    t.store.addUs('AAPL');
+    flushSync();
+    expect(t.store.prices.filter((p) => p.id === 'AAPL').length).toBe(1);
   });
 
   it('16) hibrit: WS usdttry tick effectiveUsdTry\'ı günceller (Yahoo\'yu ezer)', async () => {
@@ -325,6 +363,11 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(onPersist).toHaveBeenLastCalledWith(
       expect.objectContaining({ activeBist: expect.arrayContaining(['GARAN']) }),
     );
+
+    t.store.addUs('aapl');
+    expect(onPersist).toHaveBeenLastCalledWith(
+      expect.objectContaining({ activeUs: expect.arrayContaining(['AAPL']) }),
+    );
   });
 
   it('20) restore: initial.game/activeBist kurulumda kullanılır, holding BIST sembolü activeBist\'te', async () => {
@@ -343,6 +386,44 @@ describe('createLiveGameStore (USD-taban)', () => {
     });
     expect(t.store.game.clock.day).toBe(5);
     expect(t.store.prices.some((p) => p.id === 'GARAN')).toBe(true);
+  });
+
+  it('20b) restore: initial.activeUs kurulumda kullanılır, holding US sembolü activeUs\'te (addBist mirror)', async () => {
+    const initialGame = {
+      playerId: 'p1',
+      scenarioId: 'canli' as const,
+      seed: 1,
+      clock: { day: 5, totalDays: 90, speed: 'realtime' as const, paused: false },
+      usdBalance: { amount: 998_100, currency: 'USD' as const },
+      holdings: [{ assetId: 'AAPL', units: 10, avgCost: { amount: 190, currency: 'USD' as const } }],
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    const t = setup({
+      initial: { v: 1, game: initialGame, activeUs: ['AAPL'] },
+    });
+    expect(t.store.prices.some((p) => p.id === 'AAPL' && p.category === 'us')).toBe(true);
+  });
+
+  it('20c) restore regresyonu: activeUs\'te olan US holding activeBist\'e sızıp satır ikilemez', async () => {
+    // AAPL CATALOG'da yok → isBistLikeId('AAPL') düzeltme olmadan true döner ve
+    // fromHoldings'e (dolayısıyla activeBist'e) kazayla eklerdi -> AAPL satırı iki kez basılırdı.
+    const initialGame = {
+      playerId: 'p1',
+      scenarioId: 'canli' as const,
+      seed: 1,
+      clock: { day: 5, totalDays: 90, speed: 'realtime' as const, paused: false },
+      usdBalance: { amount: 998_100, currency: 'USD' as const },
+      holdings: [{ assetId: 'AAPL', units: 10, avgCost: { amount: 190, currency: 'USD' as const } }],
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    const t = setup({
+      initial: { v: 1, game: initialGame, activeUs: ['AAPL'] },
+    });
+    const rows = t.store.prices.filter((p) => p.id === 'AAPL');
+    expect(rows.length).toBe(1);
+    expect(rows[0].category).toBe('us');
   });
 
   it("21) günlük snapshot: start() sonunda netWorth biliniyorsa history'ye upsert + onPersistHistory çağrılır", async () => {

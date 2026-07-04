@@ -19,6 +19,7 @@ import { isMarketOpen } from '../domain/calendar/calendar';
 import type { AssetCategory } from '../domain/scenario/types';
 import { CATALOG, CRYPTO_SYMBOLS, CRYPTO_SET, CORE_ASSETS, BIST_SYMBOLS } from '../catalog/liveAssets';
 import { bistName } from '../catalog/bist100';
+import { usStockName } from '../catalog/usStocks';
 import { fetchFxSnapshot } from '../api/fx';
 import {
   createBinanceFeed,
@@ -102,6 +103,7 @@ export interface LiveGameStore {
   collectRent(propertyId: string): void;
   assetUsdPrice(assetId: string): number | undefined;
   addBist(symbol: string): void;
+  addUs(symbol: string): void;
   start(): Promise<void>;
   stop(): void;
 }
@@ -115,13 +117,33 @@ function isBistLikeId(id: string): boolean {
   return meta === undefined || meta.category === 'bist';
 }
 
-/** activeBist restore birleşimi: katalog başlangıç hisseleri ∪ kayıtlı set ∪ holding'lerdeki BIST id'leri. */
+/** activeBist restore birleşimi: katalog başlangıç hisseleri ∪ kayıtlı set ∪ holding'lerdeki BIST id'leri.
+ *  US holding'leri (activeUs'te zaten izlenenler) HARİÇ TUTULUR — yoksa isBistLikeId CATALOG'da
+ *  olmayan her id'yi (US dahil) "BIST'miş gibi" sayıp aynı sembolü activeBist'e de sızdırır. */
 function computeInitialActiveBist(initial: SaveEnvelopeV1 | null): string[] {
   const fromSave = initial?.activeBist ?? [];
+  const savedUs = new Set(initial?.activeUs ?? []);
   const fromHoldings = (initial?.game.holdings ?? [])
     .map((h) => h.assetId)
-    .filter(isBistLikeId);
+    .filter((id) => isBistLikeId(id) && !savedUs.has(id));
   return Array.from(new Set([...BIST_SYMBOLS, ...fromSave, ...fromHoldings]));
+}
+
+/** activeUs restore: yalnız kayıtlı set — yeni özellik, eski/bozuk kayıt riski yok
+ *  (bir US holding'i hep kendi activeUs'uyla birlikte kaydedilmiş olacak). */
+function computeInitialActiveUs(initial: SaveEnvelopeV1 | null): string[] {
+  return initial?.activeUs ?? [];
+}
+
+/** Holding etiketi: CATALOG → BIST100 → US_STOCKS sırayla dener (positions'ta hangi
+ *  kataloğun sembolü olduğu bilinmez). bistName/usStockName bilinmeyende sembolün
+ *  kendisini döner, bu yüzden "değişmedi mi" testiyle bir sonraki kataloğa düşülür. */
+function holdingLabel(id: string): string {
+  const catalogLabel = CATALOG[id]?.label;
+  if (catalogLabel) return catalogLabel;
+  const bist = bistName(id);
+  if (bist !== id) return bist;
+  return usStockName(id);
 }
 
 /**
@@ -155,6 +177,8 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   // Dinamik aktif BIST seti — başlangıç = katalog başlangıç hisseleri ∪ kayıtlı set ∪ holding'lerdeki
   // BIST sembolleri (yoksa on-demand alınan hissenin fiyatı poll edilmez → oracle throw → netWorth null).
   let activeBist = $state<string[]>(computeInitialActiveBist(initial));
+  // Dinamik aktif ABD hisse seti — sabit varsayılan YOK (kullanıcı kararı: yalnız arama ile ekle).
+  let activeUs = $state<string[]>(computeInitialActiveUs(initial));
   // Hibrit USD/TRY: WS usdttry tick'i (birincil); yokken/stale'ken Yahoo'ya düşülür.
   let liveUsdTry = $state<number | undefined>(undefined);
   // Günlük kapanış geçmişi — pollFx sonunda netWorth biliniyorsa upsert edilir.
@@ -244,7 +268,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       }
       return {
         assetId: h.assetId,
-        label: CATALOG[h.assetId]?.label ?? bistName(h.assetId),
+        label: holdingLabel(h.assetId),
         units: h.units,
         avgCostUsd: h.avgCost.amount,
         priceUsd,
@@ -283,6 +307,20 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
         changePct: fxCache.change?.[sym],
       });
     }
+    // Aktif ABD hisseleri: tutulan/seçilen hisseler (canlı ?us= ile çekilir).
+    const usOpen = isMarketOpen('us', at);
+    for (const sym of activeUs) {
+      rows.push({
+        id: sym,
+        label: usStockName(sym),
+        category: 'us',
+        source: 'yahoo',
+        priceTry: fxCache.prices[sym],
+        priceUsd: assetUsdPrice(sym),
+        marketOpen: usOpen,
+        changePct: fxCache.change?.[sym],
+      });
+    }
     return rows;
   });
 
@@ -290,7 +328,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   // --- persistence ---
   function persist(): void {
-    opts.onPersist?.({ v: 1, game, activeBist, sealedFx: sealedFx ?? undefined });
+    opts.onPersist?.({ v: 1, game, activeBist, activeUs, sealedFx: sealedFx ?? undefined });
   }
 
   // --- yazma aksiyonları (guard → reducer → immutable reassign + updatedAt damga → hata yüzeyle) ---
@@ -329,6 +367,14 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     activeBist = [...activeBist, s];
     persist();
     if (started) void pollFx(); // anında fiyat çek (≤poll periyodu beklemeden)
+  };
+  // On-demand ABD hissesi: addBist ile birebir aynı gövde, activeUs setine ekler.
+  const addUs = (symbol: string) => {
+    const s = symbol.trim().toUpperCase();
+    if (s === '' || activeUs.includes(s)) return;
+    activeUs = [...activeUs, s];
+    persist();
+    if (started) void pollFx();
   };
 
   // --- canlı veri yaşam döngüsü ---
@@ -383,7 +429,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   async function pollFx(): Promise<void> {
     try {
-      const snap = await fetchFxSnapshot({ bist: [...activeBist], fetchFn });
+      const snap = await fetchFxSnapshot({ bist: [...activeBist], us: [...activeUs], fetchFn });
       // fix-A: stale snapshot (fallback) son-gerçek fiyatı EZMESİN — yalnız taze veride güncelle.
       if (!snap.stale) {
         fxCache = snap.value;
@@ -536,6 +582,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     collectRent: collectRentAction,
     assetUsdPrice,
     addBist,
+    addUs,
     start,
     stop,
   };
