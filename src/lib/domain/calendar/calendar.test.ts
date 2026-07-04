@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { istanbulParts, isHoliday, isMarketOpen, nextMarketOpen } from './calendar';
+import { istanbulParts, isHoliday, isMarketOpen, nextMarketOpen, newYorkParts } from './calendar';
 
 describe('istanbulParts', () => {
   it('Europe/Istanbul yerel tarih anahtarı üretir (YYYY-MM-DD)', () => {
@@ -61,6 +61,50 @@ describe('isMarketOpen', () => {
   });
   it('BIST resmî tatilde kapalı (saat uygun olsa bile)', () => {
     expect(isMarketOpen('bist', new Date('2026-04-23T12:00:00+03:00'))).toBe(false);
+  });
+});
+
+describe('newYorkParts', () => {
+  it('America/New_York yerel tarih anahtarı üretir', () => {
+    // 2026-01-06 10:00 NY (EST donemi, UTC-5)
+    const p = newYorkParts(new Date('2026-01-06T10:00:00-05:00'));
+    expect(p.key).toBe('2026-01-06');
+    expect(p.hour).toBe(10);
+    expect(p.minute).toBe(0);
+  });
+});
+
+describe('isMarketOpen — us (NYSE)', () => {
+  it('hafta içi 9:30–16:00 NY arası açık', () => {
+    expect(isMarketOpen('us', new Date('2026-01-06T10:00:00-05:00'))).toBe(true); // Salı 10:00 EST
+  });
+  it('açılış öncesi (9:29) kapalı', () => {
+    expect(isMarketOpen('us', new Date('2026-01-06T09:29:00-05:00'))).toBe(false);
+  });
+  it('açılış anı (9:30) dahil açık', () => {
+    expect(isMarketOpen('us', new Date('2026-01-06T09:30:00-05:00'))).toBe(true);
+  });
+  it('kapanış (16:00) ve sonrası kapalı', () => {
+    expect(isMarketOpen('us', new Date('2026-01-06T16:00:00-05:00'))).toBe(false);
+  });
+  it('hafta sonu kapalı', () => {
+    expect(isMarketOpen('us', new Date('2026-01-10T10:00:00-05:00'))).toBe(false); // Cumartesi
+  });
+  it('NYSE resmî tatilinde kapalı (Şükran Günü)', () => {
+    expect(isMarketOpen('us', new Date('2026-11-26T10:00:00-05:00'))).toBe(false);
+  });
+  it('TR tatili ama NYSE tatili DEĞİL -> açık (takvimler bağımsız)', () => {
+    expect(isMarketOpen('us', new Date('2026-04-23T10:00:00-04:00'))).toBe(true); // EDT dönemi
+  });
+  it('DST kanıtı: aynı NY-yerel 10:00 FARKLI UTC saatlerinde gerçekleşir, newYorkParts ikisini de 10 okur', () => {
+    const jan = new Date('2026-01-06T10:00:00-05:00'); // EST dönemi
+    const jul = new Date('2026-07-07T10:00:00-04:00'); // EDT dönemi
+    expect(jan.getUTCHours()).toBe(15); // 10:00 EST = 15:00 UTC
+    expect(jul.getUTCHours()).toBe(14); // 10:00 EDT = 14:00 UTC — farklı UTC anı, aynı NY yerel saat
+    expect(newYorkParts(jan).hour).toBe(10);
+    expect(newYorkParts(jul).hour).toBe(10);
+    expect(isMarketOpen('us', jan)).toBe(true);
+    expect(isMarketOpen('us', jul)).toBe(true);
   });
 });
 
