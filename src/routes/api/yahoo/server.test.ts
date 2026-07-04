@@ -16,6 +16,7 @@ function routedFetch() {
     if (url.includes('GC=F')) return okJson(yahooBody(3110.34768, 3000)); // ons altın USD -> /31.1034768 = 100 USD/gram
     if (url.includes('SI=F')) return okJson(yahooBody(31.1034768));       // ons gümüş USD -> 1 USD/gram (prevClose yok)
     if (url.includes('THYAO.IS')) return okJson(yahooBody(300, 240));     // +25%
+    if (url.includes('AAPL')) return okJson(yahooBody(190, 180));         // ABD hissesi, soneksiz, +5.56%
     return okJson(yahooBody(1));
   }) as unknown as typeof fetch;
 }
@@ -52,7 +53,7 @@ describe('fetchYahooQuote', () => {
 
 describe('fetchFxValue (birleşik TRY snapshot)', () => {
   it('BIST(TRY) + gram altın/gümüş(TRY) + EUR(TRY) + usdTry üretir', async () => {
-    const v = await fetchFxValue(['THYAO'], routedFetch());
+    const v = await fetchFxValue(['THYAO'], [], routedFetch());
     expect(v.usdTry).toBe(40);
     expect(v.prices.THYAO).toBe(300);
     expect(v.prices.XAUGRAM).toBe(4000); // 100 USD/gram × 40
@@ -61,7 +62,7 @@ describe('fetchFxValue (birleşik TRY snapshot)', () => {
   });
 
   it('change haritası: previousClose olan semboller için günlük % döner', async () => {
-    const v = await fetchFxValue(['THYAO'], routedFetch());
+    const v = await fetchFxValue(['THYAO'], [], routedFetch());
     expect(v.change?.THYAO).toBe(25);                // (300-240)/240*100
     expect(v.change?.XAUGRAM).toBeCloseTo(3.69, 1);  // (3110.35-3000)/3000*100
     expect(v.change?.XAGGRAM).toBeUndefined();        // prevClose yok → atlanır
@@ -79,7 +80,7 @@ describe('fetchFxValue (birleşik TRY snapshot)', () => {
       return okJson(yahooBody(1));
     }) as unknown as typeof fetch;
 
-    const v = await fetchFxValue(['THYAO', 'ZZZZ'], f);
+    const v = await fetchFxValue(['THYAO', 'ZZZZ'], [], f);
     expect(v.prices.THYAO).toBe(300);   // sağlam sembol geldi
     expect(v.prices.ZZZZ).toBeUndefined(); // hatalı sembol atlandı
     expect(v.usdTry).toBe(40);          // çekirdek korundu
@@ -91,7 +92,7 @@ describe('fetchFxValue (birleşik TRY snapshot)', () => {
       if (url.includes('USDTRY=X')) return Promise.resolve({ ok: false, status: 503 } as Response);
       return okJson(yahooBody(1));
     }) as unknown as typeof fetch;
-    await expect(fetchFxValue(['THYAO'], f)).rejects.toThrow();
+    await expect(fetchFxValue(['THYAO'], [], f)).rejects.toThrow();
   });
 
   it('EUR (EURTRY=X) hatası snapshot\'ı patlatmaz — EUR atlanır, gerisi gelir', async () => {
@@ -103,10 +104,33 @@ describe('fetchFxValue (birleşik TRY snapshot)', () => {
       if (url.includes('THYAO.IS')) return okJson(yahooBody(300, 240));
       return okJson(yahooBody(1));
     }) as unknown as typeof fetch;
-    const v = await fetchFxValue(['THYAO'], f);
+    const v = await fetchFxValue(['THYAO'], [], f);
     expect(v.prices.EUR).toBeUndefined();  // EUR atlandı
     expect(v.usdTry).toBe(40);             // çekirdek ayakta
     expect(v.prices.THYAO).toBe(300);
+  });
+
+  it('ABD hissesi (soneksiz) USD fiyatını usdTry ile TRY\'ye çevirir', async () => {
+    const v = await fetchFxValue([], ['AAPL'], routedFetch());
+    expect(v.prices.AAPL).toBe(7600); // 190 USD × 40 usdTry
+    expect(v.change?.AAPL).toBeCloseTo(5.56, 1); // (190-180)/180*100
+  });
+
+  it('geçersiz US sembolü tüm snapshot\'ı düşürmez — atlanır, diğerleri gelir', async () => {
+    const f = vi.fn((url: string) => {
+      if (url.includes('USDTRY=X')) return okJson(yahooBody(40));
+      if (url.includes('EURTRY=X')) return okJson(yahooBody(80));
+      if (url.includes('GC=F')) return okJson(yahooBody(3110.34768, 3000));
+      if (url.includes('SI=F')) return okJson(yahooBody(31.1034768));
+      if (url.includes('AAPL')) return okJson(yahooBody(190, 180));
+      if (url.includes('ZZZZ')) return Promise.resolve({ ok: false, status: 404 } as Response);
+      return okJson(yahooBody(1));
+    }) as unknown as typeof fetch;
+
+    const v = await fetchFxValue([], ['AAPL', 'ZZZZ'], f);
+    expect(v.prices.AAPL).toBe(7600);   // sağlam sembol geldi
+    expect(v.prices.ZZZZ).toBeUndefined(); // hatalı sembol atlandı
+    expect(v.usdTry).toBe(40);          // çekirdek korundu
   });
 });
 
@@ -120,6 +144,19 @@ describe('GET /api/yahoo', () => {
       expect(body.stale).toBe(false);
       expect(body.value.prices.THYAO).toBe(300);
       expect(typeof body.asOf).toBe('number');
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  it('?us= verildiğinde Cached<FxValue> zarfı döner', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = routedFetch();
+    try {
+      const res = await GET({ url: new URL('http://localhost/api/yahoo?us=AAPL') } as any);
+      const body = await res.json();
+      expect(body.stale).toBe(false);
+      expect(body.value.prices.AAPL).toBe(7600);
     } finally {
       globalThis.fetch = real;
     }

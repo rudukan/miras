@@ -58,10 +58,14 @@ export async function fetchYahooPrice(symbol: string, fetchFn: typeof fetch): Pr
   return (await fetchYahooQuote(symbol, fetchFn)).price;
 }
 
-/** BIST(TRY) + gram altın/gümüş(TRY) + EUR(TRY) + USD/TRY'yi tek snapshot'ta birleştirir.
+/** BIST(TRY) + ABD hisseleri(TRY) + gram altın/gümüş(TRY) + EUR(TRY) + USD/TRY'yi tek snapshot'ta birleştirir.
  *  usdTry = Yahoo USDTRY=X (atomik çekirdek). EUR = Yahoo EURTRY=X (dayanıklı).
  *  Herhangi bir çekirdek (usdTry/metal) çağrısı patlarsa snapshot patlar (cache fallback'e düşer). */
-export async function fetchFxValue(bist: readonly string[], fetchFn: typeof fetch): Promise<FxValue> {
+export async function fetchFxValue(
+  bist: readonly string[],
+  us: readonly string[],
+  fetchFn: typeof fetch,
+): Promise<FxValue> {
   const usdQuote = await fetchYahooQuote('USDTRY=X', fetchFn); // atomik çekirdek (THE parite)
   const usdTry = usdQuote.price;
   const prices: Record<string, number> = {};
@@ -76,6 +80,20 @@ export async function fetchFxValue(bist: readonly string[], fetchFn: typeof fetc
         if (q.changePct !== undefined) change[sym] = q.changePct;
       } catch (err) {
         console.warn(`[yahooSource] BIST ${sym} atlandı:`, err instanceof Error ? err.message : err);
+      }
+    }),
+  );
+
+  // ABD hisseleri soneksiz (BIST'in aksine); USD fiyat çekilir, usdTry ile TRY'ye çevrilir
+  // (altın/gümüşle birebir kalıp). Sembol-bazında dayanıklı: BIST döngüsüyle aynı izolasyon.
+  await Promise.all(
+    us.map(async (sym) => {
+      try {
+        const q = await fetchYahooQuote(sym, fetchFn);
+        prices[sym] = round2(q.price * usdTry);
+        if (q.changePct !== undefined) change[sym] = q.changePct;
+      } catch (err) {
+        console.warn(`[yahooSource] US ${sym} atlandı:`, err instanceof Error ? err.message : err);
       }
     }),
   );
