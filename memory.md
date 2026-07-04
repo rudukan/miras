@@ -156,27 +156,29 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-04 — 2. oturum, tasarım)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-04 — 3. oturum, SP0 uygulama)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show fcaf7c6:memory.md`).
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show be04437:memory.md`).
 
 ### A. Bu Oturumda Tamamlananlar
-Tamamen tasarım/plan oturumu — kod yazılmadı, tüm commit'ler docs:
-1. **Çok kullanıcılı yayın brainstorm'u:** "Register olunabilen, domainli gerçek oyun" hedefi için kritik kararlar tek tek netleştirildi: skor yarışı (realtime yok) → haftalık lig, CANLI SEANS = lig → Google + anonim misafir → orta hile koruması (sunucu damgalı fiyat + replay) → Supabase Pro + Vercel Pro → launch içeriği: Amerikan Borsası + paylaşım kartı (emlak kapalı). Kullanıcı iki önemli açık yakaladı: "grant olayını düşündük mü" → GRANT+RLS çift katman yetkilendirme matrisi; "Cuma 18:15 mantıklı mı, Amerikan borsası var" → kilit Cuma NYSE kapanışına taşındı (DST-duyarlı, ABD tatil cumasında BIST 18:15).
-2. **Onaylı spec:** `docs/superpowers/specs/2026-07-04-cok-kullanicili-yayin-design.md` (`117f2ce` + `dce246e`). Güvenlik birinci sınıf bölüm ("olabilecek en güvenli" istendi): tehdit modeli, httpOnly cookie/PKCE, `getUser()` kuralı, Turnstile, KVKK yurt dışı aktarım beyanı. Düzeltilen bilgi: Supabase Free'de otomatik yedek YOK (bir önceki mesajda yanlış söylenmişti) — Pro'nun asıl gerekçesi yedek + pause'suz çalışma.
-3. **SP1 uygulama planı:** `docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md` (`fd9d537`, 1048 satır, 10 task, tam kodlu — Sonnet keşifsiz yürütür). SP2 planı BİLİNÇLİ ertelendi: SP0+SP1 merge olmadan yazılırsa koda değil plana referans verir, çürür.
-4. **Verimlilik anlaşması:** Uygulama Sonnet'te, plan/güvenlik-review güçlü modelde, dilim başına bir oturum, dekoratif agent (ceo/PO/cmo) varsayılan spawn edilmeyecek (auto-memory: `feedback_model_oturum_ekonomisi`). Kullanıcı aksiyonu bekleyen: Connectors'tan Netlify/Figma/Gmail/Takvim'i bu proje için kapatmak; boş oturumda `/fewer-permission-prompts`.
+1. **SP0 Amerikan Borsası uygulandı ve prod'a çıktı.** `.claude/plans/amerikan-borsasi.md`'deki 12 dosyalık plan Sonnet oturumunda TDD ile baştan sona yürütüldü (11 commit, `eaa024e`..`42150cc`), 438/438 test yeşil, `svelte-check` 0 hata. Plan'ın öngörmediği 2 bug bulunup düzeltildi: (1) `computeInitialActiveBist` bir US holding'ini BIST'e sızdırıyordu (isBistLikeId CATALOG'da olmayan her id'yi BIST sayıyordu) → activeUs'teki id'ler hariç tutuldu; (2) `positions` derived'da US holding etiketi sembolün kendisine düşüyordu → `holdingLabel()` (CATALOG→BIST100→US_STOCKS) eklendi. Gerçek tarayıcıda uçtan uca doğrulandı: arama→ekle→gerçek canlı AAPL fiyatı→al (net servet korunuyor)→yenile→kalıcılık sağlam. Vercel prod deploy READY + 0 runtime error.
+2. **Kullanıcı raporu: "tüm amerikan borsası yok galiba" → tanı workflow'u (4 paralel ajan) → kök neden bulundu.** Kod prod'da gerçekten vardı (fetch ile doğrulandı, Vercel alias doğruydu) — sorun `activeUs`'un sabit varsayılan taşımaması + boş durumda "Sonuç bulunamadı" mesajının başarısız aramayla ayırt edilemez olmasıydı (özellik var ama keşfedilemiyordu). Düzeltme: "ABD BORSASI" sekmesi boşken "Henüz ABD hissesi eklemedin — ör. AAPL, Tesla, Microsoft yaz ve ekle" ipucu (commit `fdc756e`, prod'da READY, 0 runtime error).
+3. **Kullanıcı asıl demek istediğini netleştirdi: "vertiv (VRT) gibi bazı hisseler yok"** — yani özellik değil, statik 48'lik kataloğun KAPSAMI eksik (ABD borsasında binlerce hisse var). Yahoo Finance'in canlı arama API'si (`query1.finance.yahoo.com/v1/finance/search?q=...`) curl ile doğrulandı — VRT'yi doğru buluyor (NYSE, Vertiv Holdings Co). **AÇIK KARAR (kullanıcı henüz seçmedi, "kaydedelim sonra devam ederiz" dedi):** statik listeyi genişletmek (hızlı, kalıcı değil) mi, yoksa Yahoo canlı arama API'sine bağlanıp gerçek kapsamlı arama kurmak (biraz daha iş, kalıcı çözüm — BIST'teki gibi bir daha "bu hisse yok" şikayeti gelmez) mi?
 
-### B. Blokerler & Paralel İşler
+### B. Operasyonel Ders (yeni)
+Bu proje aynı anda birden fazla oturumda/pencerede açık olabiliyor ve `npm run dev` port 5173'ü paylaşıyor. `.claude/launch.json`'a `autoPort:true` eklendi (port çakışmasında otomatik farklı port). **Dikkat:** aynı origin'i paylaşan iki tarayıcı sekmesi AYNI localStorage'ı paylaşır — kullanıcı canlı test ederken otomasyonla `localStorage.clear()`/`location.reload()` çağırmak onun oturumunu bozar. Bu oturumda böyle bir çakışma yaşandı (kullanıcının INTC/AAPL test alımları benim otomasyonumla karıştı) — fark edilince otomasyon durduruldu, doğrulama sunulan bundle'ı `curl` ile grep'lemeye kaydırıldı (DOM'a dokunmadan).
+
+### C. Blokerler & Paralel İşler
 - **Supabase Pro satın alımı** ("yakında") → SP1'in tetiği. Alınınca ilk iş SP1 planındaki Task 0 (proje kurulumu eu-central-1, Google OAuth client, Turnstile) — kullanıcı aksiyonları.
 - **Domain ismi yok** → SP3a: aday çalışması + müsaitlik kontrolü; Google OAuth consent prod'unun ön koşulu.
+- **ABD hisse kataloğu kapsam kararı** (yukarı A.3) — sonraki oturumun ilk işi bu kararı almak.
 
-### C. Değişiklik Geçmişi
+### D. Değişiklik Geçmişi
 Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz, rutin "s" akışında dokunulmaz).
 
-### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
-1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`).
+### E. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
+1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`, port doluysa autoPort farklı port verir).
 2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum.
-3. **Sıradaki adım: SP0 — Amerikan Borsası.** Sonnet oturumunda tek cümle yeter: "SP0'ı uygula — `.claude/plans/amerikan-borsasi.md`" (keşif gerekmez, doğrudan TDD). Büyük çerçeve: Bölüm 4 ANA PLAN + onaylı spec. Supabase Pro alınınca: SP1 (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`, önce Task 0). Emlak gizli kaldı, açıkça istenmeden dönülmeyecek.
+3. **Sıradaki adım: ABD hisse kataloğu kapsam kararı (yukarı A.3).** Kullanıcıya sor: "canlı arama" (Yahoo search API, kalıcı) mı "liste genişlet" (hızlı yama) mı? Karar netleşince uygula. Ardından: Supabase Pro alınınca SP1 (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`, önce Task 0); SP3a (domain+KVKK) paralel başlanabilir. Emlak gizli kaldı, açıkça istenmeden dönülmeyecek.
 4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
