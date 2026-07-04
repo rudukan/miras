@@ -18,6 +18,8 @@ export interface SaveEnvelopeV1 {
   activeBist: string[];
   /** Opsiyonel — eski kayıtlarda yok (undefined → store ilk poll'da mühürler). */
   sealedFx?: SealedFx;
+  /** Opsiyonel — eski kayıtlarda yok (undefined → store boş dizi varsayar, sabit varsayılan YOK). */
+  activeUs?: string[];
 }
 
 export function saveGame(storage: Storage, envelope: SaveEnvelopeV1): void {
