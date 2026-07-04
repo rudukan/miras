@@ -44,6 +44,12 @@
 
 	const groups = $derived(groupByCategory(visible));
 
+	// ABD Borsası sabit varsayılan taşımıyor (yalnız arama ile eklenir) — bu yüzden ilk
+	// açılışta "ABD BORSASI" sekmesi hep boş görünür ve jenerik "Sonuç bulunamadı" mesajı
+	// "özellik yok" gibi okunuyordu. Bu durumu ayırt edip yönlendirici ipucu gösteriyoruz.
+	const hasAnyUs = $derived(prices.some((p) => p.category === 'us'));
+	const showUsEmptyHint = $derived(tab === 'us' && !searching && !hasAnyUs);
+
 	// Arama yapılınca: BIST100'den eşleşip henüz aktif sette OLMAYAN semboller ("eklenebilir").
 	const addableBist = $derived.by(() => {
 		if (!searching) return [];
@@ -101,7 +107,14 @@
 
 	<!-- Liste: her durumda gruplu (tek render yolu) -->
 	<div class="flex-1 overflow-y-auto">
-		{#if groups.length === 0 && addableBist.length === 0 && addableUs.length === 0}
+		{#if showUsEmptyHint}
+			<div class="px-4 py-6 text-center">
+				<div class="text-term-text text-xs mb-1.5">Henüz ABD hissesi eklemedin</div>
+				<div class="text-term-text opacity-50 text-[11px] leading-relaxed">
+					Yukarıdaki arama kutusuna şirket adı veya sembol yaz<br />(ör. AAPL, Tesla, Microsoft) ve listeden ekle.
+				</div>
+			</div>
+		{:else if groups.length === 0 && addableBist.length === 0 && addableUs.length === 0}
 			<div class="px-3 py-4 text-term-text opacity-40 italic text-center">
 				Sonuç bulunamadı
 			</div>
