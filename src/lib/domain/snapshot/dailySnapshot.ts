@@ -84,6 +84,7 @@ export function changeSince(current: DailySnapshot, previous: DailySnapshot | nu
 const STRATEGY_BADGES: Record<AllocationKey, string> = {
   crypto: "Kripto'cu",
   bist: 'Borsacı',
+  us: 'Amerikancı',
   commodity: 'Altıncı',
   fx: 'Dövizci',
   usd: 'Nakitçi',
@@ -91,7 +92,7 @@ const STRATEGY_BADGES: Record<AllocationKey, string> = {
 };
 
 /** Eşitlikte sabit öncelik sırası (kripto en "renkli" anlatı → önce). */
-const BADGE_PRIORITY: ReadonlyArray<AllocationKey> = ['crypto', 'bist', 'commodity', 'fx', 'deposit', 'usd'];
+const BADGE_PRIORITY: ReadonlyArray<AllocationKey> = ['crypto', 'bist', 'us', 'commodity', 'fx', 'deposit', 'usd'];
 
 /** En büyük pay ≥%50 → o kategorinin rozeti; aksi halde "Temkinli". */
 export function strategyBadge(allocation: Partial<Record<AllocationKey, number>>): string {

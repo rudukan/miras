@@ -1,6 +1,6 @@
 import type { GameMode } from '../types';
 
-export type AssetCategory = 'bist' | 'crypto' | 'commodity' | 'fx';
+export type AssetCategory = 'bist' | 'crypto' | 'commodity' | 'fx' | 'us';
 
 export interface AssetSeed {
   readonly id: string;           // 'THYAO' | 'BTC' | 'XAUGRAM' | 'EUR'

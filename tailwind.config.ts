@@ -19,6 +19,7 @@ export default {
 					amber: '#f59e0b',
 					blue: '#00e1ff',
 					violet: '#a855f7',
+					indigo: '#6366f1',
 					text: '#a3b8cc'
 				}
 			},

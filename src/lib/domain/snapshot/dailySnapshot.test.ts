@@ -155,6 +155,7 @@ describe('strategyBadge', () => {
     expect(strategyBadge({ commodity: 70 })).toBe('Altıncı');
     expect(strategyBadge({ fx: 80 })).toBe('Dövizci');
     expect(strategyBadge({ usd: 100 })).toBe('Nakitçi');
+    expect(strategyBadge({ us: 60 })).toBe('Amerikancı');
   });
 });
 
