@@ -157,25 +157,20 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-03)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-04)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show f65bc36:memory.md`).
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show 63d5bdf:memory.md`).
 
 ### A. Bu Oturumda Tamamlananlar
-1. **Genel sağlık kontrolü:** `npm run test` (391/391), `npm run check` (0/0), `npm run build` + Vercel `get_runtime_errors` taraması (7 gün). Tek gerçek eksik bulundu: `/favicon.png` prod'da 404 (11 Haziran'dan beri, 18 istek/11 kullanıcı) — önceki favicon fix'i yalnız SVG'ye geçmişti; PNG isteyenler (eski cache + bot'lar) ve iOS Safari (SVG desteklemiyor) karşılıksız kalıyordu. 180×180 PNG üretildi (System.Drawing, SVG tasarımıyla birebir), `apple-touch-icon` linki eklendi. Commit `e9fbfaa`, prod'da 200 doğrulandı.
-2. **Ürün değerlendirmesi:** Eksiklikler + yeni yatırım araçları (TEFAS, Eurobond, altın çeşitleri, VIOP/kaldıraç, KKM) + scoreboard fikri masaya yattı. Sonuç: emlak portu en yüksek öncelik (tasarım zaten legacy'de hazır), scoreboard büyüme motoru olarak güçlü ama önce karar-yüzeyi derinliği (emlak/olaylar) gerekiyor.
-3. **Süreç kararı:** CLAUDE.md kanonları bu çalışma akışında **esnetilebilir** kabul edildi (kullanıcı açık onayı — bkz. memory `feedback_claudemd_esnek`). Basit süreç: küçük dilim → bitir → deploy → sonraki.
-4. **Bağımlılık mekaniği kararı:** Kullanıcı özellikle "bağımlılık yapıcı özellik" istedi. 3 seçenek sunuldu (kasa+TAHSİL ET / günlük seri / FOMO pencereleri) — **kasa+TAHSİL ET** seçildi (idle-game döngüsü, emlak dilimine bedavaya gömülüyordu).
-5. **Dilim 1 uygulandı ve deploy edildi — Süper sade emlak + kira kasası:**
-   - 3 emlak (İç Anadolu Tarım Arazisi ₺1.2M, İstanbul 1+1 Daire ₺4.5M, Kadıköy Butik Kafe ₺15M), tapu anında geçer, rüşvet/vergi bu dilimde yok.
-   - Kira **kasaya** birikir (saniyelik, zaman-damgası tabanlı → offline da işler), kasa 48 saatlik kira dolunca DURUR (amber "KASA DOLDU" uyarısı) — TAHSİL ET ile boşalt. SAT: bedel (TL sabit) + kasa birlikte USD'ye.
-   - Yeni: `src/lib/domain/property/property.ts` (+test, deposit.ts kalıbı). Değişen: `gameState.ts` (buyProperty/sellProperty/collectPropertyRent), `savegame.ts` (properties revive, eski kayıt kırılmaz), `liveGameStore.svelte.ts` (propertiesUsd → netWorth), `PropertyCard.svelte` (yeni panel, DepositCard şablonu), `+page.svelte` (mount).
-   - TDD ile 24 yeni test (415/415 toplam yeşil), `svelte-check` 0/0, build temiz. Tarayıcıda uçtan uca doğrulandı: satın al → nakit düşer, kasa saniyelik birikir (matematik doğrulandı), TAHSİL ET → nakde geçer, sayfa yenile → restore + offline birikim çalışıyor.
-   - Commit `b33d673`, push'landı, Vercel prod READY.
-6. Plan dosyası: `C:\Users\Test\.claude\plans\bu-arada-claude-md-esnetilebilir-bright-kazoo.md` (5 adımlık yol haritası, bkz. Bölüm 4 "Aktif Plan").
+Uzun, tek oturum — favicon fix'ten Amerikan Borsası planına kadar. Kronolojik:
+1. **Genel sağlık kontrolü + favicon fix:** Test/check/build + Vercel hata taraması → `/favicon.png` 404 bulundu, düzeltildi (180×180 PNG + apple-touch-icon). Commit `e9fbfaa`, prod'da doğrulandı.
+2. **Ürün değerlendirmesi:** Eksiklikler + yatırım araçları (TEFAS/Eurobond/vb.) + scoreboard konuşuldu → emlak portu öncelikli çıktı.
+3. **Süreç kararı:** CLAUDE.md kanonları esnetilebilir kabul edildi (bkz. `feedback_claudemd_esnek`). Bağımlılık mekaniği: kasa+TAHSİL ET seçildi (3 seçenekten).
+4. **Emlak dilimi uygulandı, deploy edildi, SONRA GİZLENDİ:** Süper sade emlak (3 emlak, kira kasası, 48 saat tavan) TDD ile yazıldı, 415/415 test yeşil, prod'a çıktı (`b33d673`). Kullanıcı hemen ardından fikir değiştirdi: **"canlıda görmek istemiyorum, sonra bakacağız"** — `+page.svelte`'den `PropertyCard` mount'u kaldırıldı (`02df9fc`). Kod/domain/testler SİLİNMEDİ, yalnız UI'dan gizli; geri açmak 2 satır.
+5. **Pivot: Amerikan Borsası (ABD hisseleri) — yeni aktif iş.** Kullanıcı "en iyisi Amerikan borsası ekleyelim" dedi. Kod tabanı incelendi (Yahoo proxy zaten ABD tikerlarını destekliyor, altın/gümüşle aynı "USD çek→TRY'ye çevir" kalıbı doğrudan uygulanabilir). İki karar soruldu ve netleşti: **aranabilir hisse kataloğu** (BIST100 arama kalıbı, sabit varsayılan yok) + **tam hassas NYSE seans saatleri** (DST-duyarlı + 2026 tatil takvimi). Kullanıcı "token bitiyor, planı kaydedip sonra devam edelim" dedi — **uygulama BAŞLAMADI**, onun yerine tüm mimari kararları + dosya-dosya değişiklik listesini içeren uygulamaya-hazır plan yazıldı: **`.claude/plans/amerikan-borsasi.md`**. Commit `9fcb5ec`.
 
 ### B. Yakın Dönem Sinyaller (henüz iş başlamadı — bkz. Bölüm 4 Faz 4)
-Supabase geçişi, gerçek kullanıcı hesapları, Amerikan borsası. Açıkça istenmeden büyük mimari değişikliğe girişilmeyecek. Not: Amerikan borsası "Araya serpme adayları" (Aktif Plan #5) ile aynı kovada değerlendirilebilir ama henüz sıraya girmedi.
+Supabase geçişi, gerçek kullanıcı hesapları. Açıkça istenmeden büyük mimari değişikliğe girişilmeyecek. Amerikan borsası artık burada değil — aktif plan (bkz. A.5).
 
 ### C. Değişiklik Geçmişi
 Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz, rutin "s" akışında dokunulmaz).
@@ -183,6 +178,6 @@ Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzer
 ### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
 1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`).
 2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum.
-3. **Sıradaki adım (ONAYLANDI, uygulama bekliyor):** `.claude/plans/amerikan-borsasi.md` — Amerikan Borsası (ABD hisseleri) yeni varlık sınıfı. Plan tam detaylı (dosya dosya kod değişikliği, imzalar, katalog/tatil verisi) — keşfe gerek yok, doğrudan TDD ile uygulamaya başla. Emlak dilimi (Bölüm 4'te not) gizli kaldı, dönülmeyecek.
+3. **Sıradaki adım (ONAYLANDI, uygulama bekliyor):** `.claude/plans/amerikan-borsasi.md` — Amerikan Borsası, dosya-dosya değişiklik + fonksiyon imzaları + katalog/tatil verisiyle tam detaylı. **Keşfe gerek yok** — doğrudan TDD ile uygulamaya başla (plan dosyasının "Uygulama — dosya dosya" bölümünden). Emlak (Bölüm 4) gizli kaldı, açıkça istenmeden dönülmeyecek.
 4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
