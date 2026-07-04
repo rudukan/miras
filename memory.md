@@ -109,16 +109,17 @@ Bloomberg Terminali ve Binance estetiğini korumak için belirlenen kurallar:
 
 > **Öncelik notu (2026-07-02):** Aktif geliştirme odağı CANLI SEANS'a kaydı. VASİYET SEFERİ + Faz 2 (2001 Kriz, 2018 Kur Şoku) aşağıda roadmap'te duruyor ama aktif çalışma yok — kullanıcı açıkça istemedikçe bu modlara dokunulmuyor.
 
-### Aktif Plan: Oyun Derinliği + Bağımlılık Katmanı (2026-07-03 karar, aynı gün pivot edildi)
-CANLI SEANS içinde veri doğruluğundan sonraki adım: oyunu geri-dönüş sebebi olan bir "oyun" yapmak. Süreç kuralı basit tutulacak — **küçük dilim → bitir → deploy → sonraki** (CLAUDE.md kanonları bu plan kapsamında esnetilebilir, bkz. memory `feedback_claudemd_esnek`).
+### ANA PLAN (2026-07-04): Çok Kullanıcılı Yayın (Multiplayer Launch)
+Onaylı spec: **`docs/superpowers/specs/2026-07-04-cok-kullanicili-yayin-design.md`** — hesaplı (Google + anonim misafir, linkIdentity ile yükseltme), haftalık ligli (**CANLI SEANS = lig**: Pazartesi 00:00 TSİ $1M reset, Cuma NYSE kapanışında kilit — DST-duyarlı, ABD tatil cumasında BIST 18:15; hafta sonu antrenman), kendi domaininde, Supabase Pro (eu-central-1) + Vercel Pro üzerinde, "olabilecek en güvenli" duruşla (GRANT+RLS çift katman, httpOnly cookie/PKCE, `getUser()` kuralı, Turnstile, sunucu damgalı fiyat + replay hile koruması, KVKK yurt dışı aktarım beyanı). Monetization launch sonrası; realtime etkileşim kapsam dışı.
 
-**Orijinal 5 adımlık sıra kesildi** (emlak bitince kullanıcı yön değiştirdi):
-1. ~~Emlak süper sade + kira kasası~~ — TAMAMLANDI (commit `b33d673`) ama sonra **GİZLENDİ** (commit `02df9fc`) — kullanıcı "canlıda görmek istemiyorum, sonra bakacağız" dedi. Kod/test SİLİNMEDİ, yalnız `+page.svelte`'deki `PropertyCard` mount kaldırıldı (geri açmak 2 satır).
-2. ~~Haftalık sezon ligi~~, 3. ~~Tapu/rüşvet~~, 4. ~~Paylaşım kartı~~, 5. ~~Araya serpme~~ — hepsi RAFA KALKTI, açıkça istenmeden dönülmeyecek.
+Alt projeler:
+- **SP0 Amerikan Borsası** — plan: `.claude/plans/amerikan-borsasi.md` (aranabilir katalog, DST-duyarlı NYSE seansı). Bağımlılıksız — **SIRADAKİ UYGULAMA** (Sonnet oturumu, TDD, keşifsiz).
+- **SP3a Domain + KVKK taslakları** — paralel; domain ismi seçilecek (aday çalışması yapılacak). Google OAuth consent prod'u domain+gizlilik sayfası ister → SP1'den önce.
+- **SP1 Hesap altyapısı** — plan HAZIR: `docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md` (10 task, tam kodlu). **Bloker: Supabase Pro satın alımı** (free slotlar dolu, "yakında").
+- **SP2 Haftalık lig** — planı bilinçli yazılmadı (SP0+SP1 merge olmadan yazılırsa çürür); onlar bitince kısa güçlü-model oturumunda yazılacak. 30-gün anonim hesap temizliği de SP2'de.
+- **SP3b Yayın cilası** — paylaşım kartı, landing/OG, Sentry, güvenlik başlıkları, `/api/yahoo` CDN cache.
 
-**Yeni aktif iş: Amerikan Borsası** (ABD hisseleri, yeni varlık sınıfı) — kullanıcı "en iyisi Amerikan borsası ekleyelim" dedi. Detaylı, uygulamaya hazır plan: **`.claude/plans/amerikan-borsasi.md`** (dosya yolları, fonksiyon imzaları, ~48 hisselik katalog önerisi, NYSE tatil tarihleri, DST-duyarlı seans saati mantığı — hepsi kod okunarak doğrulandı). Kullanıcı onayladı ama "token bitiyor, sonra devam" dedi — **UYGULAMA HENÜZ BAŞLAMADI**, yeni oturum doğrudan bu plan dosyasından TDD ile başlayabilir.
-
-Karar özeti (plan dosyasında detaylı): aranabilir hisse kataloğu (BIST100 arama kalıbı, sabit varsayılan yok), tam hassas NYSE seans saatleri (DST + 2026 tatil takvimi).
+Süreç anlaşması: uygulama oturumları **Sonnet** + dilim başına bir oturum; spec/plan/güvenlik-review güçlü modelde (auto-memory: `feedback_model_oturum_ekonomisi`). Emlak tarihçesi: süper sade dilim tamamlandı (`b33d673`), sonra gizlendi (`02df9fc`) — kod/test duruyor, istenmeden açılmayacak.
 
 ### Ara Faz: 52 Haftalık "Vasiyet Seferi" Kampanya Modu (v2.4.0)
 * **Tarihsel Kampanya:** Oyunun 365 günlük tycoon yapısını korumak amacıyla, Mayıs 2025 - Mayıs 2026 arasındaki 1 yıllık gerçek verileri ve haftalık gerçek haber başlıklarını ön-paketleyen statik veri modeli (`macroData.js`). 
@@ -132,13 +133,11 @@ Karar özeti (plan dosyasında detaylı): aranabilir hisse kataloğu (BIST100 ar
 
 ### Faz 3: Sosyal ve Rekabetçi Katman
 > 2026-07-03: Günlük Challenge yerine **Haftalık sezon ligi** seçildi (yukarıdaki Aktif Plan #2) — canlı piyasada tek gün çok kısa/şanslı kalıyordu.
-* ~~Günlük Mücadele (Daily Challenge)~~ → Haftalık sezon ligi v1 (Aktif Plan #2).
-* **Skor Paylaşımı:** Twitter (X) entegrasyonlu komik mahkeme beratı paylaşım görselleri üretmek (Aktif Plan #4).
+* ~~Günlük Mücadele (Daily Challenge)~~ → Haftalık sezon ligi (ANA PLAN SP2).
+* **Skor Paylaşımı:** Twitter (X) entegrasyonlu komik mahkeme beratı paylaşım görselleri üretmek (ANA PLAN SP3b).
 
-### Faz 4: Altyapı ve Kapsam Genişletme (sinyal var, iş başlamadı)
-* **Supabase geçişi:** Firebase (anon auth + Firestore) yerine Supabase — muhtemelen gerçek kullanıcı hesapları (Faz 3'ün ötesinde, Supabase Auth) ile birlikte gelir.
-* **Gerçek kullanıcı hesapları:** Anonim auth'tan kayıtlı kullanıcıya geçiş — olumlu geri bildirim aldığı izlenimi var.
-* **Amerikan borsası:** S&P 500/NASDAQ hisseleri yeni varlık sınıfı olarak. Muhtemel entegrasyon noktası: mevcut `/api/yahoo` proxy kalıbı + `liveAssets.ts` kataloğu (Yahoo Finance ABD hisselerini de destekliyor).
+### Faz 4: Altyapı ve Kapsam Genişletme → ANA PLAN'a dönüştü (2026-07-04)
+Supabase geçişi + gerçek kullanıcı hesapları + Amerikan borsası artık yukarıdaki ANA PLAN'ın alt projeleri (SP1/SP0). Detay spec'te.
 
 ---
 
@@ -157,20 +156,20 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-04)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-04 — 2. oturum, tasarım)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show 63d5bdf:memory.md`).
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show fcaf7c6:memory.md`).
 
 ### A. Bu Oturumda Tamamlananlar
-Uzun, tek oturum — favicon fix'ten Amerikan Borsası planına kadar. Kronolojik:
-1. **Genel sağlık kontrolü + favicon fix:** Test/check/build + Vercel hata taraması → `/favicon.png` 404 bulundu, düzeltildi (180×180 PNG + apple-touch-icon). Commit `e9fbfaa`, prod'da doğrulandı.
-2. **Ürün değerlendirmesi:** Eksiklikler + yatırım araçları (TEFAS/Eurobond/vb.) + scoreboard konuşuldu → emlak portu öncelikli çıktı.
-3. **Süreç kararı:** CLAUDE.md kanonları esnetilebilir kabul edildi (bkz. `feedback_claudemd_esnek`). Bağımlılık mekaniği: kasa+TAHSİL ET seçildi (3 seçenekten).
-4. **Emlak dilimi uygulandı, deploy edildi, SONRA GİZLENDİ:** Süper sade emlak (3 emlak, kira kasası, 48 saat tavan) TDD ile yazıldı, 415/415 test yeşil, prod'a çıktı (`b33d673`). Kullanıcı hemen ardından fikir değiştirdi: **"canlıda görmek istemiyorum, sonra bakacağız"** — `+page.svelte`'den `PropertyCard` mount'u kaldırıldı (`02df9fc`). Kod/domain/testler SİLİNMEDİ, yalnız UI'dan gizli; geri açmak 2 satır.
-5. **Pivot: Amerikan Borsası (ABD hisseleri) — yeni aktif iş.** Kullanıcı "en iyisi Amerikan borsası ekleyelim" dedi. Kod tabanı incelendi (Yahoo proxy zaten ABD tikerlarını destekliyor, altın/gümüşle aynı "USD çek→TRY'ye çevir" kalıbı doğrudan uygulanabilir). İki karar soruldu ve netleşti: **aranabilir hisse kataloğu** (BIST100 arama kalıbı, sabit varsayılan yok) + **tam hassas NYSE seans saatleri** (DST-duyarlı + 2026 tatil takvimi). Kullanıcı "token bitiyor, planı kaydedip sonra devam edelim" dedi — **uygulama BAŞLAMADI**, onun yerine tüm mimari kararları + dosya-dosya değişiklik listesini içeren uygulamaya-hazır plan yazıldı: **`.claude/plans/amerikan-borsasi.md`**. Commit `9fcb5ec`.
+Tamamen tasarım/plan oturumu — kod yazılmadı, tüm commit'ler docs:
+1. **Çok kullanıcılı yayın brainstorm'u:** "Register olunabilen, domainli gerçek oyun" hedefi için kritik kararlar tek tek netleştirildi: skor yarışı (realtime yok) → haftalık lig, CANLI SEANS = lig → Google + anonim misafir → orta hile koruması (sunucu damgalı fiyat + replay) → Supabase Pro + Vercel Pro → launch içeriği: Amerikan Borsası + paylaşım kartı (emlak kapalı). Kullanıcı iki önemli açık yakaladı: "grant olayını düşündük mü" → GRANT+RLS çift katman yetkilendirme matrisi; "Cuma 18:15 mantıklı mı, Amerikan borsası var" → kilit Cuma NYSE kapanışına taşındı (DST-duyarlı, ABD tatil cumasında BIST 18:15).
+2. **Onaylı spec:** `docs/superpowers/specs/2026-07-04-cok-kullanicili-yayin-design.md` (`117f2ce` + `dce246e`). Güvenlik birinci sınıf bölüm ("olabilecek en güvenli" istendi): tehdit modeli, httpOnly cookie/PKCE, `getUser()` kuralı, Turnstile, KVKK yurt dışı aktarım beyanı. Düzeltilen bilgi: Supabase Free'de otomatik yedek YOK (bir önceki mesajda yanlış söylenmişti) — Pro'nun asıl gerekçesi yedek + pause'suz çalışma.
+3. **SP1 uygulama planı:** `docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md` (`fd9d537`, 1048 satır, 10 task, tam kodlu — Sonnet keşifsiz yürütür). SP2 planı BİLİNÇLİ ertelendi: SP0+SP1 merge olmadan yazılırsa koda değil plana referans verir, çürür.
+4. **Verimlilik anlaşması:** Uygulama Sonnet'te, plan/güvenlik-review güçlü modelde, dilim başına bir oturum, dekoratif agent (ceo/PO/cmo) varsayılan spawn edilmeyecek (auto-memory: `feedback_model_oturum_ekonomisi`). Kullanıcı aksiyonu bekleyen: Connectors'tan Netlify/Figma/Gmail/Takvim'i bu proje için kapatmak; boş oturumda `/fewer-permission-prompts`.
 
-### B. Yakın Dönem Sinyaller (henüz iş başlamadı — bkz. Bölüm 4 Faz 4)
-Supabase geçişi, gerçek kullanıcı hesapları. Açıkça istenmeden büyük mimari değişikliğe girişilmeyecek. Amerikan borsası artık burada değil — aktif plan (bkz. A.5).
+### B. Blokerler & Paralel İşler
+- **Supabase Pro satın alımı** ("yakında") → SP1'in tetiği. Alınınca ilk iş SP1 planındaki Task 0 (proje kurulumu eu-central-1, Google OAuth client, Turnstile) — kullanıcı aksiyonları.
+- **Domain ismi yok** → SP3a: aday çalışması + müsaitlik kontrolü; Google OAuth consent prod'unun ön koşulu.
 
 ### C. Değişiklik Geçmişi
 Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz, rutin "s" akışında dokunulmaz).
@@ -178,6 +177,6 @@ Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzer
 ### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
 1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`).
 2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum.
-3. **Sıradaki adım (ONAYLANDI, uygulama bekliyor):** `.claude/plans/amerikan-borsasi.md` — Amerikan Borsası, dosya-dosya değişiklik + fonksiyon imzaları + katalog/tatil verisiyle tam detaylı. **Keşfe gerek yok** — doğrudan TDD ile uygulamaya başla (plan dosyasının "Uygulama — dosya dosya" bölümünden). Emlak (Bölüm 4) gizli kaldı, açıkça istenmeden dönülmeyecek.
+3. **Sıradaki adım: SP0 — Amerikan Borsası.** Sonnet oturumunda tek cümle yeter: "SP0'ı uygula — `.claude/plans/amerikan-borsasi.md`" (keşif gerekmez, doğrudan TDD). Büyük çerçeve: Bölüm 4 ANA PLAN + onaylı spec. Supabase Pro alınınca: SP1 (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`, önce Task 0). Emlak gizli kaldı, açıkça istenmeden dönülmeyecek.
 4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
