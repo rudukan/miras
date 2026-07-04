@@ -24,6 +24,16 @@ describe('fetchFxSnapshot', () => {
     await fetchFxSnapshot({ bist: ['EREGL', 'ASELS'], fetchFn: f });
     expect(f).toHaveBeenLastCalledWith('/api/yahoo?bist=EREGL,ASELS');
   });
+  it('us verilince query string ekler', async () => {
+    const f = vi.fn(() => okJson(sample)) as unknown as typeof fetch;
+    await fetchFxSnapshot({ us: ['AAPL', 'MSFT'], fetchFn: f });
+    expect(f).toHaveBeenLastCalledWith('/api/yahoo?us=AAPL,MSFT');
+  });
+  it('bist+us birlikte verilince ikisini de ekler', async () => {
+    const f = vi.fn(() => okJson(sample)) as unknown as typeof fetch;
+    await fetchFxSnapshot({ bist: ['EREGL'], us: ['AAPL'], fetchFn: f });
+    expect(f).toHaveBeenLastCalledWith('/api/yahoo?bist=EREGL&us=AAPL');
+  });
   it('HTTP hatasında fırlatır', async () => {
     const f = vi.fn(() => Promise.resolve({ ok: false, status: 500 } as Response)) as unknown as typeof fetch;
     await expect(fetchFxSnapshot({ fetchFn: f })).rejects.toThrow('500');
