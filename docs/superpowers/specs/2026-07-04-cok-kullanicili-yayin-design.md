@@ -16,7 +16,7 @@ Bugün oyun tamamen client-side: kayıt yalnız localStorage'da, hesap yok, depl
 |---|---|
 | Çok kullanıcılılık modeli | Skor yarışı — herkes kendi oyununu oynar; realtime etkileşim YOK |
 | Rekabet birimi | Haftalık lig; **CANLI SEANS = lig** (tek oyun, ayrı slot yok) |
-| Hafta döngüsü | Pazartesi 00:00 TSİ herkes $1M; Cuma 18:15 (BIST kapanışı sonrası) skor kilidi; hafta sonu antrenman (skor sayılmaz) |
+| Hafta döngüsü | Pazartesi 00:00 TSİ herkes $1M; **Cuma NYSE kapanışında** skor kilidi (DST-duyarlı: yazın 23:00 / kışın 00:00 TSİ; NYSE'nin kapalı olduğu cumalarda BIST kapanışı 18:15); duyuru/paylaşım kurgusu cumartesi sabahı; hafta sonu antrenman (skor sayılmaz) |
 | Giriş | Google OAuth + anonim misafir; kayıt duvarı yalnız "lige katıl" anında |
 | Hile koruması | Orta: işlem log'u + **sunucu damgalı fiyat** + hafta kapanışında replay |
 | Backend | Supabase (Auth + Postgres + RLS) + Vercel (hosting, API proxy'ler, cron) |
@@ -38,7 +38,7 @@ Supabase Postgres (+ Auth + RLS)
 
 Vercel Cron (Pro)
  ├─ Pazartesi 00:00 TSİ → yeni lig satırı
- └─ Cuma 18:15 TSİ → replay + kapanış değerlemesi → skor/rank mühürlenir
+ └─ Cuma NYSE kapanışı (DST-duyarlı) → replay + kapanış değerlemesi → skor/rank mühürlenir
      (B planı: Supabase pg_cron — dakika hassasiyetli, ücretsiz)
 ```
 
@@ -77,7 +77,7 @@ Vercel Cron (Pro)
 
 **Save senkronu:** localStorage birincil (offline dayanıklılık). Arkada ~30 sn debounce + sayfa kapanışında buluta yazım. Girişte bulut/yerel `updated_at` karşılaştırılır, yeni olan kazanır. `schema_version` ile ileri migration.
 
-**Hafta döngüsü:** Cron pazartesi ligi açar. İşlemler hafta boyu `/api/trade`'den damgalanır (JWT doğrulama `getUser()` ile, girdi şema validasyonu: katalog dışı sembol / negatif-absürt adet ret, idempotency anahtarı, kullanıcı başına rate limit). Cuma 18:15 kapanış cron'u (CRON_SECRET korumalı): replay deterministik ve yan etkisiz → başarısızlıkta güvenle tekrar denenir. Kapanışta paylaşım kartı verisi hazırlanır.
+**Hafta döngüsü:** Cron pazartesi ligi açar. İşlemler hafta boyu `/api/trade`'den damgalanır (JWT doğrulama `getUser()` ile, girdi şema validasyonu: katalog dışı sembol / negatif-absürt adet ret, idempotency anahtarı, kullanıcı başına rate limit). Kapanış cron'u Cuma NYSE kapanışında koşar (CRON_SECRET korumalı). Uygulama: birkaç sabit saatte tetiklenen tek idempotent endpoint — handler haftanın gerçek kilit anını hesaplar (NYSE açık cuma ise NYSE kapanışı, kapalıysa BIST kapanışı 18:15; `.claude/plans/amerikan-borsasi.md`'deki DST + tatil takvimi mantığı yeniden kullanılır) ve yalnız kilit anı geçmişse + hafta henüz mühürlenmemişse işler. Her piyasa kendi cuma kapanış fiyatıyla, kripto kilit anındaki fiyatla değerlenir. Replay deterministik ve yan etkisiz → başarısızlıkta güvenle tekrar denenir. Kapanışta paylaşım kartı verisi hazırlanır (duyuru kurgusu cumartesi sabahı).
 
 ## 6. Güvenlik ("olabilecek en güvenli" duruşu)
 
