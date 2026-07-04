@@ -157,14 +157,15 @@ export function shortDate(dateKey: string): string {
 	return `${Number(d)} ${month}`;
 }
 
-/** Piyasa listesi grup/sekme sırası — sabit: kripto → bist → emtia → döviz. */
-const CATEGORY_ORDER: ReadonlyArray<string> = ['crypto', 'bist', 'commodity', 'fx'];
+/** Piyasa listesi grup/sekme sırası — sabit: kripto → bist → ABD borsası → emtia → döviz. */
+const CATEGORY_ORDER: ReadonlyArray<string> = ['crypto', 'bist', 'us', 'commodity', 'fx'];
 
 /** Kategori → UI etiketi. "EMTİA" jargon olduğu için ALTIN&GÜMÜŞ (hedef kitle: sıradan kriz-insanı).
  *  `usd` — kapanış kartı dağılım barında nakit segmenti (closingCard.ts). */
 export const CATEGORY_LABELS: Readonly<Record<string, string>> = {
 	crypto: 'KRİPTO',
 	bist: 'BIST',
+	us: 'ABD BORSASI',
 	commodity: 'ALTIN&GÜMÜŞ',
 	fx: 'DÖVİZ',
 	deposit: 'MEVDUAT',

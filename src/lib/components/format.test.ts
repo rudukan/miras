@@ -215,9 +215,11 @@ describe('groupByCategory', () => {
 		expect(groupByCategory([])).toEqual([]);
 	});
 
-	it('sabit kategori sırası: crypto → bist → commodity → fx (giriş sırasından bağımsız)', () => {
-		const rows = [row('EUR', 'fx'), row('XAUGRAM', 'commodity'), row('THYAO', 'bist'), row('BTC', 'crypto')];
-		expect(groupByCategory(rows).map((g) => g.category)).toEqual(['crypto', 'bist', 'commodity', 'fx']);
+	it('sabit kategori sırası: crypto → bist → us → commodity → fx (giriş sırasından bağımsız)', () => {
+		const rows = [
+			row('EUR', 'fx'), row('XAUGRAM', 'commodity'), row('AAPL', 'us'), row('THYAO', 'bist'), row('BTC', 'crypto'),
+		];
+		expect(groupByCategory(rows).map((g) => g.category)).toEqual(['crypto', 'bist', 'us', 'commodity', 'fx']);
 	});
 
 	it('grup içi giriş sırası korunur', () => {
@@ -238,9 +240,10 @@ describe('groupByCategory', () => {
 
 // ── CATEGORY_LABELS ───────────────────────────────────────────────────────────
 describe('CATEGORY_LABELS', () => {
-	it('4 kategori Türkçe etiketli (EMTİA yerine ALTIN&GÜMÜŞ — jargon yok)', () => {
+	it('5 kategori Türkçe etiketli (EMTİA yerine ALTIN&GÜMÜŞ — jargon yok)', () => {
 		expect(CATEGORY_LABELS.crypto).toBe('KRİPTO');
 		expect(CATEGORY_LABELS.bist).toBe('BIST');
+		expect(CATEGORY_LABELS.us).toBe('ABD BORSASI');
 		expect(CATEGORY_LABELS.commodity).toBe('ALTIN&GÜMÜŞ');
 		expect(CATEGORY_LABELS.fx).toBe('DÖVİZ');
 	});
