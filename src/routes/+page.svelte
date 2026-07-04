@@ -306,6 +306,10 @@
 								store.addBist(symbol);
 								handleSelectAsset(symbol);
 							}}
+							onAddUs={(symbol) => {
+								store.addUs(symbol);
+								handleSelectAsset(symbol);
+							}}
 						/>
 					</aside>
 
