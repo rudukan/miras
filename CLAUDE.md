@@ -4,15 +4,16 @@ Türkiye'nin 2025 makro koşullarında 1M USD mirası 365 günde işletme finans
 Detaylı proje hafızası için `memory.md` (güncel durum, son oturum özeti — küçük tutulur). Aylık değişiklik geçmişi için `CHANGELOG.md` (yalnız geçmiş sorulunca okunur). Sprint planı için `.claude/plans/` dizinine bak.
 
 ## Tech Stack
-SvelteKit 2 + Svelte 5 + TypeScript (strict) + Vite + Tailwind CSS 3 + Firebase (anon auth + Firestore).
-Test: Vitest (unit/domain) + Playwright (E2E).
+SvelteKit 2 + Svelte 5 + TypeScript (strict) + Vite + Tailwind CSS 3.
+Auth/DB: henüz kodda yok — SP1 planı Supabase (Auth + Postgres + RLS) getirecek (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`), Supabase Pro satın alımı bekleniyor.
+Test: Vitest (unit/domain) + Playwright (E2E, henüz kurulu değil — bkz. Test Disiplini).
 
 ## Dizin Haritası
 ```
 src/lib/domain/    — Saf TS, UI'sız, test edilebilir iş mantığı (her sistem ayrı modül)
 src/lib/stores/    — Svelte stores (sistemler arası iletişim buradan)
 src/lib/components/— Svelte component'lar (panels/, chart/, ui/)
-src/lib/api/       — Dış API client'ları (yahoo.ts, binance.ts, firebase.ts)
+src/lib/api/       — Dış API client'ları (yahoo.ts, binance.ts)
 src/lib/audio/     — Web Audio sentezleyici
 src/lib/data/      — Statik makro veri (macro2025.ts)
 src/routes/        — Sayfalar + API endpoint'leri (/api/yahoo, /api/crypto)
@@ -35,9 +36,9 @@ legacy/            — v3.1.0 referans (build'den hariç, silinmeyecek)
 - Her `src/lib/domain/<sistem>/` klasörü sadece `money.ts` + kendi type'larına bağımlı.
 
 ## Test Disiplini
-- Domain unit: Vitest, `*.test.ts` domain dosyasının yanı başında.
-- Balance simülasyon: `tests/balance/` — 1000x oyun simülasyonu, kazanılabilirlik %30-70 aralığında.
-- E2E: `tests/e2e/` — Playwright critical path (onboarding → işlem → yıl sonu).
+- Domain unit: Vitest, `*.test.ts` domain dosyasının yanı başında. **Mevcut ve sağlam** (438/438 yeşil, 29 dosya).
+- Balance simülasyon: `tests/balance/` — 1000x oyun simülasyonu, kazanılabilirlik %30-70 aralığında. **Henüz yazılmadı** (klasör boş) — hedef tasarım, uygulanmış değil.
+- E2E: `tests/e2e/` — Playwright critical path (onboarding → işlem → yıl sonu). **Henüz kurulmadı** (`@playwright/test` devDependency var ama `playwright.config` yok, klasör boş) — hedef tasarım, uygulanmış değil.
 - **`verification-before-completion` skill**: "tamam" demeden önce `npm run test` + `npm run build` geçmeli.
 
 ## Subagent'lar
@@ -55,7 +56,7 @@ Delegasyon için `subagent-driven-development` ve `dispatching-parallel-agents` 
 
 ## Performance Constraint'leri
 - Yahoo Finance proxy: 5s server cache zorunlu.
-- Firebase free tier: Firestore 50K read/day limit'ine dikkat.
+- Supabase Pro'ya geçince free tier limitlerine (Postgres satır/depolama, aylık aktif kullanıcı) dikkat.
 - Her saniye fiyat update'i var — `$derived` kullan, gereksiz re-render önle.
 
 ## 4 Oyun Modu (Feature Parity)
