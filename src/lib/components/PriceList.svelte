@@ -2,7 +2,8 @@
 	import type { PriceRow as PriceRowData } from '$lib/stores/liveGameStore.svelte';
 	import { groupByCategory, CATEGORY_LABELS } from './format';
 	import { searchBist100 } from '$lib/catalog/bist100';
-	import { searchUsStocks } from '$lib/catalog/usStocks';
+	import { searchUsStocks, registerDiscoveredUsStock } from '$lib/catalog/usStocks';
+	import { createUsLiveSearch } from './usLiveSearch.svelte';
 	import PriceRow from './PriceRow.svelte';
 
 	interface Props {
@@ -19,6 +20,9 @@
 	let q = $state('');
 	let tab = $state('all');
 
+	// 300ms debounce + race-condition koruması composable'da kapsüllendi.
+	const live = createUsLiveSearch(() => q);
+
 	const TABS: ReadonlyArray<{ id: string; label: string }> = [
 		{ id: 'all', label: 'TÜMÜ' },
 		{ id: 'crypto', label: CATEGORY_LABELS.crypto },
@@ -31,7 +35,6 @@
 	const searching = $derived(q.trim() !== '');
 
 	// Arama her şeyi ezer (sekme yok sayılır); aramasızken sekme filtreler.
-	// Tek render yolu: sonuç her durumda gruplu çizilir.
 	const visible = $derived.by(() => {
 		if (searching) {
 			const needle = q.trim().toLowerCase();
@@ -44,32 +47,40 @@
 
 	const groups = $derived(groupByCategory(visible));
 
-	// ABD Borsası sabit varsayılan taşımıyor (yalnız arama ile eklenir) — bu yüzden ilk
-	// açılışta "ABD BORSASI" sekmesi hep boş görünür ve jenerik "Sonuç bulunamadı" mesajı
-	// "özellik yok" gibi okunuyordu. Bu durumu ayırt edip yönlendirici ipucu gösteriyoruz.
 	const hasAnyUs = $derived(prices.some((p) => p.category === 'us'));
 	const showUsEmptyHint = $derived(tab === 'us' && !searching && !hasAnyUs);
 
-	// Arama yapılınca: BIST100'den eşleşip henüz aktif sette OLMAYAN semboller ("eklenebilir").
+	// Arama yapılınca: BIST100'den eşleşip henüz aktif sette OLMAYAN semboller.
 	const addableBist = $derived.by(() => {
 		if (!searching) return [];
 		const activeIds = new Set(prices.map((p) => p.id));
 		return searchBist100(q).filter((e) => !activeIds.has(e.symbol));
 	});
 
-	// Arama yapılınca: ABD hisse kataloğundan eşleşip henüz aktif sette OLMAYAN semboller.
-	const addableUs = $derived.by(() => {
+	// Statik US sonuçları (anlık, sıfır gecikme).
+	const staticUs = $derived.by(() => {
 		if (!searching) return [];
 		const activeIds = new Set(prices.map((p) => p.id));
 		return searchUsStocks(q).filter((e) => !activeIds.has(e.symbol));
 	});
 
+	// Statik + canlı birleşimi (tekrar yok, activeIds filtresi canlıya da uygulanır).
+	const addableUs = $derived.by(() => {
+		const activeIds = new Set(prices.map((p) => p.id));
+		const staticSymbols = new Set(staticUs.map((e) => e.symbol));
+		const liveOnly = live.results.filter(
+			(e) => !activeIds.has(e.symbol) && !staticSymbols.has(e.symbol)
+		);
+		return [...staticUs, ...liveOnly];
+	});
+
 	function handleAddBist(symbol: string) {
 		onAddBist(symbol);
-		q = ''; // aramayı temizle → yeni eklenen aktif listede görünür
+		q = '';
 	}
 
-	function handleAddUs(symbol: string) {
+	function handleAddUs(symbol: string, name: string) {
+		registerDiscoveredUsStock(symbol, name); // session registry — usStockName fallback'i düzeltir
 		onAddUs(symbol);
 		q = '';
 	}
@@ -151,14 +162,17 @@
 			{/each}
 		{/if}
 
-		{#if addableUs.length > 0}
-			<div class="px-3 pt-3 pb-1 text-[10px] uppercase tracking-widest text-term-blue opacity-60 border-t border-term-border">
+		{#if searching && (addableUs.length > 0 || live.searching)}
+			<div class="px-3 pt-3 pb-1 text-[10px] uppercase tracking-widest text-term-blue opacity-60 border-t border-term-border flex items-center gap-2">
 				ABD Borsası — Ekle
+				{#if live.searching}
+					<span class="text-term-text opacity-40 normal-case tracking-normal">aranıyor…</span>
+				{/if}
 			</div>
 			{#each addableUs as e (e.symbol)}
 				<button
 					type="button"
-					onclick={() => handleAddUs(e.symbol)}
+					onclick={() => handleAddUs(e.symbol, e.name)}
 					class="w-full text-left px-3 py-2 border-b border-term-border border-opacity-40
 					       hover:bg-term-panelLight hover:border-term-borderGlow
 					       focus:outline-none focus:bg-term-panelLight

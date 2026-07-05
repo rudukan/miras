@@ -43,7 +43,6 @@ describe('winThreshold', () => {
       ...SCENARIO,
       data: { ...SCENARIO.data, dailyInflation: 0 },
     };
-    // @ts-expect-error test amaçlı geçici senaryo
     expect(winThreshold(zeroInflScenario)).toBe(STARTING_USD);
   });
 });

@@ -65,9 +65,20 @@ const BY_SYMBOL: Readonly<Record<string, string>> = Object.fromEntries(
   US_STOCKS.map((e) => [e.symbol, e.name]),
 );
 
-/** Sembolün adı; bilinmiyorsa sembolün kendisi (store/PriceList etiketlemesi). */
+/** Canlı arama ile keşfedilen semboller için runtime registry (oturum ömürlü, sayfa yenilenince sıfırlanır).
+ *  Statik kataloğa DAHİL OLMAYAN semboller buraya kaydedilir; `usStockName` önce bunu kontrol eder. */
+const discoveredRegistry = new Map<string, string>();
+
+/** Canlı arama yoluyla keşfedilen sembol+adı oturum registry'sine kaydet.
+ *  Statik katalogda zaten varsa sessizce atlanır (üzerine yazmaz). */
+export function registerDiscoveredUsStock(symbol: string, name: string): void {
+  if (BY_SYMBOL[symbol] !== undefined) return; // statik katalog öncelikli
+  discoveredRegistry.set(symbol, name);
+}
+
+/** Sembolün adı; önce statik katalog, sonra runtime registry, bilinmiyorsa sembolün kendisi. */
 export function usStockName(symbol: string): string {
-  return BY_SYMBOL[symbol] ?? symbol;
+  return BY_SYMBOL[symbol] ?? discoveredRegistry.get(symbol) ?? symbol;
 }
 
 const SEARCH_LIMIT = 12;
