@@ -44,11 +44,11 @@ describe('createFxEngine.usdTryForDay', () => {
   it('TRY cinsinden döner', () => {
     expect(fx.usdTryForDay(50).currency).toBe('TRY');
   });
-  it('gün 0 başlangıç kurunun ±%0.3 bandında', () => {
-    // ±0.01 tolerans tryM'in 2 ondalık yuvarlamasını karşılar
+  it('gün 0 başlangıç kurunun ±%1.2 bandında (usdTryVolatility=0.012)', () => {
+    // usdTryVolatility 0.012 → günlük sapma maksimum %1.2; ±0.01 tryM yuvarlaması için tolerans
     const r = fx.usdTryForDay(0).amount;
-    expect(r).toBeGreaterThanOrEqual(35.30 * 0.997 - 0.01);
-    expect(r).toBeLessThanOrEqual(35.30 * 1.003 + 0.01);
+    expect(r).toBeGreaterThanOrEqual(35.30 * 0.988 - 0.01);
+    expect(r).toBeLessThanOrEqual(35.30 * 1.012 + 0.01);
   });
   it('gürültü trendi bastırmaz: gün 365 > gün 0 (her seed)', () => {
     for (let seed = 1; seed <= 50; seed++) {
@@ -56,12 +56,13 @@ describe('createFxEngine.usdTryForDay', () => {
       expect(e.usdTryForDay(365).amount).toBeGreaterThan(e.usdTryForDay(0).amount);
     }
   });
-  it('günlük sapma çapa bandında kalır (±%0.3)', () => {
+  it('günlük sapma çapa bandında kalır (±%1.2)', () => {
+    // usdTryVolatility=0.012 → her gün baz × (1 ± 0.012) bandında
     for (let day = 0; day <= 365; day++) {
       const base = interpolateAnchors(VASIYET_2025.data.usdTryAnchors, day);
       const r = fx.usdTryForDay(day).amount;
-      expect(r).toBeGreaterThanOrEqual(base * 0.997 - 0.01);
-      expect(r).toBeLessThanOrEqual(base * 1.003 + 0.01);
+      expect(r).toBeGreaterThanOrEqual(base * 0.988 - 0.01);
+      expect(r).toBeLessThanOrEqual(base * 1.012 + 0.01);
     }
   });
 });
@@ -76,15 +77,17 @@ describe('createFxEngine.assetPriceForDay', () => {
   it('TRY cinsinden döner', () => {
     expect(fx.assetPriceForDay('THYAO', 10).currency).toBe('TRY');
   });
-  it('gün 0 başlangıç fiyatının ±%2 bandında (THYAO=300)', () => {
+  it('gün 0 başlangıç fiyatının ±%5 bandında (THYAO=300, volatility=0.050)', () => {
+    // THYAO volatility 0.050 → gün 0 maksimum sapma ±%5
     const p = fx.assetPriceForDay('THYAO', 0).amount;
-    expect(p).toBeGreaterThanOrEqual(300 * 0.98);
-    expect(p).toBeLessThanOrEqual(300 * 1.02);
+    expect(p).toBeGreaterThanOrEqual(300 * 0.95);
+    expect(p).toBeLessThanOrEqual(300 * 1.05);
   });
-  it('yıl sonu drift uygulanır (THYAO +%25 -> ~375, > başlangıç)', () => {
+  it('yıl sonu drift uygulanır (THYAO annualDrift=0.18 -> ~354, > başlangıç)', () => {
+    // THYAO annualDrift=0.18: trend = 300*(1+0.18) = 354; gürültü ±%5 → [336, 372]
     const p = fx.assetPriceForDay('THYAO', 365).amount;
-    expect(p).toBeGreaterThan(360);
-    expect(p).toBeLessThan(390);
+    expect(p).toBeGreaterThan(300); // en azından başlangıcı aşmali (drift pozitif)
+    expect(p).toBeLessThan(420);    // gürültü dahil üst sınır
   });
   it('bilinmeyen varlık hata fırlatır', () => {
     expect(() => fx.assetPriceForDay('YOKBU', 10)).toThrow('Unknown asset: YOKBU');

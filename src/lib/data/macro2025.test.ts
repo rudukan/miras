@@ -33,9 +33,10 @@ describe('USD/TRY çapaları', () => {
   it('yıl içinde yukarı trend (son > ilk)', () => {
     expect(anchors[anchors.length - 1].rate).toBeGreaterThan(anchors[0].rate);
   });
-  it('gürültü genliği küçük (0, 0.01)', () => {
+  it('gürültü genliği makul aralıkta (0, 0.05)', () => {
+    // 0.012: gerçek 2025 günlük kur gürültüsü ±%1.2; üst sınır 0.05 aşırı volatileyi engeller
     expect(VASIYET_2025.data.usdTryVolatility).toBeGreaterThan(0);
-    expect(VASIYET_2025.data.usdTryVolatility).toBeLessThan(0.01);
+    expect(VASIYET_2025.data.usdTryVolatility).toBeLessThan(0.05);
   });
 });
 
