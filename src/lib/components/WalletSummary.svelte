@@ -57,14 +57,14 @@
 		{#if positions.length === 0}
 			<div class="text-term-text opacity-40 italic">Pozisyon yok</div>
 		{:else}
-			<div class="space-y-1">
+			<div>
 				{#each positions as p (p.assetId)}
 					{@const pnl = positionPnl(p.units, p.avgCostUsd, p.valueUsd)}
 					{@const pctBadge = dailyChangeBadge(pnl.pnlPct)}
 					<button
 						type="button"
 						onclick={() => onSelect?.(p.assetId)}
-						class="w-full text-left flex justify-between items-start gap-2 border-b border-term-border border-opacity-30 pb-1 last:border-0 last:pb-0
+						class="w-full text-left flex justify-between items-start gap-2 border-b border-term-border border-opacity-30 py-1 first:pt-0 last:border-0 last:pb-0
 						       hover:bg-term-panelLight hover:border-term-borderGlow focus:outline-none focus:bg-term-panelLight
 						       transition-colors duration-75 cursor-pointer
 						       {p.assetId === highlightAssetId ? 'bg-term-panelLight border-term-borderGlow' : ''}"

@@ -51,7 +51,10 @@
 	       transition-colors duration-75 cursor-pointer {hasPrice ? '' : 'opacity-40'}"
 >
 	<div class="flex items-center justify-between gap-2">
-		<span class="text-term-text font-bold truncate">{row.label}</span>
+		<div class="flex flex-col min-w-0">
+			<span class="text-term-text font-bold truncate">{row.label}</span>
+			<span class="text-[10px] text-term-blue opacity-70 uppercase tracking-wide">{row.id}</span>
+		</div>
 		<div class="flex flex-col items-end shrink-0">
 			<div class="flex items-baseline gap-2">
 				{#if chg}
