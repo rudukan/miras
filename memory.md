@@ -157,22 +157,23 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-04 — 3. oturum, SP0 uygulama)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-06 — 4. oturum, ABD kapsam kararı + UI cila)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show be04437:memory.md`).
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show 68f94c1:memory.md`).
 
 ### A. Bu Oturumda Tamamlananlar
-1. **SP0 Amerikan Borsası uygulandı ve prod'a çıktı.** `.claude/plans/amerikan-borsasi.md`'deki 12 dosyalık plan Sonnet oturumunda TDD ile baştan sona yürütüldü (11 commit, `eaa024e`..`42150cc`), 438/438 test yeşil, `svelte-check` 0 hata. Plan'ın öngörmediği 2 bug bulunup düzeltildi: (1) `computeInitialActiveBist` bir US holding'ini BIST'e sızdırıyordu (isBistLikeId CATALOG'da olmayan her id'yi BIST sayıyordu) → activeUs'teki id'ler hariç tutuldu; (2) `positions` derived'da US holding etiketi sembolün kendisine düşüyordu → `holdingLabel()` (CATALOG→BIST100→US_STOCKS) eklendi. Gerçek tarayıcıda uçtan uca doğrulandı: arama→ekle→gerçek canlı AAPL fiyatı→al (net servet korunuyor)→yenile→kalıcılık sağlam. Vercel prod deploy READY + 0 runtime error.
-2. **Kullanıcı raporu: "tüm amerikan borsası yok galiba" → tanı workflow'u (4 paralel ajan) → kök neden bulundu.** Kod prod'da gerçekten vardı (fetch ile doğrulandı, Vercel alias doğruydu) — sorun `activeUs`'un sabit varsayılan taşımaması + boş durumda "Sonuç bulunamadı" mesajının başarısız aramayla ayırt edilemez olmasıydı (özellik var ama keşfedilemiyordu). Düzeltme: "ABD BORSASI" sekmesi boşken "Henüz ABD hissesi eklemedin — ör. AAPL, Tesla, Microsoft yaz ve ekle" ipucu (commit `fdc756e`, prod'da READY, 0 runtime error).
-3. **Kullanıcı asıl demek istediğini netleştirdi: "vertiv (VRT) gibi bazı hisseler yok"** — yani özellik değil, statik 48'lik kataloğun KAPSAMI eksik (ABD borsasında binlerce hisse var). Yahoo Finance'in canlı arama API'si (`query1.finance.yahoo.com/v1/finance/search?q=...`) curl ile doğrulandı — VRT'yi doğru buluyor (NYSE, Vertiv Holdings Co). **AÇIK KARAR (kullanıcı henüz seçmedi, "kaydedelim sonra devam ederiz" dedi):** statik listeyi genişletmek (hızlı, kalıcı değil) mi, yoksa Yahoo canlı arama API'sine bağlanıp gerçek kapsamlı arama kurmak (biraz daha iş, kalıcı çözüm — BIST'teki gibi bir daha "bu hisse yok" şikayeti gelmez) mi?
+1. **ABD hisse kataloğu kapsam kararı verildi ve uygulandı: "canlı arama" (kalıcı çözüm).** Önceki oturumun açık kararı (A.3, statik liste genişletme vs. Yahoo canlı arama) canlı arama lehine çözüldü. Yeni `/api/usSearch` proxy endpoint'i Yahoo Finance'in canlı arama API'sini sarmalıyor (EQUITY + NYSE/NASDAQ filtresi, keyed 5s TTL cache). `PriceList.svelte` statik anlık sonuçları canlı aramayla birleştiriyor (300ms debounce, race-condition koruması). Gerçek tarayıcıda doğrulandı: "vertiv" araması VRT'yi doğru buluyor, ekleme sonrası canlı fiyat akışına giriyor, sayfa yenilenince kalıcı. Bilinen v1 sınırı: canlı-keşifli sembollerin adı (session-only registry) sayfa yenilenince sembole dönüyor — fiyat/pozisyon etkilenmiyor. 496 test yeşil. Commit `bcc1aac`.
+2. **Supabase Pro yatırım kararı teyit edildi (kod yok, karar/hizalama).** Kullanıcı "sürekli proje yapan biri olarak bu yatırımı yapmak zorundayım" dedi — SP1 planı zaten hazır (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`, 10 task, tam kodlu), tazelik kontrolü yapıldı (envelope/onPersist entegrasyon noktaları hâlâ geçerli). Kullanıcı henüz "aldım" demedi — satın alma hâlâ bekliyor.
+3. **"Başka yatırım aracı eklemeli miyiz?" sorusuna HAYIR kararı (gerekçeli).** Palet (mevduat/USD/BIST/ABD/kripto/emtia) risk-profili açısından zaten tam; SP1 bulut senkronu öncesi `SaveEnvelopeV1` şemasını genişletmek yanlış zamanlama olur. Launch-sonrası sıra: emlak'ı geri aç (kod hazır) → tapu/rüşvet katmanı → haber/olay akışı. TEFAS/Eurobond ertelenmiş kalmaya devam ediyor (ücretsiz+anlık veri kaynağı yok).
+4. **UI cilası: piyasa listesi + cüzdan vurgusu.** (a) `PriceRow.svelte` — isim altına ticker kodu eklendi (kullanıcı ekran görüntüsüyle istedi, ör. "Bitcoin" altında "BTC"). (b) `WalletSummary.svelte` — pozisyon satırları arası boşluk konteyner `margin`'den satır içi simetrik `padding`'e taşındı; üst üste hover vurgusu artık kesintisiz tek bant (önceden 4px boyanmamış dikiş vardı). Commit `9a1997f`, 471/471 test yeşil, svelte-check 0 hata, tarayıcıda ölçüm-tabanlı doğrulandı (seam=0px).
 
-### B. Operasyonel Ders (yeni)
-Bu proje aynı anda birden fazla oturumda/pencerede açık olabiliyor ve `npm run dev` port 5173'ü paylaşıyor. `.claude/launch.json`'a `autoPort:true` eklendi (port çakışmasında otomatik farklı port). **Dikkat:** aynı origin'i paylaşan iki tarayıcı sekmesi AYNI localStorage'ı paylaşır — kullanıcı canlı test ederken otomasyonla `localStorage.clear()`/`location.reload()` çağırmak onun oturumunu bozar. Bu oturumda böyle bir çakışma yaşandı (kullanıcının INTC/AAPL test alımları benim otomasyonumla karıştı) — fark edilince otomasyon durduruldu, doğrulama sunulan bundle'ı `curl` ile grep'lemeye kaydırıldı (DOM'a dokunmadan).
+### B. Operasyonel Not
+Ultracode bu oturumun sonunda açıldı (sistem bildirimi) — henüz bir workflow tetiklenmedi, "s" gibi triviyal mekanik işler solo yürütülmeye devam ediyor (Workflow tool'un kendi rehberi de bunu söylüyor).
 
 ### C. Blokerler & Paralel İşler
-- **Supabase Pro satın alımı** ("yakında") → SP1'in tetiği. Alınınca ilk iş SP1 planındaki Task 0 (proje kurulumu eu-central-1, Google OAuth client, Turnstile) — kullanıcı aksiyonları.
-- **Domain ismi yok** → SP3a: aday çalışması + müsaitlik kontrolü; Google OAuth consent prod'unun ön koşulu.
-- **ABD hisse kataloğu kapsam kararı** (yukarı A.3) — sonraki oturumun ilk işi bu kararı almak.
+- **Supabase Pro satın alımı** — hâlâ tetik bekliyor, kullanıcı niyetini teyit etti ama aksiyon almadı. Alınınca ilk iş SP1 Task 0 (eu-central-1 proje kurulumu, Google OAuth client, Turnstile) — kullanıcı aksiyonları, sonra Claude MCP'den doğrular.
+- **Domain ismi yok** → SP3a: aday çalışması + müsaitlik kontrolü henüz başlamadı; Google OAuth consent prod'unun ön koşulu.
+- ~~ABD hisse kataloğu kapsam kararı~~ — ÇÖZÜLDÜ (yukarı A.1).
 
 ### D. Değişiklik Geçmişi
 Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz, rutin "s" akışında dokunulmaz).
@@ -180,6 +181,6 @@ Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzer
 ### E. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
 1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`, port doluysa autoPort farklı port verir).
 2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum.
-3. **Sıradaki adım: ABD hisse kataloğu kapsam kararı (yukarı A.3).** Kullanıcıya sor: "canlı arama" (Yahoo search API, kalıcı) mı "liste genişlet" (hızlı yama) mı? Karar netleşince uygula. Ardından: Supabase Pro alınınca SP1 (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`, önce Task 0); SP3a (domain+KVKK) paralel başlanabilir. Emlak gizli kaldı, açıkça istenmeden dönülmeyecek.
+3. **Sıradaki adım: Supabase Pro satın alımını bekle.** Kullanıcı "aldım" derse hemen SP1 Task 0'a geç (proje kurulumu eu-central-1, Google OAuth, Turnstile, env değişkenleri) — plan hazır, uygulama Sonnet oturumunda TDD ile. Paralelde SP3a (domain adayı + KVKK) bağımsız başlanabilir, istenirse şimdi bile ele alınabilir. Emlak gizli kaldı, açıkça istenmeden dönülmeyecek. Yeni yatırım aracı ekleme — launch/lig verisi gelmeden ertelendi (yukarı A.3).
 4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
