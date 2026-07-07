@@ -115,7 +115,7 @@ Onaylı spec: **`docs/superpowers/specs/2026-07-04-cok-kullanicili-yayin-design.
 Alt projeler:
 - **SP0 Amerikan Borsası — TAMAMLANDI (2026-07-04), prod'da canlı.** Aranabilir katalog (48 hisse, `usStocks.ts`), DST-duyarlı NYSE seansı (`newYorkParts`+2026 tatil takvimi, gerçek tarayıcıda hafta sonu "KAPALI" doğrulandı), `activeUs`+`addUs` (addBist kalıbı), PriceList ABD sekmesi. Plan uygulaması sırasında 2 plan-dışı bug bulunup TDD ile düzeltildi: (1) `computeInitialActiveBist` US holding'i BIST'e sızdırıyordu (isBistLikeId CATALOG'da olmayan her id'yi BIST sayıyordu) → activeUs'teki id'ler hariç tutuldu; (2) `positions` derived'da holding etiketi US sembolde sembolün kendisine düşüyordu → `holdingLabel()` CATALOG→BIST100→US_STOCKS sırayla dener. Commit `eaa024e`..`42150cc` (11 commit), 438/438 test yeşil, Vercel prod deploy READY + 0 runtime error. Plan: `.claude/plans/amerikan-borsasi.md` (referans, arşivlendi).
 - **SP3a Domain + KVKK taslakları** — paralel; domain ismi seçilecek (aday çalışması yapılacak). Google OAuth consent prod'u domain+gizlilik sayfası ister → SP1'den önce. Metinlere **"yatırım tavsiyesi değildir" disclaimer'ı** da dahil (gerçek piyasa verisiyle alım-satım gösteren üründe şart) (2026-07-07).
-- **SP1 Hesap altyapısı** — plan HAZIR: `docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md` (10 task, tam kodlu). **Bloker: Supabase Pro satın alımı** (free slotlar dolu, "yakında").
+- **SP1 Hesap altyapısı** — plan HAZIR: `docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md` (10 task, tam kodlu). **Task 0 devam ediyor** (2026-07-07 başladı): Supabase Pro proje açıldı (`kmlogklnyxzptnrygyya`, eu-central-1, org rudukan Pro'da kaldı ~$35/ay — toss+miras-oyunu), `.env.local` URL+publishable key dolu, Auth→Sign In/Up'ta Anonymous sign-ins+Manual linking ON. Kalan: Google OAuth (kullanıcı evde bitirecek), Cloudflare Turnstile, Supabase secret key, Vercel env — hepsi kullanıcı elinde. Task 0 kanıtı (env dolu + vitest yeşil) tamamlanınca Task 1'den TDD başlar.
 - **SP2 Haftalık lig** — planı bilinçli yazılmadı (SP0+SP1 merge olmadan yazılırsa çürür); onlar bitince kısa güçlü-model oturumunda yazılacak. 30-gün anonim hesap temizliği de SP2'de.
 - **SP3b Yayın cilası + işe-alım vitrini (2026-07-07 genişletildi)** — paylaşım kartı (hafta kapanışı "mahkeme beratı"nı LLM'le kişiselleştirilmiş satirik metne çevirme fikri eklendi — tek completion, agent sistemi DEĞİL; bilinçli anlatı parçası), landing/OG, Sentry, güvenlik başlıkları, `/api/yahoo` CDN cache. Vitrin eklemeleri:
   - **E2E Playwright critical path** (onboarding → işlem → hafta kapanışı) — "test disiplini" iddiasının dürüstlük ön koşulu.
@@ -163,29 +163,30 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-07 — 5. oturum, vitrin hazırlığı + CI)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-07 — 6. oturum, SP1 Task 0 başlangıcı)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show 4985ddb:memory.md`).
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show f90090a~1:memory.md`).
 
 ### A. Bu Oturumda Tamamlananlar
-1. **Cüzdanda "piyasa (canlı)" satırı kaldırıldı** (commit `8ef9c85`). Satır, mühürlü kurla canlı kurun 2 ondalıkta eşitliğine bağlı olduğundan her saniye yanıp sönüyordu (yuvarlama gürültüsü). Kullanıcı kararı net: "kaldır ya, yakın bir değer olması yeterli, oyun bu sonuçta" — tek `USD/TRY` satırı kaldı, `liveUsdTry` UI kablosu temizlendi (store'daki reseal mantığı DOKUNULMADI, hâlâ çalışıyor). Ayrıca oyundaki kur gerçek piyasayla doğrulandı (₺46.84 — BloombergHT/Investing ile örtüşüyor).
-2. **LinkedIn/işe-alım vitrini hedefi netleşti ve plana işlendi** (commit `0daa1ec`). Kullanıcı projeyi LinkedIn'de yayınlayıp "vibe coder değil sistem düşünürü" sinyaliyle işe alınmak istiyor (auto-memory: `linkedin-vitrin-hedefi`). Karar: ürün içine agentic sistem KURULMAYACAK (over-engineering; tek istisna SP3b'de LLM'li satirik "mahkeme beratı" metni — tek completion). SP3a'ya "yatırım tavsiyesi değildir" disclaimer'ı, SP3b'ye vitrin maddeleri eklendi: E2E critical path, CI, erişilebilirlik, funnel/retention analytics, README+mimari diyagram. LinkedIn postu lig canlıya çıktıktan SONRA.
-3. **GitHub Actions CI kuruldu, ilk koşu yeşil** (commit `3c8534b`). `.github/workflows/ci.yml`: her push/PR'da ubuntu'da `npm ci` + `vitest run` + `svelte-check`. İlk run başarılı — testlerin Linux/UTC'de de geçtiği kanıtlandı. SP3b'nin CI maddesi erken kapandı.
-4. **Vitrin README'si yazıldı** (commit `271a024`). Mühendislik kararları (Money tipi, eşikli mühür, 1000-seed Monte Carlo, hibrit canlı veri, DST takvim — hepsi dosya link'li), mermaid mimari diyagramı, test/CI anlatısı, süreç bölümü (spec→plan→TDD), İngilizce özet, "tüm hakları saklıdır" + "yatırım tavsiyesi değildir" notları. Yazmadan önce iddialar doğrulandı: Monte Carlo `npm run test` include'ında (CI'da koşuyor), src'de 0 TODO/FIXME, geçmişte secret yok (`.env` izi sadece `.env.example` placeholder).
+1. **Supabase Pro alındı, proje açıldı.** Org **rudukan** (`tnosxwmmufplosjbsuuz`) zaten Pro'ydu ama 3 eski projeyle (toss, skt, Favio) doluydu. Free'ye tam geçiş denendi, iki bloker çıktı: (a) Pro org'daki proje pause edilemiyor ("downgrade to free-tier first"), (b) Supabase'in ücretsiz proje limiti **org başına değil, hesap (kullanıcı) başına toplam 2 aktif proje** — skt+Favio'yu ayrı org'a transfer etmek limiti resetlemedi. **Karar (kapalı):** rudukan Pro'da kaldı — toss (kullanımda) + **miras-oyunu** (yeni, ref `kmlogklnyxzptnrygyya`, eu-central-1/Frankfurt, ACTIVE_HEALTHY), ~$35/ay sabit. skt+Favio ayrı org'da dokunulmadan duruyor.
+2. **`.env.local` iskeleti yazıldı** — `PUBLIC_SUPABASE_URL` + `PUBLIC_SUPABASE_PUBLISHABLE_KEY` dolu; `PUBLIC_TURNSTILE_SITE_KEY` ve `SUPABASE_SECRET_KEY` kullanıcı dolduracak.
+3. **Auth → Sign In/Up ayarları yapıldı**: Allow new users, Allow manual linking, Allow anonymous sign-ins — üçü de ON (kullanıcı ekran görüntüsüyle doğrulandı).
+4. **Google OAuth**: kullanıcı Google Cloud'da proje oluşturdu, Client ID/Secret + Supabase'e girme işini eve bırakıp devam edecek — SP1 planındaki redirect URI (`https://kmlogklnyxzptnrygyya.supabase.co/auth/v1/callback`) verildi.
+5. **SP1 plan dosyası güncellendi** (commit `f90090a`): Task 0'ın ilk maddesi `[x]`, "Durum notu" ile Pro kararı + proje ref'i eklendi.
+6. **Konu-dışı yan iş: toss'ta arka planda çalışan Telegram hatırlatma botu durduruldu.** Kullanıcı "toss'u kullanmıyorum ama trafik neden yüksek" diye sordu; MCP ile incelendi (`list_edge_functions`, `list_migrations`, postgres logları, `cron.job` sorgusu) → `check-reminders` adlı pg_cron job'ı her dakika (`* * * * *`) `reminder-cron` Edge Function'ını tetikliyordu (Telegram bot + `notes` tablosu due-date hatırlatıcı sistemi). Kullanıcı onayıyla `cron.alter_job(1, active := false)` ile durduruldu, doğrulandı. Not düşüldü ama dokunulmadı: `rls_auto_enable()` fonksiyonu `anon`+`authenticated`'a herkese açık SECURITY DEFINER RPC olarak duruyor, ve cron job komutunda service_role JWT düz metin — ikisi de toss'a ait, miras-oyun kapsamı dışı.
 
-### B. Repo PUBLIC yapıldı (2026-07-07, kullanıcı onayıyla: "aç istersen")
-Secret taraması temizdi, README vitrin hazırdı → `gh repo edit --visibility public` + description (EN) + homepage (miras-one.vercel.app) + 8 topic (sveltekit, svelte, typescript, tailwindcss, vitest, simulation-game, fintech, finance). CI rozeti dıştan erişilebilir (200) doğrulandı. Kalan tek vitrin eksiği: kullanıcının kendi oyun ekranından hero screenshot (README üstüne) — henüz gelmedi.
+### B. Blokerler & Paralel İşler
+- **SP1 Task 0 tamamlanmadı** — kalan kullanıcı işleri: Google OAuth Client ID/Secret'ı Supabase'e girme, Cloudflare Turnstile (site+secret key), Supabase `sb_secret_...` key oluşturma, aynı 4 değeri Vercel env'e ekleme. Hepsi bitince Task 0 kanıtı (`.env.local` dolu + `npx vitest run` yeşil) doğrulanıp Task 1'den TDD başlayacak.
+- **Domain ismi yok** → SP3a: aday çalışması başlamadı; Google OAuth consent prod'unun ön koşulu (dev'de Testing modu yeterli, bloke etmiyor).
+- Vitrin tarafında kullanıcının hero screenshot'ı hâlâ gelmedi (README'ye eklenecek, 5. oturumdan kalma küçük eksik).
 
-### C. Blokerler & Paralel İşler
-- **Supabase Pro satın alımı** — kullanıcı "bugün alacağım sanırım" dedi (2026-07-07), hâlâ bekliyor. "Aldım" gelince SP1 Task 0 (eu-central-1 proje, Google OAuth, Turnstile, env) — kullanıcı aksiyonları, Claude MCP'den doğrular; sonra SP1 uygulaması Sonnet oturumunda TDD ile.
-- **Domain ismi yok** → SP3a: aday çalışması başlamadı; Google OAuth consent prod'unun ön koşulu.
-
-### D. Değişiklik Geçmişi
+### C. Değişiklik Geçmişi
 Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz, rutin "s" akışında dokunulmaz).
 
-### E. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
+### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
 1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`, port doluysa autoPort farklı port verir).
-2. **Doğrulama:** `npm run test` (471 test, Monte Carlo dahil) + `npm run check` + CI artık GitHub Actions'ta da koşuyor. Windows'ta `npm run build` adapter-vercel symlink EPERM verir — bilinen/kabul edilen, CI ubuntu'da sorun yok.
-3. **Sıradaki adımlar (öncelik sırasıyla):** (a) kullanıcı "public yap" derse yukarı B'deki komutla çevir + description/topic ekle; (b) kullanıcı "Supabase'i aldım" derse SP1 Task 0'a geç (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`); (c) paralelde SP3a domain aday çalışması istenirse başlanabilir. Emlak gizli, istenmeden dönülmeyecek; yeni yatırım aracı eklenmeyecek (lig verisi gelmeden).
-4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
+2. **Doğrulama:** `npm run test` (471 test, Monte Carlo dahil) + `npm run check`. Windows'ta `npm run build` adapter-vercel symlink EPERM verir — bilinen/kabul edilen, CI (GitHub Actions, ubuntu) sorunsuz.
+3. **Sıradaki adım:** kullanıcı Google OAuth+Turnstile+secret key+Vercel env'i bitirdiğini söylerse (örn. "tamam" veya "bitti"): `.env.local`'i oku, dolu olduğunu doğrula, `npx vitest run` çalıştır → yeşilse SP1 Task 0 kapanır, `docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md` Task 1'den itibaren subagent-driven-development ile TDD uygulaması başlar (proje ref: `kmlogklnyxzptnrygyya`).
+4. Emlak gizli, istenmeden dönülmeyecek; yeni yatırım aracı eklenmeyecek (lig verisi gelmeden).
+5. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
