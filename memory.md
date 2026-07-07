@@ -114,10 +114,16 @@ Onaylı spec: **`docs/superpowers/specs/2026-07-04-cok-kullanicili-yayin-design.
 
 Alt projeler:
 - **SP0 Amerikan Borsası — TAMAMLANDI (2026-07-04), prod'da canlı.** Aranabilir katalog (48 hisse, `usStocks.ts`), DST-duyarlı NYSE seansı (`newYorkParts`+2026 tatil takvimi, gerçek tarayıcıda hafta sonu "KAPALI" doğrulandı), `activeUs`+`addUs` (addBist kalıbı), PriceList ABD sekmesi. Plan uygulaması sırasında 2 plan-dışı bug bulunup TDD ile düzeltildi: (1) `computeInitialActiveBist` US holding'i BIST'e sızdırıyordu (isBistLikeId CATALOG'da olmayan her id'yi BIST sayıyordu) → activeUs'teki id'ler hariç tutuldu; (2) `positions` derived'da holding etiketi US sembolde sembolün kendisine düşüyordu → `holdingLabel()` CATALOG→BIST100→US_STOCKS sırayla dener. Commit `eaa024e`..`42150cc` (11 commit), 438/438 test yeşil, Vercel prod deploy READY + 0 runtime error. Plan: `.claude/plans/amerikan-borsasi.md` (referans, arşivlendi).
-- **SP3a Domain + KVKK taslakları** — paralel; domain ismi seçilecek (aday çalışması yapılacak). Google OAuth consent prod'u domain+gizlilik sayfası ister → SP1'den önce.
+- **SP3a Domain + KVKK taslakları** — paralel; domain ismi seçilecek (aday çalışması yapılacak). Google OAuth consent prod'u domain+gizlilik sayfası ister → SP1'den önce. Metinlere **"yatırım tavsiyesi değildir" disclaimer'ı** da dahil (gerçek piyasa verisiyle alım-satım gösteren üründe şart) (2026-07-07).
 - **SP1 Hesap altyapısı** — plan HAZIR: `docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md` (10 task, tam kodlu). **Bloker: Supabase Pro satın alımı** (free slotlar dolu, "yakında").
 - **SP2 Haftalık lig** — planı bilinçli yazılmadı (SP0+SP1 merge olmadan yazılırsa çürür); onlar bitince kısa güçlü-model oturumunda yazılacak. 30-gün anonim hesap temizliği de SP2'de.
-- **SP3b Yayın cilası** — paylaşım kartı, landing/OG, Sentry, güvenlik başlıkları, `/api/yahoo` CDN cache.
+- **SP3b Yayın cilası + işe-alım vitrini (2026-07-07 genişletildi)** — paylaşım kartı (hafta kapanışı "mahkeme beratı"nı LLM'le kişiselleştirilmiş satirik metne çevirme fikri eklendi — tek completion, agent sistemi DEĞİL; bilinçli anlatı parçası), landing/OG, Sentry, güvenlik başlıkları, `/api/yahoo` CDN cache. Vitrin eklemeleri:
+  - **E2E Playwright critical path** (onboarding → işlem → hafta kapanışı) — "test disiplini" iddiasının dürüstlük ön koşulu.
+  - **GitHub Actions CI** (test + check + README rozeti) — bağımsız/blokersiz, istenirse SP1'den önce bile öne çekilebilir.
+  - **Erişilebilirlik geçişi** — renk-körü dostu K/Z sinyali (renk + işaret), kontrast/küçük font denetimi; çözülmeyenler "bilinen sınırlama + plan" olarak belgelenir.
+  - **Funnel/retention analytics** — landing → ilk işlem → D1/D7 dönüş; mevcut `/api/telemetry` üstüne kurulabilir.
+  - **README + mimari diyagram** — mevcut spec/plan dosyalarından vitrine derleme; Monte Carlo winnability simülasyonu anlatının merkezine.
+  - **LinkedIn postu bunlardan ve lig canlıya çıktıktan SONRA** (tek atımlık dikkat hakkı "oyna" linksiz harcanmaz).
 
 Süreç anlaşması: uygulama oturumları **Sonnet** + dilim başına bir oturum; spec/plan/güvenlik-review güçlü modelde (auto-memory: `feedback_model_oturum_ekonomisi`). Emlak tarihçesi: süper sade dilim tamamlandı (`b33d673`), sonra gizlendi (`02df9fc`) — kod/test duruyor, istenmeden açılmayacak.
 
