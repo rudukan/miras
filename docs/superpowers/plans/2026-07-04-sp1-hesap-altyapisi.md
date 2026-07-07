@@ -29,7 +29,9 @@
 
 Bu task insan işidir; işaretlenmeden Task 1'e GEÇME. Kanıt: `.env.local` dolu ve `npx vitest run` mevcut 415+ testi yeşil.
 
-- [ ] Supabase Pro satın al, yeni proje aç — **region: eu-central-1 (Frankfurt)** (spec §7: TR'ye en yakın; KVKK yurt dışı aktarım beyanı SP3a metinlerine girecek).
+> **Durum notu (2026-07-07):** Proje AÇIK — `kmlogklnyxzptnrygyya` (eu-central-1), org **rudukan** Pro planda. Org'daki eski projeler (skt, Favio) ayrı bir org'a transfer edildi, rudukan'da yalnız **toss + miras-oyunu** kaldı (~$35/ay). Aşağıdaki ilk madde bu yüzden tamamlanmış sayılır.
+
+- [x] Supabase Pro satın al, yeni proje aç — **region: eu-central-1 (Frankfurt)** (spec §7: TR'ye en yakın; KVKK yurt dışı aktarım beyanı SP3a metinlerine girecek).
 - [ ] Dashboard → Authentication → Sign In / Up: **Anonymous sign-ins: ON**, **Manual linking: ON** (linkIdentity için şart).
 - [ ] Google Cloud Console → OAuth client (Web): Authorized redirect URI = `https://<PROJECT_REF>.supabase.co/auth/v1/callback`. Client ID/Secret'ı Supabase → Auth → Providers → Google'a gir. (Consent screen "Testing" modunda kalabilir — prod publish SP3a'daki domain + gizlilik sayfasına bağlı, dev'i bloklamaz.)
 - [ ] Cloudflare Dashboard → Turnstile → yeni site (**Invisible** mod, domain: `localhost` + Vercel domainleri). Secret'ı Supabase → Auth → Attack Protection → Enable CAPTCHA (Turnstile) alanına gir.
