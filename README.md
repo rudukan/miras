@@ -39,7 +39,7 @@ flowchart LR
 
 - **471 test** (Vitest): domain birim testleri + API proxy testleri + Monte Carlo denge simülasyonu — her push'ta [CI](https://github.com/rudukan/miras/actions)'da.
 - `svelte-check` strict TypeScript, 0 hata toleransı.
-- Playwright E2E critical path ve erişilebilirlik geçişi yol haritasında (aşağıya bak).
+- Playwright E2E critical path ve erişilebilirlik geçişi yol haritasında.
 
 ## Geliştirme süreci
 
