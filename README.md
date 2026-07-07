@@ -8,7 +8,7 @@ Hiç tanımadığın büyük amcandan 1.000.000 USD miras kaldı. Türkiye'nin m
 
 > **EN summary:** A browser-based financial simulation game: manage a $1M inheritance under Turkey's macro conditions with real-time market data (BIST, US stocks, crypto, gold, FX). SvelteKit 2 + Svelte 5 + strict TypeScript. Pure-TS domain layer built with TDD (471 tests incl. a 1000-seed Monte Carlo winnability simulation), CI on every push.
 
-## Öne çıkan mühendislik kararları
+## Mühendislik kararları
 
 - **Para asla `number` değil** — tüm parasal değerler [`Money`](src/lib/domain/money.ts) tipiyle taşınır; float aritmetiği kaynaklı kuruş kaymaları sınıf olarak yok edildi.
 - **Eşikli mühürlü kur** — canlı USD/TRY her saniye oynar; net servetin gürültüyle titrememesi için kur günde bir "mühürlenir", ama mühürden %0.75+ sapan *gerçek* hareket aynı gün yeniden mühürlenir ([`liveGameStore`](src/lib/stores/liveGameStore.svelte.ts)). Gürültü bastırma ile doğruluk arasındaki trade-off'un sentezi.
