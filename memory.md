@@ -163,30 +163,30 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-06 — 4. oturum, ABD kapsam kararı + UI cila)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-07 — 5. oturum, vitrin hazırlığı + CI)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show 68f94c1:memory.md`).
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show 4985ddb:memory.md`).
 
 ### A. Bu Oturumda Tamamlananlar
-1. **ABD hisse kataloğu kapsam kararı verildi ve uygulandı: "canlı arama" (kalıcı çözüm).** Önceki oturumun açık kararı (A.3, statik liste genişletme vs. Yahoo canlı arama) canlı arama lehine çözüldü. Yeni `/api/usSearch` proxy endpoint'i Yahoo Finance'in canlı arama API'sini sarmalıyor (EQUITY + NYSE/NASDAQ filtresi, keyed 5s TTL cache). `PriceList.svelte` statik anlık sonuçları canlı aramayla birleştiriyor (300ms debounce, race-condition koruması). Gerçek tarayıcıda doğrulandı: "vertiv" araması VRT'yi doğru buluyor, ekleme sonrası canlı fiyat akışına giriyor, sayfa yenilenince kalıcı. Bilinen v1 sınırı: canlı-keşifli sembollerin adı (session-only registry) sayfa yenilenince sembole dönüyor — fiyat/pozisyon etkilenmiyor. 496 test yeşil. Commit `bcc1aac`.
-2. **Supabase Pro yatırım kararı teyit edildi (kod yok, karar/hizalama).** Kullanıcı "sürekli proje yapan biri olarak bu yatırımı yapmak zorundayım" dedi — SP1 planı zaten hazır (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`, 10 task, tam kodlu), tazelik kontrolü yapıldı (envelope/onPersist entegrasyon noktaları hâlâ geçerli). Kullanıcı henüz "aldım" demedi — satın alma hâlâ bekliyor.
-3. **"Başka yatırım aracı eklemeli miyiz?" sorusuna HAYIR kararı (gerekçeli).** Palet (mevduat/USD/BIST/ABD/kripto/emtia) risk-profili açısından zaten tam; SP1 bulut senkronu öncesi `SaveEnvelopeV1` şemasını genişletmek yanlış zamanlama olur. Launch-sonrası sıra: emlak'ı geri aç (kod hazır) → tapu/rüşvet katmanı → haber/olay akışı. TEFAS/Eurobond ertelenmiş kalmaya devam ediyor (ücretsiz+anlık veri kaynağı yok).
-4. **UI cilası: piyasa listesi + cüzdan vurgusu.** (a) `PriceRow.svelte` — isim altına ticker kodu eklendi (kullanıcı ekran görüntüsüyle istedi, ör. "Bitcoin" altında "BTC"). (b) `WalletSummary.svelte` — pozisyon satırları arası boşluk konteyner `margin`'den satır içi simetrik `padding`'e taşındı; üst üste hover vurgusu artık kesintisiz tek bant (önceden 4px boyanmamış dikiş vardı). Commit `9a1997f`, 471/471 test yeşil, svelte-check 0 hata, tarayıcıda ölçüm-tabanlı doğrulandı (seam=0px).
+1. **Cüzdanda "piyasa (canlı)" satırı kaldırıldı** (commit `8ef9c85`). Satır, mühürlü kurla canlı kurun 2 ondalıkta eşitliğine bağlı olduğundan her saniye yanıp sönüyordu (yuvarlama gürültüsü). Kullanıcı kararı net: "kaldır ya, yakın bir değer olması yeterli, oyun bu sonuçta" — tek `USD/TRY` satırı kaldı, `liveUsdTry` UI kablosu temizlendi (store'daki reseal mantığı DOKUNULMADI, hâlâ çalışıyor). Ayrıca oyundaki kur gerçek piyasayla doğrulandı (₺46.84 — BloombergHT/Investing ile örtüşüyor).
+2. **LinkedIn/işe-alım vitrini hedefi netleşti ve plana işlendi** (commit `0daa1ec`). Kullanıcı projeyi LinkedIn'de yayınlayıp "vibe coder değil sistem düşünürü" sinyaliyle işe alınmak istiyor (auto-memory: `linkedin-vitrin-hedefi`). Karar: ürün içine agentic sistem KURULMAYACAK (over-engineering; tek istisna SP3b'de LLM'li satirik "mahkeme beratı" metni — tek completion). SP3a'ya "yatırım tavsiyesi değildir" disclaimer'ı, SP3b'ye vitrin maddeleri eklendi: E2E critical path, CI, erişilebilirlik, funnel/retention analytics, README+mimari diyagram. LinkedIn postu lig canlıya çıktıktan SONRA.
+3. **GitHub Actions CI kuruldu, ilk koşu yeşil** (commit `3c8534b`). `.github/workflows/ci.yml`: her push/PR'da ubuntu'da `npm ci` + `vitest run` + `svelte-check`. İlk run başarılı — testlerin Linux/UTC'de de geçtiği kanıtlandı. SP3b'nin CI maddesi erken kapandı.
+4. **Vitrin README'si yazıldı** (commit `271a024`). Mühendislik kararları (Money tipi, eşikli mühür, 1000-seed Monte Carlo, hibrit canlı veri, DST takvim — hepsi dosya link'li), mermaid mimari diyagramı, test/CI anlatısı, süreç bölümü (spec→plan→TDD), İngilizce özet, "tüm hakları saklıdır" + "yatırım tavsiyesi değildir" notları. Yazmadan önce iddialar doğrulandı: Monte Carlo `npm run test` include'ında (CI'da koşuyor), src'de 0 TODO/FIXME, geçmişte secret yok (`.env` izi sadece `.env.example` placeholder).
 
-### B. Operasyonel Not
-Ultracode bu oturumun sonunda açıldı (sistem bildirimi) — henüz bir workflow tetiklenmedi, "s" gibi triviyal mekanik işler solo yürütülmeye devam ediyor (Workflow tool'un kendi rehberi de bunu söylüyor).
+### B. AÇIK KARAR: Repo public'e çevrilme onayı bekliyor
+Secret taraması temiz, README vitrin hazır, kullanıcı "işe alım uzmanları bakarsa diye uygun hale getirelim" dedi — hazırlık TAMAM ama **kullanıcı henüz "public yap" onayı vermedi** ("s" onay sayılmaz). Onay gelince: `gh repo edit rudukan/miras --visibility public` + repo description + topic'ler (sveltekit, typescript, svelte5, fintech, game, simulation). Ayrıca kullanıcıdan kendi oyun ekranından bir hero screenshot istendi (README üstüne) — henüz gelmedi.
 
 ### C. Blokerler & Paralel İşler
-- **Supabase Pro satın alımı** — hâlâ tetik bekliyor, kullanıcı niyetini teyit etti ama aksiyon almadı. Alınınca ilk iş SP1 Task 0 (eu-central-1 proje kurulumu, Google OAuth client, Turnstile) — kullanıcı aksiyonları, sonra Claude MCP'den doğrular.
-- **Domain ismi yok** → SP3a: aday çalışması + müsaitlik kontrolü henüz başlamadı; Google OAuth consent prod'unun ön koşulu.
-- ~~ABD hisse kataloğu kapsam kararı~~ — ÇÖZÜLDÜ (yukarı A.1).
+- **Supabase Pro satın alımı** — kullanıcı "bugün alacağım sanırım" dedi (2026-07-07), hâlâ bekliyor. "Aldım" gelince SP1 Task 0 (eu-central-1 proje, Google OAuth, Turnstile, env) — kullanıcı aksiyonları, Claude MCP'den doğrular; sonra SP1 uygulaması Sonnet oturumunda TDD ile.
+- **Repo public onayı** (yukarı B) — kullanıcının tek cümlesine bakıyor.
+- **Domain ismi yok** → SP3a: aday çalışması başlamadı; Google OAuth consent prod'unun ön koşulu.
 
 ### D. Değişiklik Geçmişi
 Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz, rutin "s" akışında dokunulmaz).
 
 ### E. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
 1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`, port doluysa autoPort farklı port verir).
-2. **Doğrulama:** `npm run test` (Vitest) + `npm run check` (svelte-check) + `npm run build`. Windows'ta adapter-vercel'in son adımında symlink EPERM hatası bilinen ve kabul edilen bir durum.
-3. **Sıradaki adım: Supabase Pro satın alımını bekle.** Kullanıcı "aldım" derse hemen SP1 Task 0'a geç (proje kurulumu eu-central-1, Google OAuth, Turnstile, env değişkenleri) — plan hazır, uygulama Sonnet oturumunda TDD ile. Paralelde SP3a (domain adayı + KVKK) bağımsız başlanabilir, istenirse şimdi bile ele alınabilir. Emlak gizli kaldı, açıkça istenmeden dönülmeyecek. Yeni yatırım aracı ekleme — launch/lig verisi gelmeden ertelendi (yukarı A.3).
+2. **Doğrulama:** `npm run test` (471 test, Monte Carlo dahil) + `npm run check` + CI artık GitHub Actions'ta da koşuyor. Windows'ta `npm run build` adapter-vercel symlink EPERM verir — bilinen/kabul edilen, CI ubuntu'da sorun yok.
+3. **Sıradaki adımlar (öncelik sırasıyla):** (a) kullanıcı "public yap" derse yukarı B'deki komutla çevir + description/topic ekle; (b) kullanıcı "Supabase'i aldım" derse SP1 Task 0'a geç (`docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`); (c) paralelde SP3a domain aday çalışması istenirse başlanabilir. Emlak gizli, istenmeden dönülmeyecek; yeni yatırım aracı eklenmeyecek (lig verisi gelmeden).
 4. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
