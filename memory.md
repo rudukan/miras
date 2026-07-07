@@ -173,12 +173,11 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 3. **GitHub Actions CI kuruldu, ilk koşu yeşil** (commit `3c8534b`). `.github/workflows/ci.yml`: her push/PR'da ubuntu'da `npm ci` + `vitest run` + `svelte-check`. İlk run başarılı — testlerin Linux/UTC'de de geçtiği kanıtlandı. SP3b'nin CI maddesi erken kapandı.
 4. **Vitrin README'si yazıldı** (commit `271a024`). Mühendislik kararları (Money tipi, eşikli mühür, 1000-seed Monte Carlo, hibrit canlı veri, DST takvim — hepsi dosya link'li), mermaid mimari diyagramı, test/CI anlatısı, süreç bölümü (spec→plan→TDD), İngilizce özet, "tüm hakları saklıdır" + "yatırım tavsiyesi değildir" notları. Yazmadan önce iddialar doğrulandı: Monte Carlo `npm run test` include'ında (CI'da koşuyor), src'de 0 TODO/FIXME, geçmişte secret yok (`.env` izi sadece `.env.example` placeholder).
 
-### B. AÇIK KARAR: Repo public'e çevrilme onayı bekliyor
-Secret taraması temiz, README vitrin hazır, kullanıcı "işe alım uzmanları bakarsa diye uygun hale getirelim" dedi — hazırlık TAMAM ama **kullanıcı henüz "public yap" onayı vermedi** ("s" onay sayılmaz). Onay gelince: `gh repo edit rudukan/miras --visibility public` + repo description + topic'ler (sveltekit, typescript, svelte5, fintech, game, simulation). Ayrıca kullanıcıdan kendi oyun ekranından bir hero screenshot istendi (README üstüne) — henüz gelmedi.
+### B. Repo PUBLIC yapıldı (2026-07-07, kullanıcı onayıyla: "aç istersen")
+Secret taraması temizdi, README vitrin hazırdı → `gh repo edit --visibility public` + description (EN) + homepage (miras-one.vercel.app) + 8 topic (sveltekit, svelte, typescript, tailwindcss, vitest, simulation-game, fintech, finance). CI rozeti dıştan erişilebilir (200) doğrulandı. Kalan tek vitrin eksiği: kullanıcının kendi oyun ekranından hero screenshot (README üstüne) — henüz gelmedi.
 
 ### C. Blokerler & Paralel İşler
 - **Supabase Pro satın alımı** — kullanıcı "bugün alacağım sanırım" dedi (2026-07-07), hâlâ bekliyor. "Aldım" gelince SP1 Task 0 (eu-central-1 proje, Google OAuth, Turnstile, env) — kullanıcı aksiyonları, Claude MCP'den doğrular; sonra SP1 uygulaması Sonnet oturumunda TDD ile.
-- **Repo public onayı** (yukarı B) — kullanıcının tek cümlesine bakıyor.
 - **Domain ismi yok** → SP3a: aday çalışması başlamadı; Google OAuth consent prod'unun ön koşulu.
 
 ### D. Değişiklik Geçmişi
