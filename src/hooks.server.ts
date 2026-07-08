@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import type { Handle } from '@sveltejs/kit';
+import { WebSocket } from 'ws';
 import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY } from '$env/static/public';
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -11,6 +12,14 @@ export const handle: Handle = async ({ event, resolve }) => {
           event.cookies.set(name, value, { ...options, path: '/' });
         });
       },
+    },
+    // Bu uygulama realtime kullanmiyor (SP1 kapsam disi); ama SupabaseClient
+    // constructor'i her zaman bir RealtimeClient kuruyor, o da native WebSocket
+    // arayip bulamayinca (Vercel'in bazi Node serverless ortamlarinda gorulen bir
+    // durum) tum istekleri 500'letiyordu. transport hicbir zaman baglanmiyor,
+    // yalnizca crash'i onlemek icin veriliyor.
+    realtime: {
+      transport: WebSocket as unknown as typeof globalThis.WebSocket,
     },
   });
 
