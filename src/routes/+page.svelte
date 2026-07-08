@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { PUBLIC_TURNSTILE_SITE_KEY } from '$env/static/public';
 	import { createLiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import {
 		loadGame,
@@ -9,7 +10,11 @@
 		getOrCreatePlayerId,
 		loadHistory,
 		saveHistory,
+		type SaveEnvelopeV1,
 	} from '$lib/stores/savegame';
+	import { chooseSource, createCloudPush, LOCAL_TOUCHED_KEY } from '$lib/stores/cloudSave';
+	import { ensureSession } from '$lib/api/authBootstrap';
+	import { getTurnstileToken } from '$lib/api/turnstile';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
 	import { daysElapsed, dailyBreakdown } from '$lib/domain/snapshot/dailySnapshot';
 	import { buildClosingCardModel } from '$lib/components/closingCard';
@@ -27,9 +32,13 @@
 	import ClosingCard from '$lib/components/ClosingCard.svelte';
 	import DailyBreakdown from '$lib/components/DailyBreakdown.svelte';
 	import AssetPopover from '$lib/components/AssetPopover.svelte';
+	import AccountPanel from '$lib/components/panels/AccountPanel.svelte';
 	import type { PriceRow } from '$lib/stores/liveGameStore.svelte';
 
+	let { data } = $props();
+
 	const CARD_SEEN_KEY = 'miras.cardSeen';
+	const CLOUD_HYDRATED_KEY = 'miras.cloudHydrated';
 
 	const initial = browser ? loadGame(localStorage) : null;
 	const initialHistory = browser ? loadHistory(localStorage)?.history : undefined;
@@ -37,12 +46,27 @@
 
 	if (browser) pingDailyVisit(localStorage, playerId, istanbulParts(new Date()).key);
 
+	// Bulut kayit push'u: debounce'lu, hata durumunda oyunu asla durdurmaz (spec §5).
+	const cloudPush = createCloudPush(async (envelope: SaveEnvelopeV1) => {
+		const {
+			data: { user },
+		} = await data.supabase.auth.getUser();
+		if (!user) return; // oturum yoksa bulut yok — oyun localStorage ile yaşar
+		await data.supabase
+			.from('saves')
+			.upsert({ user_id: user.id, payload: envelope, schema_version: envelope.v });
+	});
+
 	const store = createLiveGameStore({
 		playerId,
 		initial,
 		initialHistory,
 		onPersist: (envelope) => {
-			if (browser) saveGame(localStorage, envelope);
+			if (browser) {
+				saveGame(localStorage, envelope);
+				localStorage.setItem(LOCAL_TOUCHED_KEY, String(Date.now()));
+				cloudPush.schedule(envelope);
+			}
 		},
 		onPersistHistory: (history) => {
 			if (browser) saveHistory(localStorage, { v: 1, history });
@@ -181,6 +205,39 @@
 		store.stop();
 		if (tick) clearInterval(tick);
 		if (toastTimer) clearTimeout(toastTimer);
+	});
+
+	// Boot senkronu: sessiz misafir oturumu acilir, sonra bulutta daha yeni kayit var mi bakilir
+	// (cihaz degisimi senaryosu). Hata durumunda oyun localStorage ile cevrimdisi devam eder —
+	// asla oyunu bloke etmez / crash etmez.
+	onMount(() => {
+		void (async () => {
+			try {
+				await ensureSession(data.supabase.auth, () => getTurnstileToken(PUBLIC_TURNSTILE_SITE_KEY));
+			} catch (err) {
+				console.error('[auth] misafir oturumu açılamadı — çevrimdışı devam', err);
+				return;
+			}
+			// Bulutta daha yeni kayıt var mı? (cihaz değişimi senaryosu)
+			if (sessionStorage.getItem(CLOUD_HYDRATED_KEY)) return; // reload döngüsü kilidi
+			const { data: row } = await data.supabase
+				.from('saves')
+				.select('payload, updated_at')
+				.maybeSingle();
+			const touched = Number(localStorage.getItem(LOCAL_TOUCHED_KEY)) || null;
+			if (row && chooseSource(touched, row.updated_at) === 'cloud') {
+				saveGame(localStorage, row.payload as SaveEnvelopeV1);
+				localStorage.setItem(LOCAL_TOUCHED_KEY, String(Date.now()));
+				sessionStorage.setItem(CLOUD_HYDRATED_KEY, '1');
+				location.reload();
+			}
+		})();
+
+		const flushOnHide = () => {
+			if (document.visibilityState === 'hidden') void cloudPush.flush();
+		};
+		document.addEventListener('visibilitychange', flushOnHide);
+		return () => document.removeEventListener('visibilitychange', flushOnHide);
 	});
 </script>
 
@@ -322,6 +379,8 @@
 							vsUsdHoldUsd={store.vsUsdHoldUsd}
 							cashUsd={store.game.usdBalance}
 						/>
+
+						<AccountPanel supabase={data.supabase} />
 
 						<WalletSummary
 							game={store.game}
