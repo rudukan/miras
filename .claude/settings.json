@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git init *)"
+      "Bash(git init *)",
+      "Bash(npm run test)",
+      "Bash(npm run test *)",
+      "Bash(npm run check)",
+      "Bash(npm run check *)",
+      "mcp__Claude_Preview__preview_snapshot",
+      "mcp__Claude_Preview__preview_screenshot",
+      "mcp__Claude_Preview__preview_console_logs",
+      "mcp__Claude_Preview__preview_network",
+      "mcp__Claude_Preview__preview_logs",
+      "mcp__Claude_Preview__preview_inspect",
+      "mcp__f5f708dc-d420-49b5-b043-d9818358c892__get_advisors",
+      "mcp__f5f708dc-d420-49b5-b043-d9818358c892__list_projects",
+      "mcp__f5f708dc-d420-49b5-b043-d9818358c892__list_organizations",
+      "mcp__f5f708dc-d420-49b5-b043-d9818358c892__get_organization",
+      "mcp__f5f708dc-d420-49b5-b043-d9818358c892__get_logs",
+      "mcp__775b2e4a-26c1-4b11-b046-414bd79ae3fb__get_deployment_build_logs"
     ]
   }
 }
