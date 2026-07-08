@@ -36,10 +36,12 @@ legacy/            — v3.1.0 referans (build'den hariç, silinmeyecek)
 - Her `src/lib/domain/<sistem>/` klasörü sadece `money.ts` + kendi type'larına bağımlı.
 
 ## Test Disiplini
-- Domain unit: Vitest, `*.test.ts` domain dosyasının yanı başında. **Mevcut ve sağlam** (438/438 yeşil, 29 dosya).
-- Balance simülasyon: `tests/balance/` — 1000x oyun simülasyonu, kazanılabilirlik %30-70 aralığında. **Henüz yazılmadı** (klasör boş) — hedef tasarım, uygulanmış değil.
-- E2E: `tests/e2e/` — Playwright critical path (onboarding → işlem → yıl sonu). **Henüz kurulmadı** (`@playwright/test` devDependency var ama `playwright.config` yok, klasör boş) — hedef tasarım, uygulanmış değil.
+- Domain unit: Vitest, `*.test.ts` domain dosyasının yanı başında. **Mevcut ve sağlam** — güncel sayı için `npm run test` (buraya sabit sayı yazma, drift ediyor).
+- Balance simülasyon: `tests/balance/` — **Mevcut**: 1000-seed simülasyon (`winnability.test.ts`), 4 strateji; dengeli strateji %30-70 kazanılabilirlik bandını doğruluyor. Aggressive strateji kalibrasyonu backlog'da (test dosyasındaki nota bak).
+- E2E: `tests/e2e/` — Playwright critical path (onboarding → işlem → yıl sonu). **Henüz kurulmadı** (`@playwright/test` devDependency var ama `playwright.config` yok, klasör boş) — çok kullanıcılı yayından önce kurulmalı.
+- CI: `.github/workflows/ci.yml` — main push + PR'da `npm ci` → `test` → `check` → `build`.
 - **`verification-before-completion` skill**: "tamam" demeden önce `npm run test` + `npm run build` geçmeli.
+- Sprint/plan kapanışında bu bölümü gerçek durumla senkronla — CLAUDE.md her oturuma yüklenir, yanlış bilgi hafızasızlıktan pahalıdır.
 
 ## Subagent'lar
 9 departman `.claude/agents/` altında, her biri model: sonnet.
