@@ -16,24 +16,39 @@
   );
 
   $effect(() => {
-    void supabase.auth.getUser().then(async ({ data }) => {
-      user = data.user;
-      if (!data.user) return;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('nickname')
-        .eq('id', data.user.id)
-        .maybeSingle();
-      savedNickname = profile?.nickname ?? null;
-    });
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (cancelled) return;
+        user = data.user;
+        if (!data.user) return;
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('nickname')
+          .eq('id', data.user.id)
+          .maybeSingle();
+        if (cancelled) return;
+        savedNickname = profile?.nickname ?? null;
+      } catch {
+        if (!cancelled) message = 'Oturum bilgileri yüklenemedi, sayfayı yenile';
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   });
 
   async function linkGoogle() {
-    const { error } = await supabase.auth.linkIdentity({
-      provider: 'google',
-      options: { redirectTo: location.origin },
-    });
-    if (error) message = 'Google bağlantısı başarısız: ' + error.message;
+    try {
+      const { error } = await supabase.auth.linkIdentity({
+        provider: 'google',
+        options: { redirectTo: location.origin },
+      });
+      if (error) message = 'Google bağlantısı başarısız: ' + error.message;
+    } catch {
+      message = 'Google bağlantısı başarısız, tekrar dene';
+    }
   }
 
   async function claimNickname() {
@@ -42,16 +57,20 @@
       message = verdict.reason;
       return;
     }
-    const res = await fetch('/api/profile', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ nickname: verdict.value }),
-    });
-    if (res.ok) {
-      savedNickname = verdict.value;
-      message = null;
-    } else {
-      message = (await res.json().catch(() => null))?.message ?? 'Kaydedilemedi';
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ nickname: verdict.value }),
+      });
+      if (res.ok) {
+        savedNickname = verdict.value;
+        message = null;
+      } else {
+        message = (await res.json().catch(() => null))?.message ?? 'Kaydedilemedi';
+      }
+    } catch {
+      message = 'Kaydedilemedi, bağlantını kontrol et';
     }
   }
 
@@ -60,13 +79,18 @@
       confirmingDelete = true;
       return;
     }
-    const res = await fetch('/api/account/delete', { method: 'POST' });
-    if (res.ok) {
-      await supabase.auth.signOut();
-      clearSave(localStorage);
-      location.reload();
-    } else {
-      message = 'Hesap silinemedi, tekrar dene';
+    try {
+      const res = await fetch('/api/account/delete', { method: 'POST' });
+      if (res.ok) {
+        await supabase.auth.signOut();
+        clearSave(localStorage);
+        location.reload();
+      } else {
+        message = 'Hesap silinemedi, tekrar dene';
+        confirmingDelete = false;
+      }
+    } catch {
+      message = 'Hesap silinemedi, bağlantını kontrol et';
       confirmingDelete = false;
     }
   }
