@@ -11,11 +11,11 @@ Hiç tanımadığın büyük amcandan 1.000.000 USD miras kaldı. Türkiye'nin m
 ## Mühendislik kararları
 
 - **Para asla `number` değil** — tüm parasal değerler [`Money`](src/lib/domain/money.ts) tipiyle taşınır; float aritmetiği kaynaklı kuruş kaymaları sınıf olarak yok edildi.
-- **Eşikli mühürlü kur** — canlı USD/TRY her saniye oynar; net servetin gürültüyle titrememesi için kur günde bir "mühürlenir", ama mühürden %0.75+ sapan *gerçek* hareket aynı gün yeniden mühürlenir ([`liveGameStore`](src/lib/stores/liveGameStore.svelte.ts)). Gürültü bastırma ile doğruluk arasındaki trade-off'un sentezi.
+- **Eşikli mühürlü kur** — canlı USD/TRY her saniye oynar; net servetin gürültüyle titrememesi için kur günde bir "mühürlenir", ama mühürden %0.75+ sapan *gerçek* hareket aynı gün yeniden mühürlenir ([`liveGameStore`](src/lib/stores/liveGameStore.svelte.ts)). Gürültü bastırma ile doğruluk arasında bilinçli bir orta yol.
 - **1000-seed Monte Carlo kazanılabilirlik simülasyonu** — oyun dengesi tahminle değil istatistikle doğrulanır: her strateji arketipi (temkinli/dengeli/agresif) 1000 rastgele tohumla koşulur, kazanma oranının %30-70 hedef bandında kaldığı test edilir ([`tests/balance/winnability.test.ts`](tests/balance/winnability.test.ts)). Her push'ta CI'da koşar.
-- **Hibrit canlı veri** — kripto Binance WebSocket (birincil) + snapshot fallback; BIST/altın/döviz Yahoo Finance üzerinden 5s cache'li SvelteKit proxy (rate-limit koruması). Feed koptuğunda zarif geri düşüş, kullanıcı fark etmez.
+- **Hibrit canlı veri** — kripto Binance WebSocket (birincil) + snapshot fallback; BIST/altın/döviz Yahoo Finance üzerinden 5s cache'li SvelteKit proxy (rate-limit koruması). Feed koptuğunda otomatik geri düşüş; oyun kesintisiz sürer.
 - **DST-duyarlı borsa takvimi** — NYSE ve BIST seans saatleri, ABD yaz saati geçişleri ve tatil takvimi dahil gerçek kurallarla modellenir ([`domain/calendar`](src/lib/domain/calendar/)).
-- **Sınırsız ABD hisse kapsamı** — statik katalog yerine Yahoo canlı arama API'sini saran proxy: kullanıcı herhangi bir NYSE/NASDAQ sembolünü arayıp portföyüne ekleyebilir (debounce + race-condition koruması).
+- **Canlı ABD hisse araması** — statik katalog yerine Yahoo canlı arama API'sini saran proxy: kullanıcı herhangi bir NYSE/NASDAQ sembolünü arayıp portföyüne ekleyebilir (debounce + race-condition koruması).
 
 ## Mimari
 
@@ -54,7 +54,7 @@ Sırada: Supabase (Auth + Postgres + RLS) ile hesap altyapısı → haftalık li
 ```bash
 npm install
 npm run dev     # http://localhost:5173
-npm run test    # Vitest — 471 test
+npm run test    # Vitest
 npm run check   # svelte-check (TS strict)
 ```
 
