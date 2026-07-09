@@ -34,6 +34,23 @@ export function clearSave(storage: Storage): void {
   storage.removeItem(HISTORY_KEY);
 }
 
+const PENDING_WIPE_KEY = 'miras.pendingWipe';
+
+/** Reset/hesap silme reload'ından ÖNCE çağrılır. clearSave tek başına yeterli değil:
+ * reload gerçekleşene kadar çalışan store bir persist tetiklerse bellekteki eski kayıt/geçmiş
+ * localStorage'a geri yazılır. Bayrak, temizliği bir sonraki boot'a da taşır. */
+export function markPendingWipe(session: Storage): void {
+  session.setItem(PENDING_WIPE_KEY, '1');
+}
+
+/** Boot'ta loadGame/loadHistory'den ÖNCE çağrılır: bayrak varsa temizliği tekrarlar (tek kullanımlık). */
+export function consumePendingWipe(session: Storage, local: Storage): boolean {
+  if (session.getItem(PENDING_WIPE_KEY) === null) return false;
+  session.removeItem(PENDING_WIPE_KEY);
+  clearSave(local);
+  return true;
+}
+
 /** Bozuk JSON / yanlış versiyon → null (sıfırdan başla, migration yok). */
 export function loadGame(storage: Storage): SaveEnvelopeV1 | null {
   const raw = storage.getItem(SAVE_KEY);

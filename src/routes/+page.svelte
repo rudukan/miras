@@ -10,6 +10,8 @@
 		getOrCreatePlayerId,
 		loadHistory,
 		saveHistory,
+		markPendingWipe,
+		consumePendingWipe,
 		type SaveEnvelopeV1,
 	} from '$lib/stores/savegame';
 	import { chooseSource, createCloudPush, LOCAL_TOUCHED_KEY } from '$lib/stores/cloudSave';
@@ -39,6 +41,10 @@
 
 	const CARD_SEEN_KEY = 'miras.cardSeen';
 	const CLOUD_HYDRATED_KEY = 'miras.cloudHydrated';
+
+	// Silme/reset sonrası ikinci temizlik: reload öncesi bir persist yarışı ya da bayat sekme
+	// kodu eski kaydı geri yazmış olabilir — bayrak varsa boot her şeyi bir kez daha siler.
+	if (browser) consumePendingWipe(sessionStorage, localStorage);
 
 	const initial = browser ? loadGame(localStorage) : null;
 	const initialHistory = browser ? loadHistory(localStorage)?.history : undefined;
@@ -197,6 +203,7 @@
 	function handleResetSave() {
 		if (browser) {
 			clearSave(localStorage);
+			markPendingWipe(sessionStorage);
 			location.reload();
 		}
 	}

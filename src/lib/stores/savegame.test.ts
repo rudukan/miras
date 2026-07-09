@@ -6,6 +6,8 @@ import {
   getOrCreatePlayerId,
   saveHistory,
   loadHistory,
+  markPendingWipe,
+  consumePendingWipe,
   type SaveEnvelopeV1,
 } from './savegame';
 import { createGameState } from './gameState';
@@ -139,6 +141,48 @@ describe('savegame', () => {
 
       expect(loadGame(storage)).toBeNull();
       expect(loadHistory(storage)).toBeNull();
+    });
+  });
+
+  describe('pending wipe (miras.pendingWipe)', () => {
+    const staleHistory: DailySnapshot[] = [
+      {
+        dateKey: '2026-07-08',
+        netWorthUsd: usd(1_010_000),
+        vsUsdHoldUsd: usd(10_000),
+        allocation: { usd: 100 },
+        recordedAt: 111,
+      },
+    ];
+
+    it('markPendingWipe → boot consumePendingWipe: kayıt + geçmiş silinir, bayrak düşer, true döner', () => {
+      const session = makeStorage();
+      const local = makeStorage();
+      // Yarış senaryosu: clearSave'den SONRA çalışan store eski durumu geri yazmış olsun.
+      const game = createGameState('canli', 1, 'p1', 1000);
+      saveGame(local, { v: 1, game, activeBist: [] });
+      saveHistory(local, { v: 1, history: staleHistory });
+      markPendingWipe(session);
+
+      const wiped = consumePendingWipe(session, local);
+
+      expect(wiped).toBe(true);
+      expect(loadGame(local)).toBeNull();
+      expect(loadHistory(local)).toBeNull();
+      // Bayrak tek kullanımlık: ikinci boot artık silmez.
+      saveGame(local, { v: 1, game, activeBist: [] });
+      expect(consumePendingWipe(session, local)).toBe(false);
+      expect(loadGame(local)).not.toBeNull();
+    });
+
+    it('bayrak yokken no-op: false döner, mevcut kayda dokunmaz', () => {
+      const session = makeStorage();
+      const local = makeStorage();
+      const game = createGameState('canli', 1, 'p1', 1000);
+      saveGame(local, { v: 1, game, activeBist: [] });
+
+      expect(consumePendingWipe(session, local)).toBe(false);
+      expect(loadGame(local)).not.toBeNull();
     });
   });
 

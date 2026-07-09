@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { SupabaseClient, User } from '@supabase/supabase-js';
   import { validateNickname } from '$lib/domain/nickname/nickname';
-  import { clearSave } from '$lib/stores/savegame';
+  import { clearSave, markPendingWipe } from '$lib/stores/savegame';
 
   let { supabase }: { supabase: SupabaseClient } = $props();
 
@@ -84,6 +84,7 @@
       if (res.ok) {
         await supabase.auth.signOut();
         clearSave(localStorage);
+        markPendingWipe(sessionStorage);
         location.reload();
       } else {
         message = 'Hesap silinemedi, tekrar dene';
