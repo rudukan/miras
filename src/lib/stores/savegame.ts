@@ -26,8 +26,12 @@ export function saveGame(storage: Storage, envelope: SaveEnvelopeV1): void {
   storage.setItem(SAVE_KEY, JSON.stringify(envelope));
 }
 
+/** Kayıt + günlük döküm geçmişi birlikte silinir (oyun reset'i ve hesap silme aynı semantik:
+ * geçmiş kalırsa yeni oyunun ilk snapshot'ı eski değerlerle kıyaslanıp sahte delta üretir).
+ * PLAYER_ID bilinçli olarak kalır — bkz. getOrCreatePlayerId. */
 export function clearSave(storage: Storage): void {
   storage.removeItem(SAVE_KEY);
+  storage.removeItem(HISTORY_KEY);
 }
 
 /** Bozuk JSON / yanlış versiyon → null (sıfırdan başla, migration yok). */

@@ -128,6 +128,18 @@ describe('savegame', () => {
       expect(loaded.history[1].netWorthUsd).toEqual({ amount: 1_015_000, currency: 'USD' });
       expect(loaded.history[1].vsUsdHoldUsd).toEqual({ amount: 15_000, currency: 'USD' });
     });
+
+    it('clearSave: döküm geçmişini de siler (reset/hesap silme sonrası eski döküm kalmamalı)', () => {
+      const storage = makeStorage();
+      const game = createGameState('canli', 1, 'p1', 1000);
+      saveGame(storage, { v: 1, game, activeBist: [] });
+      saveHistory(storage, { v: 1, history: sampleHistory });
+
+      clearSave(storage);
+
+      expect(loadGame(storage)).toBeNull();
+      expect(loadHistory(storage)).toBeNull();
+    });
   });
 
   describe('mevduat persistence', () => {
