@@ -167,33 +167,29 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-08 — 7. oturum, SP1 tamamlandı + prod'da canlı doğrulandı)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-09 — 8. oturum, SP1 canlı test bulguları + 2 kayıt-temizliği bug fix'i)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show 50700ca~1:memory.md`).
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show 9cce9d1:memory.md` — SP1 tamamlama + prod doğrulama oturumu).
 
 ### A. Bu Oturumda Tamamlananlar
-1. **SP1 Task 0 kapatıldı, Task 1-9 uygulandı** (`superpowers:subagent-driven-development`, doğrudan main'de). 9/9 task onaylı, final whole-branch review'da (opus) canlı DB testiyle bulunan kritik upsert-grant hatası düzeltildi (`0002_upsert_grants.sql`, `50f5693`). Detay: yukarıda Bölüm 4'teki SP1 satırında.
-2. **Vercel env eklendi (kullanıcı) → deploy → 500 → 3 ayrı WebSocket hatası + 1 sonsuz döngü bulunup düzeltildi, hepsi prod'da canlı doğrulandı.** Kısa versiyon: Supabase client'ı arka planda hep bir RealtimeClient kuruyor, o native WebSocket arıyor, Vercel'in bu proje için fiilen kullandığı Node sürümü (ayar 24.x dese de loglar "Node 20 ve altı" diyordu) bunu sağlamıyordu. Üç çağrı noktası aynı sebeple çöktü ve `ws` paketi transport olarak verilerek tek tek düzeltildi: `hooks.server.ts` (`0561cdc`), `+layout.ts`'in SSR'da da çalışan `load()`'u (`832c0bc`), ve **kullanıcının gerçek hesap-silme denemesinde** yakalanan `/api/account/delete`'in kendi admin client'ı (`c3966c9`). Ayrıca `+layout.svelte`'deki `onAuthStateChange` ayrım yapmadan `invalidate` çağırdığı için `INITIAL_SESSION` event'i kendi kendini tetikleyen sonsuz döngü yaratıyordu (binlerce başarısız istek, local preview'da yakalandı) — aynı commit `0561cdc`'te filtrelenerek düzeltildi. Codebase'de `createClient`/`createServerClient`/`createBrowserClient` kullanan TÜM dosyalar grep ile tarandı, üçü de artık fixli, başka yer yok.
-3. **Kanıt zinciri canlı, uçtan uca:** kullanıcı prod'da gerçek anonim oturum açtı, takma ad aldı ("rudukan"), hesabını sildi — `POST /api/account/delete 200` Vercel loglarında doğrulandı. Task 9'un en riskli manuel maddesi fiilen geçti.
-4. **Güvenlik taraması istendi, temiz çıktı:** `npm audit`'teki 10 zafiyet yalnız build/dev araçlarında (Vite/Vitest/SvelteKit adapter), prod koduna hiç girmiyor; `ws` (bugün eklenen) listede yok. Supabase advisors'ta yalnız beklenen "anonim erişim" uyarısı var.
-5. **README ton düzeltmeleri** (küçük, ayrı iş): "Öne çıkan mühendislik kararları" → "Mühendislik kararları", birkaç abartılı ifade sadeleştirildi. Commit'ler: `ef63d29`, `153d5e5`, `7ffd3d5`.
-6. **19 commit push edildi** (`edba7bf`..`c3966c9`), memory.md Bölüm 4'teki SP1 satırı "TAMAMLANDI + PROD'DA CANLI" olarak güncellendi.
+1. **Zemin işleri (8 Tem akşamı, dünkü push'la gitti):** CLAUDE.md Test Disiplini gerçek durumla senkronlandı (balance testleri "mevcut", sabit test sayısı kaldırıldı — drift mıknatısı) (`34a55ab`); CI'a `npm run build` adımı + placeholder Supabase env eklendi (`c750d3b`) — push edilmemiş `$env/static/public` import'ları bir sonraki push'ta CI'ı kıracaktı, önceden yakalandı. Lokal build'in adapter-vercel symlink `EPERM` sorunu Windows **Geliştirici Modu** açılarak çözüldü (auto-memory'de kayıtlı).
+2. **Kullanıcının canlı test bulguları kök-nedenlendi:** (a) Google OAuth'un `localhost:3000`'e düşmesi — Supabase **URL Configuration** hiç yapılmamıştı (SP1 planının kapsamına da girmemişti; Task 0 yalnız Google Console tarafını içeriyordu). Auth loglarından ikinci bulgu: kullanıcının dev sunucusu fiilen **3000 portunda** çalışıyor (muhtemelen `vercel dev`) — localhost'a dönüş doğru davranış, "ölü sayfa" o an sunucunun kapalı olmasıydı. Kullanıcı Site URL=prod + localhost:3000 allow-list'ini ekledi. (b) Takma ad "rudukan" Supabase'de doğrulandı. (c) Login/karşılama sayfası SP1'de bilinçli kapsam dışıydı — SP1.5 önerildi (aşağıda).
+3. **İki gerçek bug TDD + tarayıcı kanıtıyla düzeltildi:** (a) `clearSave` yalnız `miras.save.v1`'i siliyordu, `miras.history.v1` (günlük döküm) silme/reset sonrası kalıyordu → ikisi birlikte silinir (`1a4261f`). (b) Bu bile yetmiyordu: reload'a kadar çalışan store bellekteki eski kaydı geri yazabiliyor (persist yarışı) ve bayat sekmeler eski kodu çalıştırıyor → silme/reset artık `miras.pendingWipe` (sessionStorage) bayrağı bırakıyor, boot `loadGame`'den önce bayrağı görüp temizliği tekrarlıyor (`da8ec0d`). Kullanıcının "döküm hâlâ duruyor" gözleminin birincil sebebi bayat sekmeydi (fix 11:30'da girdi, silme denemeleri 12:48'de eski kodla yapıldı — auth loglarından kanıtlandı).
+4. **Keşif — reset/bulut uzlaşması boşluğu (SP1.5 kapsamına):** "Sıfırla ve yeni oyun" buluttaki kayıt satırını silmiyor, `miras.save.touchedAt` da temizlenmiyor; `miras.cloudHydrated` sessionStorage kilidi yalnız aynı sekmeyi koruyor → senkronlu oyuncuda eski oyun yeni sekme/cihazda buluttan hortlayabilir.
 
 ### B. Blokerler & Kalan İşler
-- **Task 9'un geri kalan manuel maddeleri** — Google gerçek OAuth bağlama akışı, çapraz-kullanıcı RLS impersonate testi. Hesap silme (en riskli madde) zaten canlı doğrulandığı için bunlar artık düşük öncelik, istenirse birlikte yapılır.
-- **7 Minor bulgu ertelendi** (engelleyici değil, detay `.superpowers/sdd/progress.md`'de): AccountPanel hata mesajı/log detayları (3 adet), `+page.svelte`'in boot query'sinde try/catch eksikliği, `+layout.ts` SSR session taşımıyor (bilinçli basitleştirme), `SaveHistoryV1` buluta senkron değil, `cloudPush` her debounce'ta network `getUser()` çağırıyor.
-- **Domain ismi yok** → SP3a: aday çalışması başlamadı; Google OAuth consent prod'unun ön koşulu (dev'de Testing modu yeterli, bloke etmiyor).
-- Vitrin tarafında kullanıcının hero screenshot'ı hâlâ gelmedi (README'ye eklenecek).
-- **SP2 Haftalık lig** planı hâlâ yazılmadı — artık SP0+SP1 ikisi de bitti ve prod'da doğrulandı, ön koşul kalktı, istenirse güçlü-model oturumunda yazılabilir.
+- **Kullanıcının silme testi bekliyor:** lokalde (localhost:3000, hard refresh sonrası) döküm artık silinmeli; prod testi bu push'un deploy'u SONRASI yapılmalı (prod şu ana dek eski koddaydı).
+- **SP1.5 planı yazılacak (güçlü model):** login/karşılama sayfası + `/auth/callback` rotası ("giriş yapılıyor…" ekranı) + reset-bulut uzlaşması (reset'te bulut kaydı ne olacak) + "hesap silmede `miras.playerId` da silinsin mi" KVKK kararı. Uygulama Sonnet'te.
+- Önceki oturumdan taşınanlar: **SP2 haftalık lig planı** (ön koşulsuz, yazılmayı bekliyor); **SP3a domain** adaylığı; hero screenshot (README); Task 9'dan kalan RLS impersonate testi (Google bağlama kullanıcı akışında fiilen doğrulandı sayılır); 7 minor bulgu (`.superpowers/sdd/progress.md`).
 
 ### C. Değişiklik Geçmişi
 Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz, rutin "s" akışında dokunulmaz).
 
 ### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
-1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`). Prod: `miras-one.vercel.app`, canlı ve sağlıklı.
-2. **Doğrulama:** `npm run test` (488 test) + `npm run check` + `npm run build` (Windows'ta da geçiyor).
-3. **Yeni Supabase server-taraflı client eklersen dikkat:** `createClient`/`createServerClient`/`createBrowserClient` her çağrısı `realtime: { transport: <ws-benzeri> }` almalı sunucu tarafında (bkz. `hooks.server.ts`, `+layout.ts`, `api/account/delete/+server.ts` — üçü de örnek), yoksa Vercel'de "native WebSocket not found" ile 500 verir.
-4. **Sıradaki adımlar (öncelik sırasıyla):** (a) SP2 (haftalık lig) planını yazmaya başla (artık ön koşulsuz, prod doğrulandı); (b) istenirse Task 9'un kalan 2 manuel maddesini (Google bağlama, RLS impersonate) birlikte yap; (c) SP3a domain adaylığı paralelde istenirse başlanabilir.
+1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`). Kullanıcı kendi tarafında muhtemelen `vercel dev` ile **3000 portunda** çalıştırıyor — Supabase redirect allow-list'inde `http://localhost:3000` (+ `/**`) olmalı. Prod: `miras-one.vercel.app`.
+2. **Doğrulama:** `npm run test` (491 test) + `npm run check` + `npm run build` (Geliştirici Modu açık, Windows'ta uçtan uca geçiyor). CI artık build'i de koşuyor (placeholder env ile).
+3. **Yeni Supabase server-taraflı client eklersen dikkat:** `createClient`/`createServerClient`/`createBrowserClient` her çağrısı `realtime: { transport: <ws-benzeri> }` almalı sunucu tarafında (bkz. `hooks.server.ts`, `+layout.ts`, `api/account/delete/+server.ts` — üçü de örnek), yoksa Vercel'de "native WebSocket not found" ile 500 verir. Yeni `$env/static` import'u eklersen `ci.yml`'a da placeholder ekle.
+4. **Sıradaki adımlar (öncelik sırasıyla):** (a) SP1.5 planı (login sayfası + auth callback + reset-bulut uzlaşması, yukarıda B'de); (b) SP2 (haftalık lig) planı; (c) SP3a domain adaylığı istenirse paralelde.
 5. Emlak gizli, istenmeden dönülmeyecek; yeni yatırım aracı eklenmeyecek (lig verisi gelmeden).
-5. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
+6. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
 
