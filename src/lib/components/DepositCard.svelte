@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { LiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import { usd } from '$lib/domain/money';
 	import {
@@ -7,7 +8,15 @@
 		currentValueTry,
 		isMatured,
 	} from '$lib/domain/deposit/deposit';
-	import { displayTry, displayUsd, countdownLabel } from './format';
+	import {
+		displayTry,
+		displayUsd,
+		countdownLabel,
+		parseTypedAmount,
+		formatTypedAmount,
+		countNonCommaBefore,
+		caretAfterNonComma,
+	} from './format';
 
 	interface Props {
 		store: LiveGameStore;
@@ -27,14 +36,29 @@
 	const usdTry = $derived(store.usdTry);
 
 	// ── Açma formu ───────────────────────────────────────────────────────────
-	let amount = $state(0);
+	// Kaynak: yazılan biçimlendirilmiş metin (binlik virgüllü) — TradeForm ile aynı desen.
+	let amountRaw = $state('');
+	const amount = $derived(parseTypedAmount(amountRaw));
+
 	function maxAmount() {
-		amount = usdBalance;
+		amountRaw = formatTypedAmount(String(usdBalance));
+	}
+	/** Yazarken binlik virgülünü canlı uygular; imleci (caret) doğru konumda tutar. */
+	function handleAmountInput(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const caret = input.selectionStart ?? input.value.length;
+		const keep = countNonCommaBefore(input.value, caret);
+		const formatted = formatTypedAmount(input.value);
+		amountRaw = formatted;
+		void tick().then(() => {
+			const pos = caretAfterNonComma(formatted, keep);
+			input.setSelectionRange(pos, pos);
+		});
 	}
 	function handleOpen() {
 		if (amount <= 0) return;
 		store.openDeposit(amount);
-		amount = 0;
+		amountRaw = '';
 	}
 
 	// ── Aktif mevduat (saniyelik: nowMs prop'una bağlı) ────────────────────────
@@ -67,11 +91,12 @@
 			<div class="flex items-center gap-2">
 				<label for="dep-amount" class="text-term-text opacity-50 shrink-0 w-16">Tutar $</label>
 				<input
-					type="number"
-					min="0"
+					type="text"
+					inputmode="decimal"
 					id="dep-amount"
-					step="1000"
-					bind:value={amount}
+					value={amountRaw}
+					oninput={handleAmountInput}
+					placeholder="0"
 					class="flex-1 bg-term-bg border border-term-border px-2 py-1 text-term-text
 					       focus:outline-none focus:border-term-borderGlow text-xs w-full"
 				/>
