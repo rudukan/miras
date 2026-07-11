@@ -5,8 +5,6 @@
  */
 import type { SaveEnvelopeV1 } from './savegame';
 
-export const LOCAL_TOUCHED_KEY = 'miras.save.touchedAt';
-
 export function chooseSource(
   localTouchedAt: number | null,
   cloudUpdatedAt: string | null,

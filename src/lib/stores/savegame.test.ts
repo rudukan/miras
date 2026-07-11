@@ -8,6 +8,14 @@ import {
   loadHistory,
   markPendingWipe,
   consumePendingWipe,
+  getOwnerId,
+  setOwnerId,
+  clearOwnerId,
+  getResetAt,
+  markReset,
+  persistAllowed,
+  clearLocalIdentity,
+  LOCAL_TOUCHED_KEY,
   type SaveEnvelopeV1,
 } from './savegame';
 import { createGameState } from './gameState';
@@ -299,6 +307,48 @@ describe('savegame', () => {
       const id2 = getOrCreatePlayerId(storage);
 
       expect(id1).toBe(id2);
+    });
+  });
+
+  describe('ownerId damgası', () => {
+    it('yokken null, set sonrası okunur, clear sonrası yine null', () => {
+      const s = makeStorage();
+      expect(getOwnerId(s)).toBeNull();
+      setOwnerId(s, 'user-abc');
+      expect(getOwnerId(s)).toBe('user-abc');
+      clearOwnerId(s);
+      expect(getOwnerId(s)).toBeNull();
+    });
+  });
+
+  describe('resetAt tombstone + persist guard', () => {
+    it('markReset sonrası eski createdAt persist edilemez, yenisi edilir', () => {
+      const s = makeStorage();
+      expect(persistAllowed(s, 1000)).toBe(true); // tombstone yokken serbest
+      markReset(s, 5000);
+      expect(getResetAt(s)).toBe(5000);
+      expect(persistAllowed(s, 5000)).toBe(false); // eşitlik dahil ölü
+      expect(persistAllowed(s, 4000)).toBe(false);
+      expect(persistAllowed(s, 5001)).toBe(true);  // reset SONRASI kurulan oyun
+    });
+  });
+
+  describe('clearLocalIdentity (KVKK)', () => {
+    it('kimlik anahtarlarını siler, resetAt DURUR', () => {
+      const s = makeStorage();
+      s.setItem('miras.playerId', 'p1');
+      s.setItem(LOCAL_TOUCHED_KEY, '123');
+      s.setItem('miras.cardSeen', '2026-07-10');
+      s.setItem('miras.lastVisitPing', '2026-07-10');
+      setOwnerId(s, 'user-abc');
+      markReset(s, 42);
+      clearLocalIdentity(s);
+      expect(s.getItem('miras.playerId')).toBeNull();
+      expect(s.getItem(LOCAL_TOUCHED_KEY)).toBeNull();
+      expect(s.getItem('miras.cardSeen')).toBeNull();
+      expect(s.getItem('miras.lastVisitPing')).toBeNull();
+      expect(getOwnerId(s)).toBeNull();
+      expect(getResetAt(s)).toBe(42); // tombstone kalır — zombi-sekme koruması
     });
   });
 });

@@ -6,6 +6,15 @@ const SAVE_KEY = 'miras.save.v1';
 const HISTORY_KEY = 'miras.history.v1';
 const PLAYER_ID_KEY = 'miras.playerId';
 
+/** cloudSave'den taşındı — tüm localStorage anahtarları bu dosyada yaşar. */
+export const LOCAL_TOUCHED_KEY = 'miras.save.touchedAt';
+const OWNER_ID_KEY = 'miras.save.ownerId';
+const RESET_AT_KEY = 'miras.resetAt';
+// +page.svelte ve telemetry.ts'de tanımlı anahtarların literal'leri —
+// clearLocalIdentity tek listeyi tutsun diye burada tekrarlanır:
+const CARD_SEEN_KEY = 'miras.cardSeen';
+const LAST_VISIT_KEY = 'miras.lastVisitPing';
+
 /** Günlük mühürlü operatif kur — İstanbul gün-anahtarı + o gün için yakalanan USD/TRY. */
 export interface SealedFx {
   dateKey: string; // 'YYYY-MM-DD' (Europe/Istanbul)
@@ -116,6 +125,45 @@ export function loadHistory(storage: Storage): SaveHistoryV1 | null {
   } catch {
     return null;
   }
+}
+
+/** Local kaydın hangi Supabase kullanıcısına ait olduğu (yabancı-oyun koruması, spec §4.D). */
+export function getOwnerId(storage: Storage): string | null {
+  return storage.getItem(OWNER_ID_KEY);
+}
+export function setOwnerId(storage: Storage, userId: string): void {
+  storage.setItem(OWNER_ID_KEY, userId);
+}
+export function clearOwnerId(storage: Storage): void {
+  storage.removeItem(OWNER_ID_KEY);
+}
+
+/** Bilinçli reset/silme anı — bu andan ÖNCE kurulmuş oyunlar ölüdür (tombstone). */
+export function getResetAt(storage: Storage): number | null {
+  const raw = storage.getItem(RESET_AT_KEY);
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+export function markReset(storage: Storage, now: number): void {
+  storage.setItem(RESET_AT_KEY, String(now));
+}
+
+/** Bayat sekme guard'ı: ölü jenerasyon localStorage'a geri yazılamaz (pendingWipe tek
+ *  atımlıktı; canlı ikinci sekme her saniye persist ederek kaydı hortlatabiliyordu). */
+export function persistAllowed(storage: Storage, gameCreatedAt: number): boolean {
+  const resetAt = getResetAt(storage);
+  return resetAt === null || gameCreatedAt > resetAt;
+}
+
+/** KVKK hesap silme: kimlik anahtarları gider; resetAt KALIR (kişisel veri değil,
+ *  zombi-sekme koruması — spec §4.G). */
+export function clearLocalIdentity(storage: Storage): void {
+  storage.removeItem(PLAYER_ID_KEY);
+  storage.removeItem(LOCAL_TOUCHED_KEY);
+  storage.removeItem(CARD_SEEN_KEY);
+  storage.removeItem(LAST_VISIT_KEY);
+  storage.removeItem(OWNER_ID_KEY);
 }
 
 /** Oyun sıfırlansa bile silinmez — telemetri/oyuncu kimliği. */

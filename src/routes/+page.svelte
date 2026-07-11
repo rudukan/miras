@@ -12,9 +12,10 @@
 		saveHistory,
 		markPendingWipe,
 		consumePendingWipe,
+		LOCAL_TOUCHED_KEY,
 		type SaveEnvelopeV1,
 	} from '$lib/stores/savegame';
-	import { chooseSource, createCloudPush, LOCAL_TOUCHED_KEY } from '$lib/stores/cloudSave';
+	import { chooseSource, createCloudPush } from '$lib/stores/cloudSave';
 	import { ensureSession } from '$lib/api/authBootstrap';
 	import { getTurnstileToken } from '$lib/api/turnstile';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
