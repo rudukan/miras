@@ -9,7 +9,7 @@ function call(url: string, exchangeResult: { error: Error | null }) {
   } as any;
   return { event, exchange };
 }
-async function expectRedirect(p: Promise<unknown>, location: string) {
+async function expectRedirect(p: Promise<unknown> | Response, location: string) {
   try {
     await p;
     expect.unreachable('redirect fırlatmalıydı');
