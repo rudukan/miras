@@ -13,6 +13,7 @@
 	import { chooseSource, createCloudPush } from '$lib/stores/cloudSave';
 	import { initialPhase, type StartPhase } from '$lib/stores/bootPhase';
 	import WelcomeScreen from '$lib/components/WelcomeScreen.svelte';
+	import EmailAuthForm from '$lib/components/EmailAuthForm.svelte';
 	import type { LiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import { ensureSession } from '$lib/api/authBootstrap';
 	import { getTurnstileToken } from '$lib/api/turnstile';
@@ -96,6 +97,7 @@
 	let pwResetOpen = $state(false);
 	let newPassword = $state('');
 	let pwBusy = $state(false);
+	let emailAuthOverlayOpen = $state(false); // oturumsuz AccountPanel'den e-posta girişi (spec §4.K)
 	let selectedAssetId = $state<string | null>(null);
 	let hoveredAssetId = $state<string | null>(null);
 	let nowMs = $state(Date.now());
@@ -309,6 +311,7 @@
 				if (result.user) setOwnerId(localStorage, result.user.id);
 				cloudPush.enable();
 				emailOpen = false;
+				emailAuthOverlayOpen = false; // panelden kayıtta overlay açık kalmasın (reload'suz tek başarı yolu)
 				await enterGame();
 			} else {
 				// K8 sonrası (doğrulama açık): enumerasyon-nötr 'mail gönderildi' ekranı.
@@ -555,6 +558,26 @@
 	</div>
 {/if}
 
+{#if emailAuthOverlayOpen}
+	<div class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
+		<div class="w-full max-w-xs bg-term-panel border border-term-border p-4 font-mono">
+			<EmailAuthForm
+				busy={emailBusy}
+				errorMsg={emailError}
+				sentMode={emailSent}
+				onSignIn={handleEmailSignIn}
+				onSignUp={handleEmailSignUp}
+				onForgot={handleEmailForgot}
+				onBack={() => {
+					emailAuthOverlayOpen = false;
+					emailSent = false;
+					emailError = null;
+				}}
+			/>
+		</div>
+	</div>
+{/if}
+
 <div class="bg-term-bg text-term-text font-mono min-h-[100dvh]">
 	{#if phase === 'boot'}
 		<main class="min-h-[100dvh] flex items-center justify-center px-4">
@@ -723,6 +746,10 @@
 							onSignOut={handleSignOut}
 							onSwitchAccount={() => void handleSwitchAccount()}
 							onGuestSession={handleGuestFromPanel}
+							onEmailAuth={() => {
+								pwResetOpen = false;
+								emailAuthOverlayOpen = true;
+							}}
 						/>
 
 						<WalletSummary

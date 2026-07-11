@@ -8,12 +8,14 @@
     onSignOut,
     onSwitchAccount,
     onGuestSession,
+    onEmailAuth,
   }: {
     supabase: SupabaseClient;
     onDeleted: () => void;
     onSignOut: () => Promise<string | null>;
     onSwitchAccount: () => void;
     onGuestSession: () => Promise<void>;
+    onEmailAuth: () => void;
   } = $props();
 
   let user = $state<User | null>(null);
@@ -187,6 +189,9 @@
     <div class="flex flex-wrap gap-2">
       <button class="border border-term-border px-2 py-0.5 hover:bg-term-panelLight" onclick={signInGoogle}>
         GOOGLE İLE GİRİŞ
+      </button>
+      <button class="border border-term-border px-2 py-0.5 hover:bg-term-panelLight" onclick={onEmailAuth}>
+        E-POSTA İLE GİRİŞ
       </button>
       <button
         class="border border-term-border px-2 py-0.5 hover:bg-term-panelLight disabled:opacity-40"
