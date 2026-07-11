@@ -4,18 +4,16 @@
 	import { PUBLIC_TURNSTILE_SITE_KEY } from '$env/static/public';
 	import { createLiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import {
-		loadGame,
-		saveGame,
-		clearSave,
-		getOrCreatePlayerId,
-		loadHistory,
-		saveHistory,
-		markPendingWipe,
-		consumePendingWipe,
-		LOCAL_TOUCHED_KEY,
+		loadGame, saveGame, clearSave, getOrCreatePlayerId, loadHistory, saveHistory,
+		markPendingWipe, consumePendingWipe,
+		LOCAL_TOUCHED_KEY, getOwnerId, setOwnerId, clearOwnerId,
+		getResetAt, markReset, persistAllowed, clearLocalIdentity,
 		type SaveEnvelopeV1,
 	} from '$lib/stores/savegame';
 	import { chooseSource, createCloudPush } from '$lib/stores/cloudSave';
+	import { initialPhase, type StartPhase } from '$lib/stores/bootPhase';
+	import WelcomeScreen from '$lib/components/WelcomeScreen.svelte';
+	import type { LiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import { ensureSession } from '$lib/api/authBootstrap';
 	import { getTurnstileToken } from '$lib/api/turnstile';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
@@ -43,44 +41,53 @@
 	const CARD_SEEN_KEY = 'miras.cardSeen';
 	const CLOUD_HYDRATED_KEY = 'miras.cloudHydrated';
 
-	// Silme/reset sonrası ikinci temizlik: reload öncesi bir persist yarışı ya da bayat sekme
-	// kodu eski kaydı geri yazmış olabilir — bayrak varsa boot her şeyi bir kez daha siler.
 	if (browser) consumePendingWipe(sessionStorage, localStorage);
 
 	const initial = browser ? loadGame(localStorage) : null;
 	const initialHistory = browser ? loadHistory(localStorage)?.history : undefined;
-	const playerId = browser ? getOrCreatePlayerId(localStorage) : 'local-player';
 
-	if (browser) pingDailyVisit(localStorage, playerId, istanbulParts(new Date()).key);
+	// Kimlik ERTELENDİ (spec §4.F): playerId/telemetri yalnız oyuna girişte üretilir.
+	let playerId = $state<string | null>(null);
 
-	// Bulut kayit push'u: debounce'lu, hata durumunda oyunu asla durdurmaz (spec §5).
 	const cloudPush = createCloudPush(async (envelope: SaveEnvelopeV1) => {
 		const {
 			data: { user },
 		} = await data.supabase.auth.getUser();
 		if (!user) return; // oturum yoksa bulut yok — oyun localStorage ile yaşar
+		if (getOwnerId(localStorage) !== user.id) return; // yabancı oyun kullanıcının kasasına yazılmaz
 		await data.supabase
 			.from('saves')
 			.upsert({ user_id: user.id, payload: envelope, schema_version: envelope.v });
 	});
 
-	const store = createLiveGameStore({
-		playerId,
-		initial,
-		initialHistory,
-		onPersist: (envelope) => {
-			if (browser) {
+	// Bayat-sekme tombstone guard'ının history persist'ine taşınması için son karar tutulur.
+	let lastPersistAllowed = true;
+
+	function makeStore(env: SaveEnvelopeV1 | null, pid?: string): LiveGameStore {
+		return createLiveGameStore({
+			playerId: pid ?? 'restored', // yalnız fresh oyunda okunur (liveGameStore:156,169)
+			initial: env,
+			initialHistory: env ? initialHistory : undefined,
+			onPersist: (envelope) => {
+				if (!browser) return;
+				lastPersistAllowed = persistAllowed(localStorage, envelope.game.createdAt);
+				if (!lastPersistAllowed) return; // ölü jenerasyon geri yazılamaz (spec §4.E)
 				saveGame(localStorage, envelope);
 				localStorage.setItem(LOCAL_TOUCHED_KEY, String(Date.now()));
 				cloudPush.schedule(envelope);
-			}
-		},
-		onPersistHistory: (history) => {
-			if (browser) saveHistory(localStorage, { v: 1, history });
-		},
-	});
+			},
+			onPersistHistory: (history) => {
+				if (browser && lastPersistAllowed) saveHistory(localStorage, { v: 1, history });
+			},
+		});
+	}
 
-	let phase = $state<'intro' | 'playing'>('intro');
+	// Kayıtlı oyun: store hemen kurulur (bugünkü davranış). Yeni oyun: girişte kurulur.
+	let store = $state<LiveGameStore | null>(browser && initial ? makeStore(initial) : null);
+
+	let phase = $state<StartPhase | 'playing'>(initialPhase(initial !== null, undefined));
+	let welcomeBusy = $state(false);
+	let welcomeError = $state<string | null>(null);
 	let selectedAssetId = $state<string | null>(null);
 	let hoveredAssetId = $state<string | null>(null);
 	let nowMs = $state(Date.now());
@@ -148,17 +155,17 @@
 	// Kayıtlı oyunun gerçek takvim günü (İstanbul) — "DEVAM ET" ekranında gösterilir.
 	const savedDay = initial ? daysElapsed(initial.game.createdAt, Date.now()) : 0;
 
-	const canShowCard = $derived(store.netWorthUsd !== null && store.vsUsdHoldUsd !== null);
-	const breakdown = $derived(dailyBreakdown(store.history));
+	const canShowCard = $derived(store !== null && store.netWorthUsd !== null && store.vsUsdHoldUsd !== null);
+	const breakdown = $derived(dailyBreakdown(store?.history ?? []));
 	const closingCardModel = $derived.by(() => {
-		if (store.netWorthUsd === null || store.vsUsdHoldUsd === null) return null;
+		if (!store || store.netWorthUsd === null || store.vsUsdHoldUsd === null) return null;
 		return buildClosingCardModel(store.game, store.netWorthUsd, store.vsUsdHoldUsd, store.history, nowMs);
 	});
 
 	// Otomatik tetik (retention anı): geçmişte bugünden ÖNCE bir kayıt varsa ve kart bugün
 	// henüz gösterilmediyse — günde max 1.
 	function maybeAutoShowCard() {
-		if (!browser || !canShowCard) return;
+		if (!browser || !store || !canShowCard) return;
 		const todayKey = istanbulParts(new Date(Date.now())).key;
 		const hasOlderSnapshot = (initialHistory ?? []).some((s) => s.dateKey < todayKey);
 		if (hasOlderSnapshot && localStorage.getItem(CARD_SEEN_KEY) !== todayKey) {
@@ -176,69 +183,211 @@
 	}
 
 	function handleShareClick() {
-		sendTelemetry(playerId, 'share_click');
+		if (playerId) sendTelemetry(playerId, 'share_click');
 	}
 
 	function handleShareResult(result: ShareResult) {
 		void result;
-		sendTelemetry(playerId, 'share_done');
+		if (playerId) sendTelemetry(playerId, 'share_done');
 	}
 
-	async function startTicking() {
+	async function enterGame() {
+		if (!browser) return;
+		// Kimlik + günlük ziyaret pingi YALNIZ burada üretilir (spec §4.F — KVKK).
+		const pid = getOrCreatePlayerId(localStorage);
+		playerId = pid;
+		pingDailyVisit(localStorage, pid, istanbulParts(new Date()).key);
+		if (!store) store = makeStore(null, pid);
+		// Yeni oyun + oturum varsa sahiplik damgası (benimseme anı, spec §4.D).
+		try {
+			const {
+				data: { user },
+			} = await data.supabase.auth.getUser();
+			if (user && getOwnerId(localStorage) === null) setOwnerId(localStorage, user.id);
+		} catch {
+			// oturum okunamadı — çevrimdışı devam, damga sonraki boot'ta
+		}
 		phase = 'playing';
-		if (browser) {
-			tick = setInterval(() => (nowMs = Date.now()), 1000);
-			await store.start();
-			maybeAutoShowCard();
-		}
+		tick = setInterval(() => (nowMs = Date.now()), 1000);
+		await store.start();
+		maybeAutoShowCard();
 	}
-
 	function handleStart() {
-		void startTicking();
+		void enterGame();
 	}
-
 	function handleContinue() {
-		void startTicking();
+		void enterGame();
 	}
 
-	function handleResetSave() {
-		if (browser) {
-			clearSave(localStorage);
-			markPendingWipe(sessionStorage);
-			location.reload();
+	function handleGoogle() {
+		void data.supabase.auth.signInWithOAuth({
+			provider: 'google',
+			options: { redirectTo: location.origin + '/auth/callback' },
+		});
+	}
+
+	async function handleGuest() {
+		welcomeBusy = true;
+		welcomeError = null;
+		try {
+			await ensureSession(data.supabase.auth, () => getTurnstileToken(PUBLIC_TURNSTILE_SITE_KEY));
+			const {
+				data: { user },
+			} = await data.supabase.auth.getUser();
+			if (user) setOwnerId(localStorage, user.id);
+			cloudPush.enable(); // taze misafir: uzlaşacak bulut kaydı yok
+			await enterGame();
+		} catch (err) {
+			console.error('[auth] misafir oturumu açılamadı', err);
+			welcomeError = 'Misafir oturumu açılamadı — tekrar dene ya da çevrimdışı oyna';
+		} finally {
+			welcomeBusy = false;
 		}
+	}
+
+	function handleOfflinePlay() {
+		// Oturum yok: cloudPush kapalı kalır (push zaten getUser null'da no-op). Spec §4.B fail-safe.
+		void enterGame();
+	}
+
+	async function handleResetSave() {
+		if (!browser) return;
+		cloudPush.cancel(); // visibilitychange flush'ı eski envelope'u geri push etmesin
+		markPendingWipe(sessionStorage);
+		clearSave(localStorage);
+		localStorage.removeItem(LOCAL_TOUCHED_KEY);
+		clearOwnerId(localStorage);
+		sessionStorage.removeItem(CLOUD_HYDRATED_KEY);
+		markReset(localStorage, Date.now()); // tombstone: eski jenerasyon her yerde ölü
+		try {
+			const {
+				data: { user },
+			} = await data.supabase.auth.getUser();
+			if (user) await data.supabase.from('saves').delete().eq('user_id', user.id);
+		} catch {
+			// çevrimdışı: tombstone bu cihazı korur; yeni oyun push'u diğerlerini yakınsar
+		}
+		location.reload();
+	}
+
+	async function handleAccountDeleted() {
+		// POST /api/account/delete BAŞARILI döndü — local dünyayı tamamen temizle (spec §4.G).
+		cloudPush.cancel();
+		try {
+			await data.supabase.auth.signOut();
+		} catch {
+			// oturum sunucuda zaten ölü (kullanıcı silindi) — local temizlik yeter
+		}
+		markPendingWipe(sessionStorage);
+		clearSave(localStorage);
+		clearLocalIdentity(localStorage);
+		sessionStorage.removeItem(CLOUD_HYDRATED_KEY);
+		markReset(localStorage, Date.now()); // zombi-sekme koruması silmede de (spec §4.G)
+		location.reload();
+	}
+
+	async function handleSignOut(): Promise<string | null> {
+		// Dönüş: hata mesajı (null = başarılı). Yalnız kalıcı hesapta çağrılır (panel gizler).
+		const flushed = await cloudPush.flush();
+		if (!flushed) return 'Son ilerleme buluta gönderilemedi — bağlantını kontrol edip tekrar dene';
+		const { error } = await data.supabase.auth.signOut();
+		if (error) return 'Çıkış yapılamadı — bağlantını kontrol et';
+		markPendingWipe(sessionStorage);
+		clearSave(localStorage);
+		localStorage.removeItem(LOCAL_TOUCHED_KEY);
+		clearOwnerId(localStorage);
+		sessionStorage.removeItem(CLOUD_HYDRATED_KEY);
+		location.reload();
+		return null;
+	}
+
+	async function handleSwitchAccount() {
+		// identity_already_exists: misafir oyunundan VAZGEÇ, welcome'a dön (spec §4.H).
+		cloudPush.cancel();
+		try {
+			await data.supabase.auth.signOut();
+		} catch {
+			// signOut hatasında da local'i temizleyip welcome'a düşmek güvenli
+		}
+		markPendingWipe(sessionStorage);
+		clearSave(localStorage);
+		localStorage.removeItem(LOCAL_TOUCHED_KEY);
+		clearOwnerId(localStorage);
+		sessionStorage.removeItem(CLOUD_HYDRATED_KEY);
+		location.reload();
+	}
+
+	async function handleGuestFromPanel() {
+		// Oturumsuz durumdan misafir oturumu aç (spec §4.K) — reload boot uzlaşmasını işletir.
+		await ensureSession(data.supabase.auth, () => getTurnstileToken(PUBLIC_TURNSTILE_SITE_KEY));
+		const {
+			data: { user },
+		} = await data.supabase.auth.getUser();
+		if (user && getOwnerId(localStorage) === null) setOwnerId(localStorage, user.id);
+		location.reload();
 	}
 
 	onDestroy(() => {
-		store.stop();
+		store?.stop();
 		if (tick) clearInterval(tick);
 		if (toastTimer) clearTimeout(toastTimer);
 	});
 
-	// Boot senkronu: sessiz misafir oturumu acilir, sonra bulutta daha yeni kayit var mi bakilir
-	// (cihaz degisimi senaryosu). Hata durumunda oyun localStorage ile cevrimdisi devam eder —
-	// asla oyunu bloke etmez / crash etmez.
 	onMount(() => {
+		// OAuth hata dönüşü: fazdan bağımsız toast + URL temizliği (spec §4.C).
+		const params = new URLSearchParams(location.search);
+		if (params.has('auth_error')) {
+			showToast('Giriş tamamlanamadı — tekrar dene');
+			history.replaceState(null, '', '/');
+		}
+
 		void (async () => {
+			const {
+				data: { session },
+			} = await data.supabase.auth.getSession();
+			if (!session) {
+				if (phase === 'boot') phase = 'welcome';
+				return; // cloudPush kapalı kalır — push edilecek hesap yok
+			}
+			const userId = session.user.id;
 			try {
-				await ensureSession(data.supabase.auth, () => getTurnstileToken(PUBLIC_TURNSTILE_SITE_KEY));
+				if (!sessionStorage.getItem(CLOUD_HYDRATED_KEY)) {
+					// Hidrasyon 5 sn'de dönmezse fail-safe intro (spec §4.A + §7).
+					const timeout = new Promise<never>((_, rej) =>
+						setTimeout(() => rej(new Error('bulut sorgusu zaman aşımı')), 5000),
+					);
+					const { data: row } = (await Promise.race([
+						data.supabase.from('saves').select('payload, updated_at').maybeSingle(),
+						timeout,
+					])) as { data: { payload: unknown; updated_at: string } | null };
+					const cloudEnv = (row?.payload ?? null) as SaveEnvelopeV1 | null;
+					const decision = chooseSource({
+						localTouchedAt: Number(localStorage.getItem(LOCAL_TOUCHED_KEY)) || null,
+						localCreatedAt: initial?.game.createdAt ?? null,
+						cloudUpdatedAt: row?.updated_at ?? null,
+						cloudCreatedAt: cloudEnv?.game.createdAt ?? null,
+						resetAt: getResetAt(localStorage),
+						localOwnerId: getOwnerId(localStorage),
+						sessionUserId: userId,
+					});
+					if (decision === 'cloud' && cloudEnv) {
+						saveGame(localStorage, cloudEnv);
+						localStorage.setItem(LOCAL_TOUCHED_KEY, String(Date.now()));
+						setOwnerId(localStorage, userId); // hidrasyon = benimseme anı (spec §4.D)
+						sessionStorage.setItem(CLOUD_HYDRATED_KEY, '1');
+						location.reload();
+						return;
+					}
+					if (decision === 'local' || decision === 'local-adopt') {
+						setOwnerId(localStorage, userId); // legacy/adopt damgası — push kapısı açılmadan önce
+					}
+				}
 			} catch (err) {
-				console.error('[auth] misafir oturumu açılamadı — çevrimdışı devam', err);
-				return;
+				// Açık #SP1-minor-4: sorgu hatası boot'u kilitlemesin, unhandled rejection olmasın.
+				console.error('[cloud] hidrasyon kontrolü başarısız — local ile devam', err);
 			}
-			// Bulutta daha yeni kayıt var mı? (cihaz değişimi senaryosu)
-			if (sessionStorage.getItem(CLOUD_HYDRATED_KEY)) return; // reload döngüsü kilidi
-			const { data: row } = await data.supabase
-				.from('saves')
-				.select('payload, updated_at')
-				.maybeSingle();
-			const touched = Number(localStorage.getItem(LOCAL_TOUCHED_KEY)) || null;
-			if (row && chooseSource(touched, row.updated_at) === 'cloud') {
-				saveGame(localStorage, row.payload as SaveEnvelopeV1);
-				localStorage.setItem(LOCAL_TOUCHED_KEY, String(Date.now()));
-				sessionStorage.setItem(CLOUD_HYDRATED_KEY, '1');
-				location.reload();
-			}
+			cloudPush.enable(); // uzlaşma bitti — push kapısı açık (spec §4.D)
+			if (phase === 'boot') phase = 'intro';
 		})();
 
 		const flushOnHide = () => {
@@ -253,7 +402,24 @@
 <Toast message={toastMessage} />
 
 <div class="bg-term-bg text-term-text font-mono min-h-[100dvh]">
-	{#if phase === 'intro'}
+	{#if phase === 'boot'}
+		<main class="min-h-[100dvh] flex items-center justify-center px-4">
+			<div class="text-center space-y-2">
+				<div class="text-term-green text-xl font-bold glow-text-green tracking-widest">
+					[ MİRAS — CANLI ÇEKİRDEK ]
+				</div>
+				<div class="text-term-text text-xs opacity-60 animate-pulse">BAĞLANIYOR…</div>
+			</div>
+		</main>
+	{:else if phase === 'welcome'}
+		<WelcomeScreen
+			busy={welcomeBusy}
+			errorMsg={welcomeError}
+			onGoogle={handleGoogle}
+			onGuest={() => void handleGuest()}
+			onOffline={handleOfflinePlay}
+		/>
+	{:else if phase === 'intro'}
 		<!-- ── INTRO EKRANI ─────────────────────────────────────────────────────── -->
 		<main class="min-h-[100dvh] flex items-center justify-center px-4">
 			<div class="w-full max-w-sm space-y-6">
@@ -293,7 +459,7 @@
 
 					<button
 						type="button"
-						onclick={handleResetSave}
+						onclick={() => void handleResetSave()}
 						class="w-full text-center text-[10px] text-term-text opacity-50 underline
 						       hover:opacity-80 transition-opacity"
 					>
@@ -314,7 +480,7 @@
 			</div>
 		</main>
 
-	{:else}
+	{:else if store}
 		<!-- ── PLAYING EKRANI ───────────────────────────────────────────────────── -->
 		<!-- h-dvh: mobil tarayıcıda adres çubuğu hesaba katılır (h-screen alt kesme yapar) -->
 		<div class="flex flex-col h-dvh">
@@ -368,11 +534,11 @@
 							onHover={(id) => (hoveredAssetId = id)}
 							onOpenPopover={openPopover}
 							onAddBist={(symbol) => {
-								store.addBist(symbol);
+								store?.addBist(symbol);
 								handleSelectAsset(symbol);
 							}}
 							onAddUs={(symbol) => {
-								store.addUs(symbol);
+								store?.addUs(symbol);
 								handleSelectAsset(symbol);
 							}}
 						/>
@@ -388,7 +554,13 @@
 							cashUsd={store.game.usdBalance}
 						/>
 
-						<AccountPanel supabase={data.supabase} />
+						<AccountPanel
+							supabase={data.supabase}
+							onDeleted={() => void handleAccountDeleted()}
+							onSignOut={handleSignOut}
+							onSwitchAccount={() => void handleSwitchAccount()}
+							onGuestSession={handleGuestFromPanel}
+						/>
 
 						<WalletSummary
 							game={store.game}
