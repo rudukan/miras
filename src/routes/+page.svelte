@@ -290,11 +290,11 @@
 
 	async function handleSignOut(): Promise<string | null> {
 		// Dönüş: hata mesajı (null = başarılı). Yalnız kalıcı hesapta çağrılır (panel gizler).
-		store?.stop(); // eski store'un pollTimer'ı reload penceresinde onPersist tetiklemesin
 		const flushed = await cloudPush.flush();
 		if (!flushed) return 'Son ilerleme buluta gönderilemedi — bağlantını kontrol edip tekrar dene';
 		const { error } = await data.supabase.auth.signOut();
 		if (error) return 'Çıkış yapılamadı — bağlantını kontrol et';
+		store?.stop(); // eski store'un pollTimer'ı reload penceresinde onPersist tetiklemesin
 		markPendingWipe(sessionStorage);
 		clearSave(localStorage);
 		localStorage.removeItem(LOCAL_TOUCHED_KEY);
