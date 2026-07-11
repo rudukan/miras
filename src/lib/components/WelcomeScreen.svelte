@@ -1,16 +1,36 @@
 <script lang="ts">
+	import EmailAuthForm from './EmailAuthForm.svelte';
+
 	let {
 		busy,
 		errorMsg,
 		onGoogle,
 		onGuest,
 		onOffline,
+		emailOpen,
+		onEmailOpen,
+		emailBusy,
+		emailError,
+		emailSent,
+		onEmailSignIn,
+		onEmailSignUp,
+		onEmailForgot,
+		onEmailBack,
 	}: {
 		busy: boolean;
 		errorMsg: string | null;
 		onGoogle: () => void;
 		onGuest: () => void;
 		onOffline: () => void;
+		emailOpen: boolean;
+		onEmailOpen: () => void;
+		emailBusy: boolean;
+		emailError: string | null;
+		emailSent: boolean;
+		onEmailSignIn: (email: string, password: string) => void;
+		onEmailSignUp: (email: string, password: string) => void;
+		onEmailForgot: (email: string) => void;
+		onEmailBack: () => void;
 	} = $props();
 </script>
 
@@ -24,35 +44,58 @@
 			<div class="text-term-text text-xs opacity-60">$1.000.000 USD · Gerçek piyasa verileri</div>
 		</div>
 
-		<div class="space-y-3">
-			<button
-				type="button"
-				onclick={onGoogle}
-				disabled={busy}
-				class="w-full py-3 bg-term-bg border border-term-blue text-term-blue font-bold
-				       text-sm tracking-widest uppercase hover:bg-term-panelLight transition-colors
-				       disabled:opacity-40 disabled:cursor-not-allowed"
-			>
-				GOOGLE İLE GİRİŞ
-			</button>
-
-			<div>
+		{#if emailOpen}
+			<EmailAuthForm
+				busy={emailBusy}
+				errorMsg={emailError}
+				sentMode={emailSent}
+				onSignIn={onEmailSignIn}
+				onSignUp={onEmailSignUp}
+				onForgot={onEmailForgot}
+				onBack={onEmailBack}
+			/>
+		{:else}
+			<div class="space-y-3">
 				<button
 					type="button"
-					onclick={onGuest}
+					onclick={onGoogle}
 					disabled={busy}
-					class="w-full py-3 bg-term-bg border border-term-green text-term-green font-bold
-					       text-sm tracking-widest uppercase hover:bg-term-panelLight
-					       glow-border-green transition-colors
+					class="w-full py-3 bg-term-bg border border-term-blue text-term-blue font-bold
+					       text-sm tracking-widest uppercase hover:bg-term-panelLight transition-colors
 					       disabled:opacity-40 disabled:cursor-not-allowed"
 				>
-					{busy ? 'AÇILIYOR…' : 'MİSAFİR OLARAK OYNA'}
+					GOOGLE İLE GİRİŞ
 				</button>
-				<p class="mt-1 text-center text-[10px] text-term-text opacity-40">
-					Yeni bulut kimliği oluşturur
-				</p>
+
+				<button
+					type="button"
+					onclick={onEmailOpen}
+					disabled={busy}
+					class="w-full py-3 bg-term-bg border border-term-border text-term-text font-bold
+					       text-sm tracking-widest uppercase hover:bg-term-panelLight transition-colors
+					       disabled:opacity-40 disabled:cursor-not-allowed"
+				>
+					E-POSTA İLE GİRİŞ / KAYIT
+				</button>
+
+				<div>
+					<button
+						type="button"
+						onclick={onGuest}
+						disabled={busy}
+						class="w-full py-3 bg-term-bg border border-term-green text-term-green font-bold
+						       text-sm tracking-widest uppercase hover:bg-term-panelLight
+						       glow-border-green transition-colors
+						       disabled:opacity-40 disabled:cursor-not-allowed"
+					>
+						{busy ? 'AÇILIYOR…' : 'MİSAFİR OLARAK OYNA'}
+					</button>
+					<p class="mt-1 text-center text-[10px] text-term-text opacity-40">
+						Yeni bulut kimliği oluşturur
+					</p>
+				</div>
 			</div>
-		</div>
+		{/if}
 
 		{#if errorMsg}
 			<div class="text-center space-y-2">

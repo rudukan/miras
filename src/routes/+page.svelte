@@ -16,6 +16,7 @@
 	import type { LiveGameStore } from '$lib/stores/liveGameStore.svelte';
 	import { ensureSession } from '$lib/api/authBootstrap';
 	import { getTurnstileToken } from '$lib/api/turnstile';
+	import { authErrorMessage } from '$lib/api/authErrors';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
 	import { daysElapsed, dailyBreakdown } from '$lib/domain/snapshot/dailySnapshot';
 	import { buildClosingCardModel } from '$lib/components/closingCard';
@@ -88,6 +89,13 @@
 	let phase = $state<StartPhase | 'playing'>(initialPhase(initial !== null, undefined));
 	let welcomeBusy = $state(false);
 	let welcomeError = $state<string | null>(null);
+	let emailOpen = $state(false);
+	let emailBusy = $state(false);
+	let emailError = $state<string | null>(null);
+	let emailSent = $state(false);
+	let pwResetOpen = $state(false);
+	let newPassword = $state('');
+	let pwBusy = $state(false);
 	let selectedAssetId = $state<string | null>(null);
 	let hoveredAssetId = $state<string | null>(null);
 	let nowMs = $state(Date.now());
@@ -250,6 +258,105 @@
 		void enterGame();
 	}
 
+	async function withEmailBusy(fn: () => Promise<void>) {
+		emailBusy = true;
+		emailError = null;
+		try {
+			await fn();
+		} catch (err) {
+			console.error('[auth] e-posta akışı hatası', err);
+			emailError = authErrorMessage((err as { code?: string })?.code);
+		} finally {
+			emailBusy = false;
+		}
+	}
+
+	function handleEmailSignIn(email: string, password: string) {
+		void withEmailBusy(async () => {
+			const captchaToken = await getTurnstileToken(PUBLIC_TURNSTILE_SITE_KEY);
+			const { error } = await data.supabase.auth.signInWithPassword({
+				email,
+				password,
+				options: { captchaToken },
+			});
+			if (error) {
+				emailError = authErrorMessage((error as { code?: string }).code);
+				return;
+			}
+			const {
+				data: { user },
+			} = await data.supabase.auth.getUser();
+			if (user && initial === null) setOwnerId(localStorage, user.id);
+			// Bulut kaydı olabilir → uzlaşma reload'la boot'tan geçer (en güvenli yol).
+			location.reload();
+		});
+	}
+
+	function handleEmailSignUp(email: string, password: string) {
+		void withEmailBusy(async () => {
+			const captchaToken = await getTurnstileToken(PUBLIC_TURNSTILE_SITE_KEY);
+			const { data: result, error } = await data.supabase.auth.signUp({
+				email,
+				password,
+				options: { captchaToken },
+			});
+			if (error) {
+				emailError = authErrorMessage((error as { code?: string }).code);
+				return;
+			}
+			if (result.session) {
+				// K8 dönemi: doğrulama kapalı → oturum hemen açılır.
+				if (result.user) setOwnerId(localStorage, result.user.id);
+				cloudPush.enable();
+				emailOpen = false;
+				await enterGame();
+			} else {
+				// K8 sonrası (doğrulama açık): enumerasyon-nötr 'mail gönderildi' ekranı.
+				emailSent = true;
+			}
+		});
+	}
+
+	function handleEmailForgot(email: string) {
+		void withEmailBusy(async () => {
+			const captchaToken = await getTurnstileToken(PUBLIC_TURNSTILE_SITE_KEY);
+			const { error } = await data.supabase.auth.resetPasswordForEmail(email, { captchaToken });
+			if (error) {
+				emailError = authErrorMessage((error as { code?: string }).code);
+				return;
+			}
+			emailSent = true;
+		});
+	}
+
+	function handleEmailBack() {
+		emailOpen = false;
+		emailSent = false;
+		emailError = null;
+	}
+
+	function handleUpdatePassword() {
+		if (newPassword.length < 8 || pwBusy) return;
+		pwBusy = true;
+		void (async () => {
+			try {
+				const { error } = await data.supabase.auth.updateUser({ password: newPassword });
+				if (error) {
+					showToast(authErrorMessage((error as { code?: string }).code));
+				} else {
+					showToast('Şifre güncellendi');
+					pwResetOpen = false;
+					newPassword = '';
+				}
+			} catch (err) {
+				console.error('[auth] şifre güncelleme hatası', err);
+				showToast('Şifre güncellenemedi — tekrar dene');
+			} finally {
+				pwBusy = false;
+			}
+		})();
+	}
+
 	async function handleResetSave() {
 		if (!browser) return;
 		store?.stop(); // eski store'un pollTimer'ı reload penceresinde onPersist tetiklemesin
@@ -344,6 +451,10 @@
 			showToast('Giriş tamamlanamadı — tekrar dene');
 			history.replaceState(null, '', '/');
 		}
+		if (params.has('pw_reset')) {
+			pwResetOpen = true;
+			history.replaceState(null, '', '/');
+		}
 
 		void (async () => {
 			try {
@@ -412,6 +523,38 @@
 <svelte:window onkeydown={onKeydown} onclick={onWindowClick} />
 <Toast message={toastMessage} />
 
+{#if pwResetOpen}
+	<div class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-4">
+		<div class="w-full max-w-xs bg-term-panel border border-term-border p-4 space-y-3 font-mono">
+			<div class="text-term-blue text-xs uppercase tracking-widest">Yeni şifre belirle</div>
+			<input
+				type="password"
+				placeholder="yeni şifre (en az 8 karakter)"
+				bind:value={newPassword}
+				class="w-full border border-term-border bg-transparent px-2 py-1.5 text-sm"
+				autocomplete="new-password"
+			/>
+			<button
+				type="button"
+				onclick={handleUpdatePassword}
+				disabled={newPassword.length < 8 || pwBusy}
+				class="w-full py-2 bg-term-bg border border-term-green text-term-green font-bold
+				       text-xs tracking-widest uppercase hover:bg-term-panelLight
+				       disabled:opacity-40 disabled:cursor-not-allowed"
+			>
+				{pwBusy ? 'KAYDEDİLİYOR…' : 'KAYDET'}
+			</button>
+			<button
+				type="button"
+				class="w-full text-[10px] text-term-text opacity-50 underline"
+				onclick={() => (pwResetOpen = false)}
+			>
+				vazgeç
+			</button>
+		</div>
+	</div>
+{/if}
+
 <div class="bg-term-bg text-term-text font-mono min-h-[100dvh]">
 	{#if phase === 'boot'}
 		<main class="min-h-[100dvh] flex items-center justify-center px-4">
@@ -429,6 +572,15 @@
 			onGoogle={handleGoogle}
 			onGuest={() => void handleGuest()}
 			onOffline={handleOfflinePlay}
+			{emailOpen}
+			onEmailOpen={() => (emailOpen = true)}
+			{emailBusy}
+			{emailError}
+			{emailSent}
+			onEmailSignIn={handleEmailSignIn}
+			onEmailSignUp={handleEmailSignUp}
+			onEmailForgot={handleEmailForgot}
+			onEmailBack={handleEmailBack}
 		/>
 	{:else if phase === 'intro'}
 		<!-- ── INTRO EKRANI ─────────────────────────────────────────────────────── -->
