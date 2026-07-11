@@ -252,6 +252,7 @@
 
 	async function handleResetSave() {
 		if (!browser) return;
+		store?.stop(); // eski store'un pollTimer'ı reload penceresinde onPersist tetiklemesin
 		cloudPush.cancel(); // visibilitychange flush'ı eski envelope'u geri push etmesin
 		markPendingWipe(sessionStorage);
 		clearSave(localStorage);
@@ -272,6 +273,7 @@
 
 	async function handleAccountDeleted() {
 		// POST /api/account/delete BAŞARILI döndü — local dünyayı tamamen temizle (spec §4.G).
+		store?.stop(); // eski store'un pollTimer'ı reload penceresinde onPersist tetiklemesin
 		cloudPush.cancel();
 		try {
 			await data.supabase.auth.signOut();
@@ -288,6 +290,7 @@
 
 	async function handleSignOut(): Promise<string | null> {
 		// Dönüş: hata mesajı (null = başarılı). Yalnız kalıcı hesapta çağrılır (panel gizler).
+		store?.stop(); // eski store'un pollTimer'ı reload penceresinde onPersist tetiklemesin
 		const flushed = await cloudPush.flush();
 		if (!flushed) return 'Son ilerleme buluta gönderilemedi — bağlantını kontrol edip tekrar dene';
 		const { error } = await data.supabase.auth.signOut();
@@ -303,6 +306,7 @@
 
 	async function handleSwitchAccount() {
 		// identity_already_exists: misafir oyunundan VAZGEÇ, welcome'a dön (spec §4.H).
+		store?.stop(); // eski store'un pollTimer'ı reload penceresinde onPersist tetiklemesin
 		cloudPush.cancel();
 		try {
 			await data.supabase.auth.signOut();
