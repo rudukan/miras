@@ -342,52 +342,59 @@
 		}
 
 		void (async () => {
-			const {
-				data: { session },
-			} = await data.supabase.auth.getSession();
-			if (!session) {
-				if (phase === 'boot') phase = 'welcome';
-				return; // cloudPush kapalı kalır — push edilecek hesap yok
-			}
-			const userId = session.user.id;
 			try {
-				if (!sessionStorage.getItem(CLOUD_HYDRATED_KEY)) {
-					// Hidrasyon 5 sn'de dönmezse fail-safe intro (spec §4.A + §7).
-					const timeout = new Promise<never>((_, rej) =>
-						setTimeout(() => rej(new Error('bulut sorgusu zaman aşımı')), 5000),
-					);
-					const { data: row } = (await Promise.race([
-						data.supabase.from('saves').select('payload, updated_at').maybeSingle(),
-						timeout,
-					])) as { data: { payload: unknown; updated_at: string } | null };
-					const cloudEnv = (row?.payload ?? null) as SaveEnvelopeV1 | null;
-					const decision = chooseSource({
-						localTouchedAt: Number(localStorage.getItem(LOCAL_TOUCHED_KEY)) || null,
-						localCreatedAt: initial?.game.createdAt ?? null,
-						cloudUpdatedAt: row?.updated_at ?? null,
-						cloudCreatedAt: cloudEnv?.game.createdAt ?? null,
-						resetAt: getResetAt(localStorage),
-						localOwnerId: getOwnerId(localStorage),
-						sessionUserId: userId,
-					});
-					if (decision === 'cloud' && cloudEnv) {
-						saveGame(localStorage, cloudEnv);
-						localStorage.setItem(LOCAL_TOUCHED_KEY, String(Date.now()));
-						setOwnerId(localStorage, userId); // hidrasyon = benimseme anı (spec §4.D)
-						sessionStorage.setItem(CLOUD_HYDRATED_KEY, '1');
-						location.reload();
-						return;
-					}
-					if (decision === 'local' || decision === 'local-adopt') {
-						setOwnerId(localStorage, userId); // legacy/adopt damgası — push kapısı açılmadan önce
-					}
+				const {
+					data: { session },
+				} = await data.supabase.auth.getSession();
+				if (!session) {
+					if (phase === 'boot') phase = 'welcome';
+					return; // cloudPush kapalı kalır — push edilecek hesap yok
 				}
+				const userId = session.user.id;
+				try {
+					if (!sessionStorage.getItem(CLOUD_HYDRATED_KEY)) {
+						// Hidrasyon 5 sn'de dönmezse fail-safe intro (spec §4.A + §7).
+						const timeout = new Promise<never>((_, rej) =>
+							setTimeout(() => rej(new Error('bulut sorgusu zaman aşımı')), 5000),
+						);
+						const { data: row } = (await Promise.race([
+							data.supabase.from('saves').select('payload, updated_at').maybeSingle(),
+							timeout,
+						])) as { data: { payload: unknown; updated_at: string } | null };
+						const cloudEnv = (row?.payload ?? null) as SaveEnvelopeV1 | null;
+						const decision = chooseSource({
+							localTouchedAt: Number(localStorage.getItem(LOCAL_TOUCHED_KEY)) || null,
+							localCreatedAt: initial?.game.createdAt ?? null,
+							cloudUpdatedAt: row?.updated_at ?? null,
+							cloudCreatedAt: cloudEnv?.game.createdAt ?? null,
+							resetAt: getResetAt(localStorage),
+							localOwnerId: getOwnerId(localStorage),
+							sessionUserId: userId,
+						});
+						if (decision === 'cloud' && cloudEnv) {
+							saveGame(localStorage, cloudEnv);
+							localStorage.setItem(LOCAL_TOUCHED_KEY, String(Date.now()));
+							setOwnerId(localStorage, userId); // hidrasyon = benimseme anı (spec §4.D)
+							sessionStorage.setItem(CLOUD_HYDRATED_KEY, '1');
+							location.reload();
+							return;
+						}
+						if (decision === 'local' || decision === 'local-adopt') {
+							setOwnerId(localStorage, userId); // legacy/adopt damgası — push kapısı açılmadan önce
+						}
+					}
+				} catch (err) {
+					// Açık #SP1-minor-4: sorgu hatası boot'u kilitlemesin, unhandled rejection olmasın.
+					console.error('[cloud] hidrasyon kontrolü başarısız — local ile devam', err);
+				}
+				cloudPush.enable(); // uzlaşma bitti — push kapısı açık (spec §4.D)
+				if (phase === 'boot') phase = 'intro';
 			} catch (err) {
-				// Açık #SP1-minor-4: sorgu hatası boot'u kilitlemesin, unhandled rejection olmasın.
-				console.error('[cloud] hidrasyon kontrolü başarısız — local ile devam', err);
+				// getSession() (veya üstündeki adımlar) beklenmedik şekilde reddederse boot kilitlenmesin —
+				// oturum durumu belirsizken güvenli varsayılan: welcome (spec: boot asla kilitlenmez).
+				console.error('[cloud] boot kontrolü başarısız — güvenli varsayılana düş', err);
+				if (phase === 'boot') phase = 'welcome';
 			}
-			cloudPush.enable(); // uzlaşma bitti — push kapısı açık (spec §4.D)
-			if (phase === 'boot') phase = 'intro';
 		})();
 
 		const flushOnHide = () => {
