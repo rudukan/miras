@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { FX_FIXTURE, CRYPTO_FIXTURE } from '../fixtures/market';
 
 /** Tüm piyasa kaynaklarını fixture'lara bağlar — dış dünyaya sıfır istek.
@@ -29,4 +30,19 @@ export async function mockMarketData(page: Page): Promise<void> {
     }
     ws.send(frame('USDTTRY', FX_FIXTURE.value.usdTry));
   });
+}
+
+/** Seçili varlığın oracle fiyatı store'a düşene kadar bekler. WS frame'i bağlantı anında
+ *  gönderiliyor ama store'a işlenmesi bir tık gecikebilir — TradeForm.assetUsd tanımsızken
+ *  `store.buy` "No live price" ile reddediyor (PriceList'in REST snapshot'ı bu gecikmeyi
+ *  yansıtmaz, o yüzden fiyat orada göründü diye burada da hazır sayılamaz).
+ *  MAX butonu assetUsd tanımsızken '0' yazar — bunu koşul olarak kullanıp bekliyoruz. */
+export async function waitForLivePrice(page: Page, assetId: string): Promise<void> {
+  const input = page.locator(`#trade-units-${assetId}`);
+  const maxBtn = page.getByRole('button', { name: 'MAX' });
+  await expect(async () => {
+    await maxBtn.click();
+    await expect(input).not.toHaveValue('0');
+  }).toPass({ timeout: 10_000 });
+  await input.fill('');
 }
