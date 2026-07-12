@@ -167,35 +167,28 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-12 — 11. oturum, E2E TEST SİSTEMİ UYGULANDI: 9 task tamam)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-12 — 12. oturum, KAYIT SÜRTÜNMESİ + weak_password FIX)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti için git geçmişine bak (`git show dd44234:memory.md` — SP1.5 kapanış oturumu).
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (11. — E2E test sistemi) için: `git show a78f7b8:memory.md`.
 
 ### A. Bu Oturumda Tamamlananlar
-1. **E2E test sistemi 9 task'ın tamamı Sonnet oturumunda, executing-plans skill'iyle uygulandı** (f3c955c..2d4579e, 9 commit): lokal Supabase yapılandırması (anonim giriş + e-posta doğrulama + `/auth/confirm` şablonları); Playwright config + stack helper + welcome smoke; piyasa mock katmanı (route+WS) + oyun açılış testi; çekirdek yolculuk (al/sat + reload kalıcılığı); Mailpit köprüsü + kayıt akışı; admin seed + giriş + yanlış şifre; şifre sıfırlama tam gidiş-dönüşü; misafir/offline spec'i; CI e2e job'ı + CLAUDE.md senkron. Sonuç: **10 E2E senaryo, `npm run e2e` yeşil, `--repeat-each=3` (30 koşu) flake'siz.**
-2. **Planın kendi kodunda 4 gerçek bug bulundu ve düzeltildi** (statik olarak görünmez, yalnız gerçek Playwright koşusunda çıktı):
-   - Mock route glob'ları (`**/api/yahoo*` vb.) Vite dev modunda aynı önekli kaynak dosyalarıyla (`src/lib/api/yahooSource.ts`, `cryptoSource.ts`, `seriesClient.ts`/`seriesSource.ts`) çakışıyordu — sondaki `*` dosya adını yutup JS yerine JSON döndürerek hydration'ı kırıyordu. RegExp'e çevrildi (`/\/api\/yahoo(\?|$)/` vb.).
-   - `'TÜMÜ'` ve `'AL'` locator'ları PriceList'teki filtre chip'i ve AccountPanel'deki takma-ad butonuyla çakışıyordu (strict-mode violation) — `#trade-panel`'e scope edildi.
-   - WS'ten gelen fiyat store'a işlenmeden trade tıklanırsa "No live price" hatası — `waitForLivePrice()` helper'ı eklendi (MAX butonunun '0' yazmaması koşuluna bağlı bekleme).
-   - Tam süit varsayılan (4) paralel worker'la `--repeat-each=3`'te tutarlı flake üretti (5/30 FAIL) — tek paylaşımlı dev server + tek paylaşımlı lokal Supabase, worker izolasyonu yok. `playwright.config.ts`'e `workers: 1` eklendi → 30/30 PASS.
-3. **Doğrulama:** `npm run test` (512/512) + `npm run build` + `npm run e2e` (10/10) hepsi yeşil, ayrıca üçü `--repeat-each=3` ile de doğrulandı.
-4. **Docker Desktop önkoşulu kullanıcı tarafından kuruldu** (bu oturumun tetikleyicisi) — lokal Supabase stack sorunsuz ayağa kalktı (CLI 2.109.1, migrations 0001-0003 uygulandı).
-5. **Push + CI doğrulaması yapıldı:** kullanıcı "push main direkt + CI izle" seçti, `main` origin'e push'landı (bc73fa3), gerçek GitHub Actions runner'da hem `test` (33s) hem `e2e` (3m14s) job'ı **yeşil**. Lokal `main` artık origin'le senkron.
-6. **Docker Desktop container listesinde `supabase_vector_miras_oyun` "Restarting" görünüyor — BENİGN, dokunma:** Windows'ta Docker daemon'ı `tcp://localhost:2375`'te açık olmadan Vector (log-shipping, yalnız Studio Logs sayfasını besliyor) container listesini okuyamıyor → "Network unreachable" ile dönüp duruyor (`supabase start` bunu zaten baştan uyarıyor). Testlerin/uygulamanın kullandığı hiçbir şeyi (Postgres/Auth/Mailpit/Kong) etkilemiyor — E2E süiti bu haldeyken sorunsuz yeşildi. `imgproxy`+`pooler` de aynı şekilde bilinçli kapalı.
-7. **Task 14 netleşti — SMTP/yeni e-posta servisi GEREKMİYOR:** yalnız Supabase Dashboard'da toggle+şablon düzenleme (yerleşik mailer kullanılıyor). Önemli: "şifremi unuttum" akışı zaten CANLIDA — Task 14'teki şablon linki düzeltmeden gerçek kullanıcının reset maili `/auth/confirm`'e değil Supabase'in varsayılan onay URL'ine gidiyor, yani **prod'da reset akışı şu an muhtemelen kırık**. Aciliyeti var, Task 15'in önüne alınabilir.
+1. **Docker hazır → E2E lokal koşu doğrulandı:** `npx supabase start` + `npm run e2e` → 10/10 yeşil. Lokal Supabase config'i (site_url/redirect 5199, anonim giriş, confirmation+recovery şablonları, Mailpit) elden geçirildi — sağlam.
+2. **Ürün kararı — e-posta doğrulaması LOKALDE kapatıldı** (`supabase/config.toml` → `enable_confirmations = false`): kayıt → anında oturum. Frontend zaten hazırdı (`handleEmailSignUp`'ın `result.session` dalı → `enterGame()`, kod değişmedi). Yeni E2E: "kayıt (doğrulamasız) → anında oyun → al/sat → buluta yazılır" (eski mail-onay testinin yerine geçti).
+3. **Bug fix — `weak_password` yanıltıcı mesajı** (`src/lib/api/authErrors.ts`): kullanıcı prod'da "12345678" (8 karakter) ile "Şifre en az 8 karakter olmalı" uyarısı aldı. Kök neden: mesaj uzunluk kontrolü değil, Supabase `weak_password` kodunun yanlış çevirisiydi — prod'un sızmış-şifre koruması pwned reddediyor. Mesaj dürüst yapıldı: "Şifre çok zayıf — daha güçlü bir şifre seç". Unit test güncellendi + yeni E2E ("kayıt: zayıf şifre → dürüst hata", cerrahi `/auth/v1/signup` mock → gerçek 422 gövdesi; kayıt hata-yolu ilk kez kapsandı).
+4. **Doğrulama:** E2E 11/11, unit 512/512, `check` 0 hata, `build` yeşil. TDD: iki fix'te de RED→GREEN + weak_password E2E'sinde falsifikasyon (mesajı geri alıp testin ısırdığı kanıtlandı).
+5. **Prod pariteliği bilinçli ERTELENDİ:** kullanıcı prod'a şimdi dokunmamayı seçti. Prod'da `enable_confirmations` hâlâ AÇIK (lokal ≠ prod, bilinçli drift). Sızmış-şifre koruması da AÇIK bırakıldı (kullanıcı kararı — güvenlik korunsun).
 
 ### B. Blokerler & Kalan İşler
-- Öncekilerden taşınanlar (değişmedi, güncellenen aciliyet notu hariç): **Task 14 kullanıcı el işi** (Supabase Dashboard e-posta ayarları — hem K8 canlıya çıkma koşulu HEM DE prod'daki reset akışını düzeltiyor, bkz. A.7), **Task 15 manuel e-posta checklist'i**, **SP2 lig planı** (sırada, güçlü model), **SP3a domain** (K8 çıkış koşulu), hero screenshot, hidrasyon-timeout backlog maddesi.
+- **Prod auth pariteliği (YENİ, ertelendi):** prod'da doğrulama kapatılmak istenirse: Dashboard → Auth → Providers → Email → "Confirm email" toggle (proje ref `kmlogklnyxzptnrygyya`). `supabase config push` KULLANMA — config.toml'daki `site_url=localhost:5199` prod'u bozar. Task 14 (prod mail) ile birlikte ele alınacak; doğrulamayı kapatmak reset'i düzeltmez (reset yine mail ister).
+- Taşınanlar: **Task 14** (Supabase mail — reset prod'da muhtemelen kırık, acil), **Task 15** manuel checklist, **SP2 lig planı** (güçlü model), **SP3a domain**, hero screenshot, hidrasyon-timeout backlog.
 
 ### C. Değişiklik Geçmişi
-Aylık tema-bazlı özet `CHANGELOG.md`'de birikiyor (bu bölümün aksine üzerine yazılmaz, rutin "s" akışında dokunulmaz).
+Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 
-### D. Yeni Chat'te Kaldığımız Yerden Başlangıç Rehberi
-1. **Nasıl çalıştırılır:** `npm run dev` (Vite/SvelteKit, `http://localhost:5173`). E2E için: Docker Desktop açık olmalı → `npx supabase start` → `npm run e2e` (port 5199, ayrı — 5173'teki dev server'la çakışmaz).
-2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit test sayısı yazma — drift ediyor; Geliştirici Modu açık, Windows'ta uçtan uca geçiyor). CI'da artık iki paralel job: `test` + `e2e` (ikisi de bloklayıcı).
-3. **Supabase server-taraflı client kuralı:** yeni client YARATMA — auth rotaları `locals.supabase` kullanır (hooks'ta `ws` transport'lu kurulu). Yaratmak zorunda kalırsan `realtime: { transport: <ws> }` şart, yoksa Vercel'de 500. Yeni `$env/static` import'u eklersen `ci.yml`'a placeholder ekle.
-4. **Sıradaki adım (tek ve net):** push+CI doğrulaması bitti (bkz. A.5) — sırada **Task 14** (kullanıcı el işi, bkz. A.7 — reset akışı prod'da muhtemelen kırık, aciliyeti var) + Task 15 manuel checklist, sonra SP2 lig planı.
-5. Emlak gizli, istenmeden dönülmeyecek; yeni yatırım aracı eklenmeyecek (lig verisi gelmeden).
-6. **"s" kısayolu:** Oturum sonunda kullanıcı **"s"** yazarsa: git durumu kontrol et (commit/push gerekiyorsa yap), bu bölümü (6) o oturumun özetiyle güncelle.
-7. **Süreç dersi (bu oturum):** plan kodu verbatim içerse bile gerçek Playwright koşusu (statik review'un yakalayamayacağı) 4 gerçek bug çıkardı — hepsi glob/locator çakışması veya timing/concurrency kaynaklı, mantık hatası değil. `--repeat-each=3` flake taraması olmadan bu 2 tanesi (waitForLivePrice, workers:1) fark edilmezdi.
-
+### D. Yeni Chat'te Başlangıç Rehberi
+1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır; E2E izole lokal stack'e gider (playwright.config env override eder).
+2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
+3. **Lokal ≠ prod auth (ÖNEMLİ):** lokalde `enable_confirmations=false`, prod'da hâlâ true. Bilinçli drift; prod'u değiştirmeden B'deki nota bak.
+4. **Sıradaki adım:** Task 14 (prod mail, kullanıcı el işi) — reset'i düzeltir + prod auth pariteliği kararını netleştirir.
+5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
+6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
