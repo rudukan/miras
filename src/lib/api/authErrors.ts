@@ -8,7 +8,9 @@ export function authErrorMessage(code: string | undefined): string {
     case 'email_exists':
       return 'Bu e-posta zaten kayıtlı — GİRİŞ yap';
     case 'weak_password':
-      return 'Şifre en az 8 karakter olmalı';
+      // weak_password = sızmış/yaygın (pwned) VEYA karmaşıklık VEYA uzunluk — hepsini kapsar.
+      // "8 karakter" demek yanıltıcıydı: uzunluğu tutan ama yaygın şifre (12345678) girenler şaşırıyordu.
+      return 'Şifre çok zayıf — daha güçlü bir şifre seç';
     case 'over_email_send_rate_limit':
     case 'over_request_rate_limit':
       return 'Çok sık denendi — biraz bekleyip tekrar dene';
