@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mockMarketData } from './helpers/market-mocks';
 import { stubTurnstile } from './helpers/turnstile-stub';
 import { waitForAuthLink } from './helpers/mailpit';
+import { seedConfirmedUser } from './helpers/supabase-admin';
 
 const PASSWORD = 'e2e-Sifre-123';
 
@@ -28,4 +29,28 @@ test('kayıt → doğrulama maili → linke tıkla → oturumlu intro', async ({
   await page.goto(link);
   // /auth/confirm token'ı sunucuda takas eder → '/' → oturum VAR + local save YOK → intro
   await expect(page.getByRole('button', { name: 'BAŞLA ▶' })).toBeVisible();
+});
+
+test('doğrulanmış kullanıcı e-posta+şifreyle girer → intro', async ({ page }) => {
+  const { email, password } = await seedConfirmedUser();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'E-POSTA İLE GİRİŞ / KAYIT' }).click();
+  await page.getByPlaceholder('e-posta').fill(email);
+  await page.getByPlaceholder('şifre (en az 8 karakter)').fill(password);
+  await page.getByRole('button', { name: 'GİRİŞ', exact: true }).click();
+  // handleEmailSignIn başarıda location.reload() yapar → boot → oturum var → intro
+  await expect(page.getByRole('button', { name: 'BAŞLA ▶' })).toBeVisible();
+});
+
+test('yanlış şifre Türkçe hata gösterir, form kilitlenmez', async ({ page }) => {
+  const { email } = await seedConfirmedUser();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'E-POSTA İLE GİRİŞ / KAYIT' }).click();
+  await page.getByPlaceholder('e-posta').fill(email);
+  await page.getByPlaceholder('şifre (en az 8 karakter)').fill('yanlis-sifre-99');
+  await page.getByRole('button', { name: 'GİRİŞ', exact: true }).click();
+  // authErrors.ts: invalid_credentials → sabit Türkçe mesaj
+  await expect(page.getByText('E-posta ya da şifre hatalı')).toBeVisible();
+  // Form hâlâ etkileşimli (busy kilidi çözülmüş)
+  await expect(page.getByRole('button', { name: 'GİRİŞ', exact: true })).toBeEnabled();
 });
