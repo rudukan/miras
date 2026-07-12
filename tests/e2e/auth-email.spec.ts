@@ -54,3 +54,32 @@ test('yanlış şifre Türkçe hata gösterir, form kilitlenmez', async ({ page 
   // Form hâlâ etkileşimli (busy kilidi çözülmüş)
   await expect(page.getByRole('button', { name: 'GİRİŞ', exact: true })).toBeEnabled();
 });
+
+test('şifre sıfırlama: mail → overlay → yeni şifreyle giriş', async ({ page }) => {
+  const { email } = await seedConfirmedUser();
+  const newPassword = 'yeni-e2e-Sifre-456';
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'E-POSTA İLE GİRİŞ / KAYIT' }).click();
+  await page.getByRole('button', { name: 'şifremi unuttum' }).click();
+  await page.getByPlaceholder('e-posta').fill(email);
+  await page.getByRole('button', { name: 'SIFIRLAMA MAİLİ GÖNDER' }).click();
+  await expect(page.getByText(/Mail gönderildi/)).toBeVisible();
+
+  const link = await waitForAuthLink(email, 'recovery');
+  await page.goto(link);
+  // verifyOtp(recovery) oturum açar → /?pw_reset=1 → overlay
+  await expect(page.getByText('Yeni şifre belirle')).toBeVisible();
+  await page.getByPlaceholder('yeni şifre (en az 8 karakter)').fill(newPassword);
+  await page.getByRole('button', { name: 'KAYDET' }).click();
+  await expect(page.getByText('Şifre güncellendi')).toBeVisible();
+
+  // Kanıt: yeni şifre gerçekten çalışıyor — oturumu at, sıfırdan gir
+  await page.context().clearCookies();
+  await page.reload();
+  await page.getByRole('button', { name: 'E-POSTA İLE GİRİŞ / KAYIT' }).click();
+  await page.getByPlaceholder('e-posta').fill(email);
+  await page.getByPlaceholder('şifre (en az 8 karakter)').fill(newPassword);
+  await page.getByRole('button', { name: 'GİRİŞ', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'BAŞLA ▶' })).toBeVisible();
+});
