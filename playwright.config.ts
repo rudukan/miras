@@ -7,6 +7,10 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
+  // Tek paylaşımlı dev server + tek paylaşımlı lokal Supabase (izole worker'lar yok) —
+  // paralel worker'lar --repeat-each=3 taramasında gerçek/tutarlı flake üretti (5/30 FAIL);
+  // workers:1 ile aynı tarama 30/30 PASS. Hız yerine CI'da bloklayıcı olma güvenilirliği öncelikli.
+  workers: 1,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: BASE_URL,
