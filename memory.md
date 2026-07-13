@@ -167,28 +167,30 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-12 — 12. oturum, KAYIT SÜRTÜNMESİ + weak_password FIX)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-13 — 13. oturum, PRE-LAUNCH GÜVENLİK DENETİMİ + P1 SERTLEŞTİRME)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (11. — E2E test sistemi) için: `git show a78f7b8:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (12. — kayıt sürtünmesi + weak_password) için: `git show e7b7a9e:memory.md`.
 
 ### A. Bu Oturumda Tamamlananlar
-1. **Docker hazır → E2E lokal koşu doğrulandı:** `npx supabase start` + `npm run e2e` → 10/10 yeşil. Lokal Supabase config'i (site_url/redirect 5199, anonim giriş, confirmation+recovery şablonları, Mailpit) elden geçirildi — sağlam.
-2. **Ürün kararı — e-posta doğrulaması LOKALDE kapatıldı** (`supabase/config.toml` → `enable_confirmations = false`): kayıt → anında oturum. Frontend zaten hazırdı (`handleEmailSignUp`'ın `result.session` dalı → `enterGame()`, kod değişmedi). Yeni E2E: "kayıt (doğrulamasız) → anında oyun → al/sat → buluta yazılır" (eski mail-onay testinin yerine geçti).
-3. **Bug fix — `weak_password` yanıltıcı mesajı** (`src/lib/api/authErrors.ts`): kullanıcı prod'da "12345678" (8 karakter) ile "Şifre en az 8 karakter olmalı" uyarısı aldı. Kök neden: mesaj uzunluk kontrolü değil, Supabase `weak_password` kodunun yanlış çevirisiydi — prod'un sızmış-şifre koruması pwned reddediyor. Mesaj dürüst yapıldı: "Şifre çok zayıf — daha güçlü bir şifre seç". Unit test güncellendi + yeni E2E ("kayıt: zayıf şifre → dürüst hata", cerrahi `/auth/v1/signup` mock → gerçek 422 gövdesi; kayıt hata-yolu ilk kez kapsandı).
-4. **Doğrulama:** E2E 11/11, unit 512/512, `check` 0 hata, `build` yeşil. TDD: iki fix'te de RED→GREEN + weak_password E2E'sinde falsifikasyon (mesajı geri alıp testin ısırdığı kanıtlandı).
-5. **Prod pariteliği bilinçli ERTELENDİ:** kullanıcı prod'a şimdi dokunmamayı seçti. Prod'da `enable_confirmations` hâlâ AÇIK (lokal ≠ prod, bilinçli drift). Sızmış-şifre koruması da AÇIK bırakıldı (kullanıcı kararı — güvenlik korunsun).
+1. **Pre-launch güvenlik denetimi (7 alan, tek odaklı güçlü-model geçişi — bilinçli olarak çoklu-agent DEĞİL; yüzey tek context'e sığıyor, over-engineering'den kaçınıldı).** Spec+rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-{design,report}.md` (commit `9415214`). **P0 YOK** — sır sızıntısı yok (git geçmişi temiz, secret yalnız `$env/static/private`), RLS bypass yok (canlı advisors ERROR'suz; 2 anon-erişim WARN = misafir-oyun kastı), open-redirect yok, `{@html}`/XSS yüzeyi yok, dahili-SSRF yok (proxy host'ları sabit), auth `getUser()` doğrulamalı. Düşmanca ikinci geçiş: bir kendi-hatayı düzeltti (HSTS aslında VAR, Vercel veriyor), açık proxy'yi canlı teyit etti, +1 P2 buldu (hesap enumerasyonu, `authErrors.ts`).
+2. **P1-1 güvenlik başlıkları** (`src/hooks.server.ts`): CSP `frame-ancestors 'none'` + `X-Frame-Options: DENY` + `nosniff` + `Referrer-Policy` + `Permissions-Policy`. Tam script-src CSP bilinçli ertelendi (doğrusu `kit.csp` nonce; elle yazılırsa hydration+Turnstile+Binance WS kırılır). HSTS Vercel'de.
+3. **P1-2 proxy sembol cap'i** (`src/lib/api/symbolLimit.ts`, MAX 50): `/api/yahoo` + `/api/crypto` kimliksiz + cache-bypass + sınırsız `Promise.all` fan-out amplifikasyonu kapandı.
+4. **P1-3 sınırlı series cache** (`src/lib/api/boundedRegistry.ts`, FIFO, max 200): `/api/series` cache Map'i kullanıcı-kontrollü `symbol` ile sınırsız büyüyordu (bellek-DoS) → sınırlandı.
+5. **Doğrulama:** TDD (her fix RED→GREEN, 3 yeni test dosyası). `test 520 + check 0 + build` yeşil. Commit'ler `9415214` (docs) + `6c7773e` (fix), main'e **push edildi**. Vercel deploy READY; **canlı `curl -I miras-one.vercel.app` ile 5 başlık + cap'li `/api/crypto` 200 tel-üstü doğrulandı**.
+6. **Task 14 YENİDEN ÇERÇEVELENDİ:** `/auth/confirm` recovery KODU denetimde doğru bulundu — "prod'da kırık" bir güvenlik açığı DEĞİL; risk yalnız Supabase mail-şablonu/redirect-URL config'inde. Yani config-doğrulama işi, kod fix'i değil.
 
 ### B. Blokerler & Kalan İşler
-- **Prod auth pariteliği (YENİ, ertelendi):** prod'da doğrulama kapatılmak istenirse: Dashboard → Auth → Providers → Email → "Confirm email" toggle (proje ref `kmlogklnyxzptnrygyya`). `supabase config push` KULLANMA — config.toml'daki `site_url=localhost:5199` prod'u bozar. Task 14 (prod mail) ile birlikte ele alınacak; doğrulamayı kapatmak reset'i düzeltmez (reset yine mail ister).
-- Taşınanlar: **Task 14** (Supabase mail — reset prod'da muhtemelen kırık, acil), **Task 15** manuel checklist, **SP2 lig planı** (güçlü model), **SP3a domain**, hero screenshot, hidrasyon-timeout backlog.
+- **P1-4 (kullanıcı el işi, dashboard — güvenlik denetiminin tek kod-dışı kalanı):** prod'da Turnstile captcha enabled+secret mi doğrula · reset mail şablonu `/auth/confirm?...&type=recovery`'ye gidiyor mu (Task 14) · redirect allow-list prod domain'i içeriyor mu. (Deploy'a bağlı değil, dashboard config zaten canlı.)
+- **P2 backlog (launch sonrası, düşük aciliyet — hepsi rapor'da dosya:satır ile):** telemetry sertleştirme (playerId cap+sanitize+rate-limit), min-8 parola politikası, hesap-enumerasyon kararı (`authErrors` "zaten kayıtlı" mesajı — UX↔güvenlik ödünleşimi), proxy `encodeURIComponent` temizliği.
+- Taşınanlar: **SP2 lig planı** (güçlü model), **SP3a domain**, hero screenshot, hidrasyon-timeout backlog.
 
 ### C. Değişiklik Geçmişi
 Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 
 ### D. Yeni Chat'te Başlangıç Rehberi
-1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır; E2E izole lokal stack'e gider (playwright.config env override eder).
+1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır.
 2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
-3. **Lokal ≠ prod auth (ÖNEMLİ):** lokalde `enable_confirmations=false`, prod'da hâlâ true. Bilinçli drift; prod'u değiştirmeden B'deki nota bak.
-4. **Sıradaki adım:** Task 14 (prod mail, kullanıcı el işi) — reset'i düzeltir + prod auth pariteliği kararını netleştirir.
+3. **Güvenlik durumu:** pre-launch P1 kritik yol KAPANDI ve canlıda. Kalan yalnız P1-4 dashboard eyeball (B'de) + P2 backlog. Rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-report.md`.
+4. **Sıradaki adım:** kullanıcı P1-4 dashboard teyidini yapınca güvenlik tamamen kapanır; sonra P2 veya SP2/SP3a. Lokal ≠ prod auth (lokalde `enable_confirmations=false`, prod'da true — bilinçli drift, prod'u değiştirme).
 5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
