@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { createTtlCache } from '$lib/api/cachedFetch';
 import type { FxValue } from '$lib/api/types';
 import { fetchFxValue, YAHOO_FALLBACK, DEFAULT_BIST, YAHOO_TTL_MS } from '$lib/api/yahooSource';
+import { parseSymbolList } from '$lib/api/symbolLimit';
 
 // Varsayılan sembol seti için modül-seviyesi 5s önbellek (US içermez — varsayılan set sabit).
 const cache = createTtlCache<FxValue>({
@@ -18,8 +19,8 @@ export const GET: RequestHandler = async ({ url }) => {
 
   // Özel sembol istenirse cache'i bypass et (basit v1; varsayılan set cache'lenir).
   if (bistParam || usParam) {
-    const bist = bistParam ? bistParam.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
-    const us = usParam ? usParam.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
+    const bist = parseSymbolList(bistParam);
+    const us = parseSymbolList(usParam);
     try {
       const value = await fetchFxValue(bist, us, fetch);
       return json({ value, asOf: Date.now(), stale: false }, { headers });

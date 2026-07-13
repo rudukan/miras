@@ -5,25 +5,25 @@ import type { PricePoint, PeriodId } from '$lib/domain/series/series';
 import { PERIODS } from '$lib/domain/series/series';
 import { fetchSeries, SERIES_TTL_MS } from '$lib/api/seriesSource';
 import { createTtlCache } from '$lib/api/cachedFetch';
+import { createBoundedRegistry } from '$lib/api/boundedRegistry';
 
 const VALID_PERIODS = new Set(PERIODS.map((p) => p.id));
 const EMPTY: PricePoint[] = [];
 
 // (symbol+source+period) başına ayrı TTL cache — talep üzerine lazy oluşturulur.
-const caches = new Map<string, () => Promise<Cached<PricePoint[]>>>();
+// symbol kullanıcı-kontrollü → sınırsız büyümeyi önlemek için sınırlı registry (güvenlik denetimi P1-3).
+const MAX_SERIES_CACHES = 200;
+const caches = createBoundedRegistry<() => Promise<Cached<PricePoint[]>>>(MAX_SERIES_CACHES);
 
 function cacheFor(symbol: string, source: 'crypto' | 'yahoo', period: PeriodId) {
 	const key = `${source}:${symbol}:${period}`;
-	let c = caches.get(key);
-	if (!c) {
-		c = createTtlCache<PricePoint[]>({
+	return caches.getOrCreate(key, () =>
+		createTtlCache<PricePoint[]>({
 			ttlMs: SERIES_TTL_MS[period],
 			fallback: EMPTY,
 			fetcher: () => fetchSeries(symbol, source, period, fetch),
-		});
-		caches.set(key, c);
-	}
-	return c;
+		}),
+	);
 }
 
 export const GET: RequestHandler = async ({ url }) => {

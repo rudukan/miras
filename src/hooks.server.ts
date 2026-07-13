@@ -37,9 +37,21 @@ export const handle: Handle = async ({ event, resolve }) => {
     return { session, user };
   };
 
-  return resolve(event, {
+  const response = await resolve(event, {
     filterSerializedResponseHeaders(name) {
       return name === 'content-range' || name === 'x-supabase-api-version';
     },
   });
+
+  // Guvenlik basliklari (guvenlik denetimi P1-1): clickjacking + derinlemesine savunma.
+  // NOT: Tam script-src CSP'si BURADA yok — elle yazilirsa SvelteKit hydration + Turnstile
+  // + Binance WS'i kirar; dogrusu kit.csp nonce mekanizmasi (ayri is, tarayici dogrulamasi
+  // ister). frame-ancestors script yuklemesini etkilemez, guvenle eklenir. HSTS'i Vercel verir.
+  response.headers.set('Content-Security-Policy', "frame-ancestors 'none'");
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  return response;
 };
