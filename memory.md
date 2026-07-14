@@ -167,22 +167,25 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-13 — 13. oturum, PRE-LAUNCH GÜVENLİK DENETİMİ + P1 SERTLEŞTİRME)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-14 — 14. oturum, GÜVENLİK SERTLEŞTİRME #2: B1+B3+B4)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (12. — kayıt sürtünmesi + weak_password) için: `git show e7b7a9e:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (13. — pre-launch güvenlik denetimi + P1-1/2/3 sertleştirme) için: `git show 26abae0:memory.md`.
 
 ### A. Bu Oturumda Tamamlananlar
-1. **Pre-launch güvenlik denetimi (7 alan, tek odaklı güçlü-model geçişi — bilinçli olarak çoklu-agent DEĞİL; yüzey tek context'e sığıyor, over-engineering'den kaçınıldı).** Spec+rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-{design,report}.md` (commit `9415214`). **P0 YOK** — sır sızıntısı yok (git geçmişi temiz, secret yalnız `$env/static/private`), RLS bypass yok (canlı advisors ERROR'suz; 2 anon-erişim WARN = misafir-oyun kastı), open-redirect yok, `{@html}`/XSS yüzeyi yok, dahili-SSRF yok (proxy host'ları sabit), auth `getUser()` doğrulamalı. Düşmanca ikinci geçiş: bir kendi-hatayı düzeltti (HSTS aslında VAR, Vercel veriyor), açık proxy'yi canlı teyit etti, +1 P2 buldu (hesap enumerasyonu, `authErrors.ts`).
-2. **P1-1 güvenlik başlıkları** (`src/hooks.server.ts`): CSP `frame-ancestors 'none'` + `X-Frame-Options: DENY` + `nosniff` + `Referrer-Policy` + `Permissions-Policy`. Tam script-src CSP bilinçli ertelendi (doğrusu `kit.csp` nonce; elle yazılırsa hydration+Turnstile+Binance WS kırılır). HSTS Vercel'de.
-3. **P1-2 proxy sembol cap'i** (`src/lib/api/symbolLimit.ts`, MAX 50): `/api/yahoo` + `/api/crypto` kimliksiz + cache-bypass + sınırsız `Promise.all` fan-out amplifikasyonu kapandı.
-4. **P1-3 sınırlı series cache** (`src/lib/api/boundedRegistry.ts`, FIFO, max 200): `/api/series` cache Map'i kullanıcı-kontrollü `symbol` ile sınırsız büyüyordu (bellek-DoS) → sınırlandı.
-5. **Doğrulama:** TDD (her fix RED→GREEN, 3 yeni test dosyası). `test 520 + check 0 + build` yeşil. Commit'ler `9415214` (docs) + `6c7773e` (fix), main'e **push edildi**. Vercel deploy READY; **canlı `curl -I miras-one.vercel.app` ile 5 başlık + cap'li `/api/crypto` 200 tel-üstü doğrulandı**.
-6. **Task 14 YENİDEN ÇERÇEVELENDİ:** `/auth/confirm` recovery KODU denetimde doğru bulundu — "prod'da kırık" bir güvenlik açığı DEĞİL; risk yalnız Supabase mail-şablonu/redirect-URL config'inde. Yani config-doğrulama işi, kod fix'i değil.
+1. **`.claude/plans/guvenlik-sertlestirme-2.md` uygulandı** (Fable'da yazılmış, onaylanmış plan; Sonnet'te inline execution — planın kendi "Execution Handoff" önerisi). 2026-07-14 taze denetimin 5 bulgusundan whitelist-validasyonla tek oturumda kapanabilen 3'ü (B2 rate-limit, B5 CSP script-src bilinçli ertelendi — aşağıda):
+   - **B1 (telemetry `playerId` → Discord webhook relay enjeksiyonu):** `PLAYER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/` whitelist + webhook body'sine `allowed_mentions: { parse: [] }`. Commit `5c1006e`.
+   - **B3a (`parseSymbolList` → yahoo/crypto proxy sembol enjeksiyonu):** `VALID_SYMBOL_RE = /^[A-Z0-9]{1,12}$/` tam-eşleşme filtre. Commit `08b18a6`.
+   - **B3b (series route symbol guard'ı):** aynı whitelist regex `/api/series` GET guard'ına eklendi. Commit `5250aba`.
+   - **B4 (yıkıcı POST'larda CSRF defense-in-depth — plan "opsiyonel" işaretlemişti, uygulandı çünkü `account/delete` geri alınamaz):** yeni `src/lib/server/csrf.ts` → `isSameOrigin()`, `account/delete` + `profile` POST'larına origin guard. Commit `6f12a5e`.
+2. **Plan tutarsızlığı bulundu ve düzeltildi (test tarafında, implementasyon değil):** `symbolLimit.test.ts`'in plan'daki Step 1 beklentisi (`'AAPL,BTC?x=1,...'` → `['AAPL','BTC']`) planın kendi Step 3 kodundaki tam-eşleşme regex'iyle (`VALID_SYMBOL_RE.test(s)`, anchored `^...$`) çelişiyordu — `.test()` alt-string aramaz, tüm string'i eşleştirir; `'BTC?X=1'` bütünüyle reddedilir, `'BTC'`ye kırpılmaz. Beklentiyi `['AAPL']`e düzelttim: planın kendi güvenlik gerekçesiyle tutarlı ("eler", kısmi kabul değil) ve `liveAssets.ts`/`bist100.ts`'teki tüm gerçek symbol id'lerinin zaten `^[A-Z0-9]{1,12}$`'e uyduğunu doğruladım (regresyon riski yok).
+3. **Doğrulama:** TDD (4 task, her biri RED→GREEN, kendi commit'i). `test 531 + check 0 + build` yeşil. **Henüz push edilmedi** — kullanıcı onayı bekleniyor.
 
 ### B. Blokerler & Kalan İşler
-- **P1-4 (kullanıcı el işi, dashboard — güvenlik denetiminin tek kod-dışı kalanı):** prod'da Turnstile captcha enabled+secret mi doğrula · reset mail şablonu `/auth/confirm?...&type=recovery`'ye gidiyor mu (Task 14) · redirect allow-list prod domain'i içeriyor mu. (Deploy'a bağlı değil, dashboard config zaten canlı.)
-- **P2 backlog (launch sonrası, düşük aciliyet — hepsi rapor'da dosya:satır ile):** telemetry sertleştirme (playerId cap+sanitize+rate-limit), min-8 parola politikası, hesap-enumerasyon kararı (`authErrors` "zaten kayıtlı" mesajı — UX↔güvenlik ödünleşimi), proxy `encodeURIComponent` temizliği.
-- Taşınanlar: **SP2 lig planı** (güçlü model), **SP3a domain**, hero screenshot, hidrasyon-timeout backlog.
+- **Push bekliyor:** 4 commit (`5c1006e`, `08b18a6`, `5250aba`, `6f12a5e`) main'de lokal, uzağa gitmedi.
+- **B2 (uygulama-katmanı rate-limit) BİLİNÇLİ ERTELENDİ** — in-memory serverless'te zayıf çözüm; doğrusu Vercel KV/Upstash, altyapı kararı gerektirir, kendi planını hak ediyor.
+- **B5 (CSP `script-src` yok) BİLİNÇLİ ERTELENDİ** — `kit.csp` nonce'lu tam politika + tarayıcı doğrulaması ister, launch sonrası (13. oturumdaki aynı gerekçe).
+- Task 4 Step 7 (Playwright "hesap|profil" E2E regresyon grep'i) lokal koşulmadı (Docker+Supabase gerektirir) — planın kendi notuyla tutarlı şekilde CI'ın `e2e` job'ına bırakıldı.
+- Taşınanlar (13. oturumdan hâlâ geçerli): **P1-4 dashboard eyeball** (Turnstile enabled+secret, reset mail şablonu, redirect allow-list — hiçbiri koda bağlı değil), P2 backlog (min-8 parola politikası, hesap-enumerasyon kararı), SP2 lig planı, SP3a domain.
 
 ### C. Değişiklik Geçmişi
 Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
@@ -190,7 +193,7 @@ Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 ### D. Yeni Chat'te Başlangıç Rehberi
 1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır.
 2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
-3. **Güvenlik durumu:** pre-launch P1 kritik yol KAPANDI ve canlıda. Kalan yalnız P1-4 dashboard eyeball (B'de) + P2 backlog. Rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-report.md`.
-4. **Sıradaki adım:** kullanıcı P1-4 dashboard teyidini yapınca güvenlik tamamen kapanır; sonra P2 veya SP2/SP3a. Lokal ≠ prod auth (lokalde `enable_confirmations=false`, prod'da true — bilinçli drift, prod'u değiştirme).
+3. **Güvenlik durumu:** B1/B3/B4 kapandı (bu oturum), lokal main'de commit'li, **push bekliyor**. B2/B5 bilinçli ertelendi (yukarıda gerekçe). P1-4 dashboard eyeball hâlâ kullanıcı elinde. Rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-report.md`, plan: `.claude/plans/guvenlik-sertlestirme-2.md`.
+4. **Sıradaki adım:** push onayı → sonra P1-4 dashboard teyidi veya B2/B5 kendi planları veya P2/SP2/SP3a. Lokal ≠ prod auth (lokalde `enable_confirmations=false`, prod'da true — bilinçli drift, prod'u değiştirme).
 5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
