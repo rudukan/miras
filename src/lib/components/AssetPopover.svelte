@@ -71,7 +71,7 @@
 
 	<!-- Grafik -->
 	<div class="relative">
-		<PriceChart {points} width={variant === 'mobile' ? 320 : 274} height={90} />
+		<PriceChart {points} width={variant === 'mobile' ? 320 : 274} height={90} source={row.source} {period} />
 		{#if loading}
 			<div class="absolute inset-0 flex items-center justify-center text-term-text opacity-40 text-[10px]">
 				yükleniyor…
