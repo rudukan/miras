@@ -1,10 +1,12 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { validateNickname } from '$lib/domain/nickname/nickname';
+import { isSameOrigin } from '$lib/server/csrf';
 
 // Takma ad client'tan dogrudan tabloya yazilmaz: filtre sunucuda da kosar
 // (defense in depth), insert kullanicinin KENDI JWT'siyle yapilir — RLS gecerli kalir.
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async ({ request, locals, url }) => {
+  if (!isSameOrigin(request.headers.get('origin'), url.origin)) error(403, 'Geçersiz kaynak');
   const { user } = await locals.safeGetSession();
   if (!user) error(401, 'Oturum gerekli');
 

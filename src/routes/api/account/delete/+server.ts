@@ -4,11 +4,13 @@ import { createClient } from '@supabase/supabase-js';
 import { WebSocket } from 'ws';
 import { SUPABASE_SECRET_KEY } from '$env/static/private';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
+import { isSameOrigin } from '$lib/server/csrf';
 
 // KVKK hesap silme (spec §7): auth.users satiri silinir; profiles/saves
 // "on delete cascade" FK'lariyla otomatik gider. Secret key YALNIZ burada,
 // kimligi dogrulanmis kullanicinin KENDI hesabi icin kullanilir.
-export const POST: RequestHandler = async ({ locals }) => {
+export const POST: RequestHandler = async ({ locals, request, url }) => {
+  if (!isSameOrigin(request.headers.get('origin'), url.origin)) error(403, 'Geçersiz kaynak');
   const { user } = await locals.safeGetSession();
   if (!user) error(401, 'Oturum gerekli');
 
