@@ -167,33 +167,33 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-14 — 14. oturum, GÜVENLİK SERTLEŞTİRME #2: B1+B3+B4)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-14 — 15. oturum, GRAFİK İYİLEŞTİRME + BAĞLAM KALDIRMA)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (13. — pre-launch güvenlik denetimi + P1-1/2/3 sertleştirme) için: `git show 26abae0:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (14. — güvenlik sertleştirme #2: B1+B3+B4) için: `git show 4d5613d:memory.md`.
 
 ### A. Bu Oturumda Tamamlananlar
-1. **`.claude/plans/guvenlik-sertlestirme-2.md` uygulandı** (Fable'da yazılmış, onaylanmış plan; Sonnet'te inline execution — planın kendi "Execution Handoff" önerisi). 2026-07-14 taze denetimin 5 bulgusundan whitelist-validasyonla tek oturumda kapanabilen 3'ü (B2 rate-limit, B5 CSP script-src bilinçli ertelendi — aşağıda):
-   - **B1 (telemetry `playerId` → Discord webhook relay enjeksiyonu):** `PLAYER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/` whitelist + webhook body'sine `allowed_mentions: { parse: [] }`. Commit `5c1006e`.
-   - **B3a (`parseSymbolList` → yahoo/crypto proxy sembol enjeksiyonu):** `VALID_SYMBOL_RE = /^[A-Z0-9]{1,12}$/` tam-eşleşme filtre. Commit `08b18a6`.
-   - **B3b (series route symbol guard'ı):** aynı whitelist regex `/api/series` GET guard'ına eklendi. Commit `5250aba`.
-   - **B4 (yıkıcı POST'larda CSRF defense-in-depth — plan "opsiyonel" işaretlemişti, uygulandı çünkü `account/delete` geri alınamaz):** yeni `src/lib/server/csrf.ts` → `isSameOrigin()`, `account/delete` + `profile` POST'larına origin guard. Commit `6f12a5e`.
-2. **Plan tutarsızlığı bulundu ve düzeltildi (test tarafında, implementasyon değil):** `symbolLimit.test.ts`'in plan'daki Step 1 beklentisi (`'AAPL,BTC?x=1,...'` → `['AAPL','BTC']`) planın kendi Step 3 kodundaki tam-eşleşme regex'iyle (`VALID_SYMBOL_RE.test(s)`, anchored `^...$`) çelişiyordu — `.test()` alt-string aramaz, tüm string'i eşleştirir; `'BTC?X=1'` bütünüyle reddedilir, `'BTC'`ye kırpılmaz. Beklentiyi `['AAPL']`e düzelttim: planın kendi güvenlik gerekçesiyle tutarlı ("eler", kısmi kabul değil) ve `liveAssets.ts`/`bist100.ts`'teki tüm gerçek symbol id'lerinin zaten `^[A-Z0-9]{1,12}$`'e uyduğunu doğruladım (regresyon riski yok).
-3. **Doğrulama:** TDD (4 task, her biri RED→GREEN, kendi commit'i). `test 531 + check 0 + build` yeşil. Commit'ler main'e **push edildi** (`26abae0..c29d06d`), Vercel otomatik prod deploy tetiklendi.
+1. **`docs/superpowers/plans/2026-07-14-grafik-iyilestirme.md` uygulandı** — subagent-driven-development ile izole worktree'de (EnterWorktree), 9/9 task + her task'a ayrı reviewer, main'e merge edildi (`f529e9e`, 12 commit):
+   - **BAĞLAM satırı silindi** (ContextCard + contextCard.ts + testi; `+page.svelte`'den söküldü).
+   - **PriceChart v2:** DPR-keskin canvas (`drawChart.ts` saf modül), min/max fiyat etiketleri, zaman ekseni (sabit UTC+3 + elle Türkçe kısaltmalar, Intl YOK — CI determinizmi), crosshair + fiyat/zaman tooltip (HTML bindirme, hover'da canvas yeniden çizilmez).
+   - **PeriodTabs + useSeries + PositionSummary** ortak parçalara çıkarıldı; **⤢ BÜYÜT → ChartOverlay** tam boy modal (role=dialog + aria-label="{label} grafiği", Escape/backdrop/✕, mobilde tam ekran, TradeForm dahil).
+   - **E2E 12 senaryo** (yeni: chart-overlay smoke + deterministik SERIES_FIXTURE; CLAUDE.md'deki "10 senaryo" zaten bayattı → 12'ye senkronlandı).
+2. **Task-review döngüsü 2 gerçek bulgu yakaladı ve düzeltti:** renderChart boş-dizi guard'ı (`0b9edf7`), a11y uyarısı svelte-ignore emsaliyle (`9fd644a`).
+3. **Final whole-branch review (opus) 1 Important buldu → düzeltildi (`d27be47`):** `seriesCurrency` tüm 'yahoo' kaynağını ₺ sayıyordu ama XAUGRAM/XAGGRAM upstream'i `GC=F`/`SI=F` (COMEX, **USD/ons**) — altın/gümüş grafiği yanlış ₺ etiketiyle ham USD/ons gösteriyordu (spec'in kendi "yahoo→₺" varsayımı hatalıydı). Fix: `seriesCurrency(assetId, source)` + `YAHOO_USD_ASSETS={XAUGRAM,XAGGRAM}` (domain api/'den import edemez → TR_MONTHS_SHORT emsaliyle yerel liste). **Bu fix'in ayrı reviewer round'u kullanıcı kararıyla atlandı** (TDD kanıtı + 543/543 + check/build yeşiline güvenildi — bilinçli disiplin sapması).
+4. **Canlı doğrulama (controller, gerçek tarayıcı):** BTC $ / THYAO ₺ tooltip'leri, overlay aç/kapa (desktop+mobil), **gerçek AL işlemi** (10 THYAO → nakit/pozisyon/maliyet doğru düştü).
+5. **Merge sonrası birleşik main:** test **554/554** (worktree'nin 543'ü + 14. oturumun 11 güvenlik testi sorunsuz bir arada), check 0/0, build yeşil. Worktree + branch temizlendi.
 
 ### B. Blokerler & Kalan İşler
-- **B2 (uygulama-katmanı rate-limit) BİLİNÇLİ ERTELENDİ** — in-memory serverless'te zayıf çözüm; doğrusu Vercel KV/Upstash, altyapı kararı gerektirir, kendi planını hak ediyor.
-- **B5 (CSP `script-src` yok) BİLİNÇLİ ERTELENDİ** — `kit.csp` nonce'lu tam politika + tarayıcı doğrulaması ister, launch sonrası (13. oturumdaki aynı gerekçe).
-- Task 4 Step 7 (Playwright "hesap|profil" E2E regresyon grep'i) lokal koşulmadı (Docker+Supabase gerektirir) — planın kendi notuyla tutarlı şekilde CI'ın `e2e` job'ına bırakıldı.
-- **P1-4 dashboard eyeball — KULLANICI TARAFINDAN TAMAMLANDI BİLDİRİLDİ (2026-07-14, aynı oturum içinde).** Turnstile enabled+secret, reset mail şablonu, redirect allow-list — kullanıcı raporu, kod tarafından doğrulanamaz (dashboard-only config). Bununla **pre-launch güvenlik denetiminin (2026-07-12) tüm P0/P1 kritik yolu kapandı.**
-- Taşınanlar: P2 backlog (min-8 parola politikası, hesap-enumerasyon kararı [[authErrors]]), B2 (rate-limit, altyapı kararı gerekir), B5 (CSP script-src, kit.csp nonce işi), SP2 lig planı, SP3a domain.
+- **ABD hissesi grafikleri "veri yok" gösterir (bilinen sınırlama, bu oturum ÖNCESİNDEN):** `upstreamFor` US sembole `.IS` ekler (AAPL.IS → Yahoo boş), `seriesCurrency` de US için sembol-bazlı ele alınmalı. ABD borsası seri desteği ayrı dilim — final review'ın forward-looking notu.
+- Mobilde overlay arkasında body scroll-lock yok (Minor, cila — final review).
+- Devir: B2 rate-limit + B5 CSP (kendi planlarını bekliyor), P2 backlog, SP2 lig planı, SP3a domain — 14. oturumdan değişmedi.
 
 ### C. Değişiklik Geçmişi
 Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 
 ### D. Yeni Chat'te Başlangıç Rehberi
-1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır.
+1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır. (Supabase lokal stack bu oturum sonunda durduruldu — gerekirse `npx supabase start`.)
 2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
-3. **Güvenlik durumu: pre-launch denetiminin (2026-07-12) TÜM P0/P1 maddeleri kapandı** — B1/B3/B4 kodda+canlıda (bu oturum), P1-4 dashboard kullanıcı tarafından tamamlandı. B2/B5 bilinçli ertelendi (kendi planlarını hak ediyor, yukarıda gerekçe). Rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-report.md`, plan: `.claude/plans/guvenlik-sertlestirme-2.md`.
-4. **Sıradaki adım:** kod tarafında zorunlu bir güvenlik işi kalmadı — B2/B5 kendi planlarını ister, aksi halde P2 backlog veya SP2/SP3a roadmap işlerine geç. Lokal ≠ prod auth (lokalde `enable_confirmations=false`, prod'da true — bilinçli drift, prod'u değiştirme).
+3. **Güvenlik durumu:** pre-launch P0/P1 tümü kapalı (14. oturum); bu oturum güvenliğe dokunmadı, iki iş akışı merge'de sorunsuz birleşti.
+4. **Sıradaki adım:** SP2 lig planı / SP3a domain / P2 backlog — ya da ABD hissesi grafik serisi dilimi (yukarıdaki bilinen sınırlama).
 5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
