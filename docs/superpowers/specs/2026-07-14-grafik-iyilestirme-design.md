@@ -30,7 +30,7 @@
 3. Pop-up grafiğinde: dolgu + referans çizgisi + son-nokta dot + min/max etiketleri + zaman etiketleri + seçili periyot %'si görünür.
 4. Grafik üzerinde gezinince crosshair + tooltip çıkıyor; tooltip fiyatı **serinin ham para birimiyle** gösteriyor (crypto → $, yahoo → ₺), zamanı periyoda uygun formatta gösteriyor.
 5. ⤢ BÜYÜT → overlay açılıyor: büyük grafik (tüm özellikler), periyot düğmeleri, Bende/maliyet, çalışır TradeForm; Escape/backdrop/✕ ile kapanıyor; mobilde tam ekran.
-6. Yeni domain fonksiyonları (`timeTicks`, `nearestIndex`, `seriesCurrency`) TDD ile yazılmış, testleri deterministik (sabit epoch + `Europe/Istanbul`).
+6. Yeni saf fonksiyonlar TDD ile yazılmış: domain'de `tickIndices`/`nearestIndex`/`seriesCurrency`/`seriesChangePct`, `format.ts`'te `seriesPriceLabel`/`tickLabel`/`tooltipTimeLabel` (istanbulParts üstünde, modern-tarih testleri, deterministik).
 7. E2E: mevcut 10 senaryo yeşil kalır; +1 smoke senaryo (popover → BÜYÜT → overlay görünür → kapat) eklenir ve CI'da geçer.
 
 ## 3. Bileşen Mimarisi
@@ -39,7 +39,7 @@ Katmanlama mevcut deseni izler: saf domain → saf çizim modülü → ince Svel
 
 | Birim | Yer | Sorumluluk |
 |-------|-----|------------|
-| `timeTicks(points, period, maxTicks)` | `src/lib/domain/series/series.ts` (mevcut modül — grafik-serisi matematiği zaten bunun tek sorumluluğu) | Eşit aralıklı ~3-6 nokta indeksi + periyoda göre Türkçe etiket. X konumu **indeks-tabanlı** (çizgiyle aynı ölçek — BIST seans boşlukları çizgide kompres, etiket gerçek saati söyler, dürüst). Zaman: **sabit UTC+3 aritmetiği + elle Türkçe ay/gün dizileri** (`format.ts`'teki `TR_MONTHS_SHORT` emsali; Türkiye 2016'dan beri DST uygulamıyor) — Intl/ICU bağımlılığı yok, CI=UTC vs lokal=+03 driftini kökten keser. |
+| `tickIndices(n, maxTicks)` | `src/lib/domain/series/series.ts` | Eşit aralıklı ~3-6 nokta İNDEKSİ — salt seçim. X konumu **indeks-tabanlı** (çizgiyle aynı ölçek — BIST seans boşlukları çizgide kompres, etiket gerçek saati söyler, dürüst). Etiket METNİ sunum işi → `format.ts`'te `tickLabel`/`tooltipTimeLabel`, zaman gerçeği **`istanbulParts`** (`domain/calendar` — projenin tek İstanbul-zamanı kaynağı; `snapshot→calendar` import emsali) + `format.ts`'in mevcut `TR_MONTHS_SHORT` dizisi. *(Plan-öncesi revizyon 2026-07-14: ilk taslaktaki domain-içi sabit-UTC+3 + dizi kopyası, calendar.ts'in varlığı fark edilince kaldırıldı — plan Karar Notları #1.)* |
 | `nearestIndex(n, xRatio)` | aynı yer | Crosshair için en yakın nokta indeksi (x eşit aralıklı olduğundan saf aritmetik). |
 | `seriesCurrency(source)` | aynı yer | `'crypto' → 'USD'`, `'yahoo' → 'TRY'`. Binance serileri USDT(≈USD), Yahoo serileri TRY — etiket/tooltip birimi buradan. |
 | `drawChart(ctx, geometry, opts)` | `src/lib/components/chart/drawChart.ts` | Canvas'a yalnız statik resim: DPR ölçek, degrade dolgu (çizgi renginin ~%18→0 alfası), ilk fiyatta kesikli referans çizgisi, çizgi (1.5px), son noktada dot. Renkler mevcut `cssVar` yöntemiyle `term.*` token'larından — hard-coded hex yok. |
@@ -58,7 +58,7 @@ Değişmez: tarayıcı → `fetchPriceSeries` → `/api/series` (TTL cache, semb
 ## 5. UX Detayları
 
 - **Birim dürüstlüğü:** Tooltip/min-max/referans etiketi serinin **ham birimini** gösterir: BTC serisi $ (Binance), THYAO/altın ₺ (Yahoo). Tarihsel seriyi bugünkü kurla TRY'ye çevirmek yanlış tarih üretir — yapılmaz. Pop-up başlığındaki canlı ₺ fiyatla fark, birim simgesiyle netleşir.
-- **Zaman etiket formatları** (TSİ = sabit UTC+3) — eksen / tooltip: 15D/1G → `14:32` / `14:32` · 1H → `Sal 14:00` / `Sal 14:32` · 1A → `12 Tem` / `12 Tem` · 1Y → `Tem 25` / `12 Tem 25`.
+- **Zaman etiket formatları** (İstanbul saati, `istanbulParts`) — eksen / tooltip: 15D/1G → `14:32` / `14:32` · 1H → `Sal 14:00` / `Sal 14:32` · 1A → `12 Tem` / `12 Tem` · 1Y → `Tem 25` / `12 Tem 25`.
 - **Min/max etiketleri:** grafik içinde köşe bindirme (max sol-üst, min sol-alt), yarı saydam panel arka planıyla okunur; ek dikey alan yemez.
 - **Periyot değişim %'si:** `computeChartGeometry.changePct` zaten hesaplı — `PeriodTabs` satırında sağda renkli (`term.green/red`) gösterilir. Başlıktaki günlük % olduğu gibi kalır.
 - **Loading/boş:** mevcut davranış korunur — `yükleniyor…` bindirmesi, `<2 nokta → "veri yok"`.
@@ -78,7 +78,7 @@ Değişmez: tarayıcı → `fetchPriceSeries` → `/api/series` (TTL cache, semb
 
 ## 8. Riskler & Notlar
 
-- **Timezone determinizmi:** tüm zaman formatlaması sabit UTC+3 aritmetiği + elle Türkçe kısaltma dizileriyle (ICU/Intl bağımlılığı YOK) — testler CI'da (UTC) ve lokalde bit-bit aynı sonucu verir. Domain'deki `timeTicks` (eksen) ve `tooltipTimeLabel` (tooltip) da domain testleriyle sabitlenir.
+- **Timezone determinizmi:** zaman gerçeği `istanbulParts` (calendar.ts — CI'da zaten kanıtlı mekanizma, snapshot/market-open da bunu kullanır → grafik etiketleri seans mantığıyla tutarlı). Not: tz-db tarihsel ofset içerir (1970=UTC+2) — etiket testleri modern tarihlerle yazılır. `tickLabel`/`tooltipTimeLabel` `format.test.ts`'te sabitlenir.
 - **Bileşen boyutu:** PriceChart + hover + etiketler 200 satırı zorlarsa hover `ChartHover.svelte`'e ayrılır; plan bunu task olarak içerir.
 - **Popover genişliği:** kompakt grafik 274px kalır; min/max köşe bindirmeleri dar alanda taşmamalı (etiket font 9-10px).
 - **BÜYÜT keşfedilebilirliği:** düğme popover başlığında metinli (`⤢ BÜYÜT`) — salt ikon değil.

@@ -4,7 +4,7 @@
 
 **Goal:** BAĞLAM satırını tamamen kaldır; pop-up fiyat grafiğini keskin/bilgili/etkileşimli hale getir; ⤢ BÜYÜT ile tam boy grafik+işlem overlay'i ekle.
 
-**Architecture:** Mevcut katmanlı desen büyür: saf domain (`series.ts` — geometri + YENİ tick/hit-test/birim fonksiyonları) → saf canvas çizim modülü (`drawChart.ts`, DPR ölçekli) → ince Svelte bileşenleri (`PriceChart` yeniden, `PeriodTabs`/`PositionSummary`/`ChartOverlay` yeni). Etkileşim (crosshair/tooltip/etiketler) HTML bindirme katmanında — canvas hover'da yeniden çizilmez. Veri zinciri değişmez (`/api/series` aynen).
+**Architecture:** Mevcut katmanlı desen büyür: saf domain (`series.ts` — geometri + YENİ tick-indeks/hit-test/birim fonksiyonları; zaman ETİKETİ metinleri ise sunum işi olarak `format.ts`'te, `istanbulParts` üstünde) → saf canvas çizim modülü (`drawChart.ts`, DPR ölçekli) → ince Svelte bileşenleri (`PriceChart` yeniden, `PeriodTabs`/`PositionSummary`/`ChartOverlay` yeni). Etkileşim (crosshair/tooltip/etiketler) HTML bindirme katmanında — canvas hover'da yeniden çizilmez. Veri zinciri değişmez (`/api/series` aynen).
 
 **Tech Stack:** SvelteKit 2 + Svelte 5 runes + TS strict + Tailwind (`term.*` token'ları) + Vitest (node env) + Playwright.
 
@@ -17,9 +17,19 @@
 - Identifier'lar İngilizce, UI metinleri Türkçe. Component max ~200 satır.
 - Renkler `term.*` token'larından; canvas'ta mevcut `cssVar` deseni (fallback'ler `tailwind.config.ts` değerleriyle birebir: green `#00ff66`, red `#ff3366`, text `#a3b8cc`).
 - Domain modülleri yalnız `money.ts` + kendi type'larına bağımlı; API çağrıları yalnız `src/lib/api/`.
-- Zaman formatlaması: **sabit UTC+3 (TSİ) aritmetiği + elle Türkçe kısaltma dizileri** — `Intl`/ICU KULLANMA (CI=UTC determinizmi; `format.ts`'teki `TR_MONTHS_SHORT` emsali).
+- Zaman kaynağı: **`istanbulParts` (`src/lib/domain/calendar/calendar.ts`)** — projenin TEK İstanbul-zamanı gerçeği (CI'da kanıtlı mekanizma; `snapshot → calendar` importu emsal). Yeni tz mekanizması İCAT ETME. Türkçe ad kısaltmaları `format.ts`'teki mevcut `TR_MONTHS_SHORT` + yeni `TR_DAYS_SHORT_ISO` dizileriyle.
 - Her task sonunda commit; commit mesajı Türkçe, repo stilinde (`feat(...)`/`refactor(...)`/`test(...)`).
 - Testte sabit sayı iddiası yazma (toplam test sayısı gibi) — dosya bazında koş.
+
+---
+
+## Karar Notları (2026-07-14, güçlü model — uygulama oturumunun plan-öncesi 2 sorusuna ruling)
+
+**1. TR ay/gün dizileri + zaman dönüşümü (DRY vs katman):** Duplikasyon SAVUNULMAZ, katman düzeltilir. Domain'de zaten `istanbulParts` var (`src/lib/domain/calendar/calendar.ts` — projenin tek İstanbul-zamanı gerçeği; `snapshot → calendar` importu emsal, CLAUDE.md'nin "sadece money.ts" cümlesi fiilen böyle esnetilmiş durumda). Etiket METNİ üretmek sunum işidir → `tickLabel`/`tooltipTimeLabel` `format.ts`'e taşındı (mevcut `TR_MONTHS_SHORT` ve `shortDate`'in doğal komşusu), domain'de yalnız saf indeks seçimi (`tickIndices`) kaldı. Sonuç: hiçbir dizi/ofset iki yerde yaşamıyor; reviewer'ın işaretleyeceği bir şey yok. (Not: `istanbulParts` tz-db kullanır — tarihsel tarihlerde ofset farklı olabilir [1970 = UTC+2]; testler bu yüzden modern tarihlerle yazılır, epoch-0 testi YOK.)
+
+**2. AssetPopover ↔ ChartOverlay kompozisyon tekrarı:** BİLİNÇLİ, kabul. Davranış/logic zaten tek kaynakta (`useSeries`, `PeriodTabs`, `PositionSummary`, `TradeForm`) — tekrarlanan şey 3 satır state + bileşen dizilişi. İki konteynerin yaşam tarzı farklı (yüzen kart: hover/pin; modal: focus/Escape/backdrop/responsive genişlik); ortak "içerik" bileşeni 4-5 varyant prop'lu yanlış soyutlama olur. Kural: *duplication is cheaper than the wrong abstraction* — ÜÇÜNCÜ yüzey çıkarsa ya da iki kopya bir kez daha kilitli-adımda değişmek zorunda kalırsa soyutlama o zaman çıkarılır. Reviewer bunu bulgu yaparsa cevap: bu nota işaret et, refactor etme (receiving-code-review: gerekçeli itiraz > performatif uyum).
+
+**Genel karar kuralı (benzer durumlar için):** (a) Davranış/logic tekrarı → çıkar. (b) Sabit veri/kompozisyon tekrarı → 3. kopyaya kadar tolere et. (c) "Katman kuralı DRY'a çarpıyor" hissi varsa önce kodun yanlış katmanda olup olmadığını sor — çoğu zaman asıl cevap o. (d) Plan ile review çelişirse Karar Notları kazanır; gerçekten YENİ bilgi varsa durup güçlü modele taşı.
 
 ---
 
@@ -69,7 +79,7 @@ git commit -m "refactor(ui): BAĞLAM bağlam satırını kaldır (spec 2026-07-1
 
 ---
 
-### Task 2: Domain — zaman etiketleri, crosshair indeksi, seri birimi (TDD)
+### Task 2: Domain — tick indeks seçimi, crosshair indeksi, seri birimi (TDD)
 
 **Files:**
 - Modify: `src/lib/domain/series/series.ts` (dosya sonuna ekle)
@@ -78,10 +88,7 @@ git commit -m "refactor(ui): BAĞLAM bağlam satırını kaldır (spec 2026-07-1
 **Interfaces:**
 - Consumes: mevcut `PricePoint`, `PeriodId` (aynı dosyada).
 - Produces (sonraki task'lar bunları import eder):
-  - `interface TimeTick { readonly index: number; readonly label: string }`
-  - `timeTicks(points: ReadonlyArray<PricePoint>, period: PeriodId, maxTicks: number): TimeTick[]`
-  - `tickLabel(t: number, period: PeriodId): string`
-  - `tooltipTimeLabel(t: number, period: PeriodId): string`
+  - `tickIndices(n: number, maxTicks: number): number[]` — SALT indeks seçimi; etiket metni Task 3'te (`format.ts`).
   - `nearestIndex(n: number, xRatio: number): number`
   - `seriesCurrency(source: 'crypto' | 'yahoo'): 'USD' | 'TRY'`
   - `seriesChangePct(points: ReadonlyArray<PricePoint>): number | undefined`
@@ -91,70 +98,22 @@ git commit -m "refactor(ui): BAĞLAM bağlam satırını kaldır (spec 2026-07-1
 `src/lib/domain/series/series.test.ts` sonuna ekle:
 
 ```ts
-import {
-	timeTicks,
-	tickLabel,
-	tooltipTimeLabel,
-	nearestIndex,
-	seriesCurrency,
-	seriesChangePct,
-} from './series';
+import { tickIndices, nearestIndex, seriesCurrency, seriesChangePct } from './series';
 
-describe('tickLabel / tooltipTimeLabel (TSİ = sabit UTC+3, ICU yok)', () => {
-	// 2026-07-14 12:30 UTC → TSİ 15:30, Salı.
-	const T = Date.UTC(2026, 6, 14, 12, 30);
-	it('15D/1G: HH:MM', () => {
-		expect(tickLabel(T, '15D')).toBe('15:30');
-		expect(tickLabel(T, '1G')).toBe('15:30');
+describe('tickIndices', () => {
+	it('n<2 ya da maxTicks<2 → []', () => {
+		expect(tickIndices(0, 4)).toEqual([]);
+		expect(tickIndices(1, 4)).toEqual([]);
+		expect(tickIndices(10, 1)).toEqual([]);
 	});
-	it('1H: kısa gün + saat', () => {
-		expect(tickLabel(T, '1H')).toBe('Sal 15:30');
-	});
-	it('1A: gün + kısa ay', () => {
-		expect(tickLabel(T, '1A')).toBe('14 Tem');
-	});
-	it('1Y: kısa ay + 2 haneli yıl', () => {
-		expect(tickLabel(T, '1Y')).toBe('Tem 26');
-	});
-	it('tooltip 1Y: gün dahil; 1H tooltip dakika dahil', () => {
-		expect(tooltipTimeLabel(T, '1Y')).toBe('14 Tem 26');
-		expect(tooltipTimeLabel(T, '1H')).toBe('Sal 15:30');
-		expect(tooltipTimeLabel(T, '1G')).toBe('15:30');
-		expect(tooltipTimeLabel(T, '1A')).toBe('14 Tem');
-	});
-	it('gün sınırı: 22:00 UTC → TSİ ertesi gün 01:00', () => {
-		const t = Date.UTC(2026, 6, 14, 22, 0); // Salı 22:00 UTC → Çarşamba 01:00 TSİ
-		expect(tickLabel(t, '1H')).toBe('Çar 01:00');
-		expect(tickLabel(t, '1A')).toBe('15 Tem');
-	});
-	it('epoch 0: 1 Oca 1970 Perşembe 03:00 TSİ', () => {
-		expect(tickLabel(0, '1G')).toBe('03:00');
-		expect(tickLabel(0, '1H')).toBe('Per 03:00');
-		expect(tickLabel(0, '1Y')).toBe('Oca 70');
-	});
-});
-
-describe('timeTicks', () => {
-	const mk = (n: number): { t: number; price: number }[] =>
-		Array.from({ length: n }, (_, i) => ({ t: Date.UTC(2026, 6, 14, 9, 0) + i * 60_000, price: 1 }));
-	it('<2 nokta ya da maxTicks<2 → []', () => {
-		expect(timeTicks([], '1G', 4)).toEqual([]);
-		expect(timeTicks(mk(1), '1G', 4)).toEqual([]);
-		expect(timeTicks(mk(10), '1G', 1)).toEqual([]);
-	});
-	it('ilk ve son nokta hep dahil, eşit aralıklı', () => {
-		const ticks = timeTicks(mk(5), '1G', 3);
-		expect(ticks.map((x) => x.index)).toEqual([0, 2, 4]);
+	it('ilk ve son indeks hep dahil, eşit aralıklı', () => {
+		expect(tickIndices(5, 3)).toEqual([0, 2, 4]);
 	});
 	it('maxTicks > n → her nokta bir tick', () => {
-		expect(timeTicks(mk(2), '1G', 4).map((x) => x.index)).toEqual([0, 1]);
+		expect(tickIndices(2, 4)).toEqual([0, 1]);
 	});
 	it('yuvarlama: n=4, maxTicks=3 → [0,2,3]', () => {
-		expect(timeTicks(mk(4), '1G', 3).map((x) => x.index)).toEqual([0, 2, 3]);
-	});
-	it('etiketler tickLabel ile üretilir (TSİ)', () => {
-		const ticks = timeTicks(mk(2), '1G', 2);
-		expect(ticks[0].label).toBe('12:00'); // 09:00 UTC → 12:00 TSİ
+		expect(tickIndices(4, 3)).toEqual([0, 2, 3]);
 	});
 });
 
@@ -201,66 +160,18 @@ Expected: FAIL — `timeTicks` vb. export edilmiyor (SyntaxError/does not provid
 `src/lib/domain/series/series.ts` sonuna ekle:
 
 ```ts
-/** Grafik zaman-ekseni etiketi — index çizgiyle aynı ölçekte (x eşit aralıklı). */
-export interface TimeTick {
-	readonly index: number;
-	readonly label: string;
-}
-
-// TSİ = sabit UTC+3 (Türkiye 2016'dan beri DST uygulamıyor) — Intl/ICU bağımlılığı yok,
-// CI (UTC) ve lokal (+03) bit-bit aynı sonucu üretir (format.ts'teki TR_MONTHS_SHORT emsali).
-const TR_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'] as const;
-const TR_DAYS_SHORT = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'] as const; // getUTCDay(): 0=Pazar
-const TSI_OFFSET_MS = 3 * 3_600_000;
-
-function tsi(t: number): Date {
-	return new Date(t + TSI_OFFSET_MS);
-}
-function hhmm(d: Date): string {
-	return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-}
-
-/** Eksen etiketi (kısa). 15D/1G: '15:30' · 1H: 'Sal 15:30' · 1A: '14 Tem' · 1Y: 'Tem 26'. */
-export function tickLabel(t: number, period: PeriodId): string {
-	const d = tsi(t);
-	switch (period) {
-		case '15D':
-		case '1G':
-			return hhmm(d);
-		case '1H':
-			return `${TR_DAYS_SHORT[d.getUTCDay()]} ${hhmm(d)}`;
-		case '1A':
-			return `${d.getUTCDate()} ${TR_MONTHS_SHORT[d.getUTCMonth()]}`;
-		case '1Y':
-			return `${TR_MONTHS_SHORT[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`;
-	}
-}
-
-/** Tooltip etiketi (eksene göre bir kademe zengin: 1Y'de gün dahil). */
-export function tooltipTimeLabel(t: number, period: PeriodId): string {
-	const d = tsi(t);
-	if (period === '1Y') {
-		return `${d.getUTCDate()} ${TR_MONTHS_SHORT[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}`;
-	}
-	return tickLabel(t, period);
-}
-
-/** Eşit aralıklı ~maxTicks eksen etiketi (ilk ve son nokta dahil). <2 nokta ya da maxTicks<2 → []. */
-export function timeTicks(
-	points: ReadonlyArray<PricePoint>,
-	period: PeriodId,
-	maxTicks: number,
-): TimeTick[] {
-	const n = points.length;
+/** Eşit aralıklı ~maxTicks eksen indeksi (ilk ve son dahil) — SALT seçim, etiket metni UI'da
+ *  (format.ts tickLabel; zaman gerçeği istanbulParts). n<2 ya da maxTicks<2 → []. */
+export function tickIndices(n: number, maxTicks: number): number[] {
 	if (n < 2 || maxTicks < 2) return [];
 	const count = Math.min(maxTicks, n);
-	const out: TimeTick[] = [];
+	const out: number[] = [];
 	let prev = -1;
 	for (let k = 0; k < count; k++) {
 		const index = Math.round((k * (n - 1)) / (count - 1));
 		if (index === prev) continue; // savunma: yuvarlama çakışması
 		prev = index;
-		out.push({ index, label: tickLabel(points[index].t, period) });
+		out.push(index);
 	}
 	return out;
 }
@@ -296,24 +207,27 @@ Expected: PASS (tümü yeşil).
 
 ```bash
 git add src/lib/domain/series/series.ts src/lib/domain/series/series.test.ts
-git commit -m "feat(domain): grafik zaman ekseni + crosshair + seri birimi yardımcıları (TDD)"
+git commit -m "feat(domain): tickIndices + nearestIndex + seriesCurrency/ChangePct (TDD)"
 ```
 
 ---
 
-### Task 3: format.ts — birim-dürüst grafik fiyat etiketi (TDD)
+### Task 3: format.ts — birim-dürüst fiyat etiketi + TSİ zaman etiketleri (TDD)
 
 **Files:**
 - Modify: `src/lib/components/format.ts`
 - Test: `src/lib/components/format.test.ts`
 
 **Interfaces:**
-- Consumes: `formatMoney`, `usd`, `tryM` (`format.ts` zaten import ediyor).
-- Produces: `seriesPriceLabel(price: number, currency: 'USD' | 'TRY'): string` — Task 5 (PriceChart) kullanır.
+- Consumes: `formatMoney`, `usd`, `tryM` (zaten import'lu); `istanbulParts` (`$lib/domain/calendar/calendar` — YENİ import, UI→domain yönü serbest); `PeriodId` (`$lib/domain/series/series`, type import); mevcut PRIVATE `TR_MONTHS_SHORT` dizisi (dosyada satır ~148 — AYNEN kullan, yeniden tanımlama).
+- Produces (Task 5 kullanır):
+  - `seriesPriceLabel(price: number, currency: 'USD' | 'TRY'): string`
+  - `tickLabel(t: number, period: PeriodId): string` — eksen etiketi
+  - `tooltipTimeLabel(t: number, period: PeriodId): string` — tooltip etiketi (1Y'de gün dahil)
 
-- [ ] **Step 1: Failing test yaz**
+- [ ] **Step 1: Failing testleri yaz**
 
-`src/lib/components/format.test.ts` sonuna ekle:
+`src/lib/components/format.test.ts` sonuna ekle (import satırına `seriesPriceLabel, tickLabel, tooltipTimeLabel` ekle):
 
 ```ts
 describe('seriesPriceLabel', () => {
@@ -324,27 +238,102 @@ describe('seriesPriceLabel', () => {
 		expect(seriesPriceLabel(2950679.13, 'TRY')).toBe('₺2.950.679,13');
 	});
 });
-```
 
-Dosyanın en üstündeki import satırına `seriesPriceLabel` ekle (mevcut `./format` import bloğuna).
+describe('tickLabel / tooltipTimeLabel (istanbulParts üstünde — modern tarihlerle test et,
+tz-db tarihsel ofsetleri [ör. 1970=UTC+2] yüzünden epoch-0 kullanma)', () => {
+	// 2026-07-14 12:30 UTC → İstanbul 15:30, Salı.
+	const T = Date.UTC(2026, 6, 14, 12, 30);
+	it('15D/1G: HH:MM', () => {
+		expect(tickLabel(T, '15D')).toBe('15:30');
+		expect(tickLabel(T, '1G')).toBe('15:30');
+	});
+	it('1H: kısa gün + saat', () => {
+		expect(tickLabel(T, '1H')).toBe('Sal 15:30');
+	});
+	it('1A: gün + kısa ay', () => {
+		expect(tickLabel(T, '1A')).toBe('14 Tem');
+	});
+	it('1Y: kısa ay + 2 haneli yıl', () => {
+		expect(tickLabel(T, '1Y')).toBe('Tem 26');
+	});
+	it('tooltip: 1Y gün dahil, diğerleri eksenle aynı', () => {
+		expect(tooltipTimeLabel(T, '1Y')).toBe('14 Tem 26');
+		expect(tooltipTimeLabel(T, '1H')).toBe('Sal 15:30');
+		expect(tooltipTimeLabel(T, '1G')).toBe('15:30');
+		expect(tooltipTimeLabel(T, '1A')).toBe('14 Tem');
+	});
+	it('gün sınırı: Salı 22:00 UTC → İstanbul Çarşamba 01:00', () => {
+		const t = Date.UTC(2026, 6, 14, 22, 0);
+		expect(tickLabel(t, '1H')).toBe('Çar 01:00');
+		expect(tickLabel(t, '1A')).toBe('15 Tem');
+	});
+});
+```
 
 - [ ] **Step 2: FAIL doğrula**
 
 Run: `npx vitest run src/lib/components/format.test.ts`
-Expected: FAIL — `seriesPriceLabel` export yok.
+Expected: FAIL — `seriesPriceLabel`/`tickLabel` export yok.
 
 - [ ] **Step 3: Implementasyon**
 
-`src/lib/components/format.ts` sonuna ekle:
+`src/lib/components/format.ts`'e:
+
+(a) Üstteki import bloğuna ekle:
+
+```ts
+import { istanbulParts } from '../domain/calendar/calendar';
+import type { PeriodId } from '../domain/series/series';
+```
+
+(b) Dosya sonuna ekle (`TR_MONTHS_SHORT` dosyada ZATEN var — tekrar tanımlama):
 
 ```ts
 /** Grafik fiyat etiketi — serinin HAM birimiyle (crypto=USD, yahoo=TRY; bkz. seriesCurrency). */
 export function seriesPriceLabel(price: number, currency: 'USD' | 'TRY'): string {
 	return currency === 'USD' ? formatMoney(usd(price)) : formatMoney(tryM(price));
 }
-```
 
-Not: `formatMoney` TRY'de `₺` + `tr-TR` NumberFormat üretir — test beklentileri bununla birebir. Bu test node ortamında Intl kullanır; mevcut `formatMoney` testleriyle aynı koşulda çalışır (yeni ICU riski yok, zaten kullanılan yol).
+// istanbulParts.weekday: 1=Pzt..7=Paz (ISO) — diziler bu sıraya göre.
+const TR_DAYS_SHORT_ISO: ReadonlyArray<string> = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+
+/** Bir epoch-ms anının İstanbul yerel parçalarını grafik etiketleri için hazırlar.
+ *  Zaman gerçeği istanbulParts (calendar.ts) — burada yeni tz mekanizması YOK. */
+function chartTimeParts(t: number) {
+	const p = istanbulParts(new Date(t));
+	const [yyyy, mm, dd] = p.key.split('-');
+	return {
+		hhmm: `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`,
+		day: Number(dd),
+		monthShort: TR_MONTHS_SHORT[Number(mm) - 1],
+		year2: yyyy.slice(2),
+		dayShort: TR_DAYS_SHORT_ISO[p.weekday - 1],
+	};
+}
+
+/** Grafik eksen etiketi (İstanbul saati). 15D/1G: '15:30' · 1H: 'Sal 15:30' · 1A: '14 Tem' · 1Y: 'Tem 26'. */
+export function tickLabel(t: number, period: PeriodId): string {
+	const p = chartTimeParts(t);
+	switch (period) {
+		case '15D':
+		case '1G':
+			return p.hhmm;
+		case '1H':
+			return `${p.dayShort} ${p.hhmm}`;
+		case '1A':
+			return `${p.day} ${p.monthShort}`;
+		case '1Y':
+			return `${p.monthShort} ${p.year2}`;
+	}
+}
+
+/** Grafik tooltip zaman etiketi — 1Y'de gün dahil, diğer periyotlar eksenle aynı. */
+export function tooltipTimeLabel(t: number, period: PeriodId): string {
+	if (period !== '1Y') return tickLabel(t, period);
+	const p = chartTimeParts(t);
+	return `${p.day} ${p.monthShort} ${p.year2}`;
+}
+```
 
 - [ ] **Step 4: PASS doğrula**
 
@@ -355,7 +344,7 @@ Expected: PASS.
 
 ```bash
 git add src/lib/components/format.ts src/lib/components/format.test.ts
-git commit -m "feat(ui): seriesPriceLabel — grafik etiketlerinde birim dürüstlüğü (TDD)"
+git commit -m "feat(ui): seriesPriceLabel + tickLabel/tooltipTimeLabel — birim dürüstlüğü + TSİ etiketleri (TDD)"
 ```
 
 ---
@@ -502,7 +491,7 @@ git commit -m "feat(chart): drawChart modülü — DPR ölçek + dolgu + referan
 - Modify: `src/lib/components/chart/PriceChart.svelte` (TAM yeniden yazım — aşağıdaki içerikle değiştir)
 
 **Interfaces:**
-- Consumes: Task 2 (`timeTicks`, `nearestIndex`, `seriesCurrency`, `tooltipTimeLabel`), Task 3 (`seriesPriceLabel`), Task 4 (`renderChart`, `withAlpha`).
+- Consumes: Task 2 (`tickIndices`, `nearestIndex`, `seriesCurrency`), Task 3 (`seriesPriceLabel`, `tickLabel`, `tooltipTimeLabel`), Task 4 (`renderChart`, `withAlpha`).
 - Produces: `PriceChart` props sözleşmesi — `{ points: PricePoint[]; width?: number; height?: number; source: 'crypto' | 'yahoo'; period: PeriodId }`. **DİKKAT:** `source` ve `period` artık ZORUNLU — Task 6'ya kadar `AssetPopover` eski çağrıyla kırık kalır; bu task'ın check adımı bu yüzden `AssetPopover` güncellemesini de içerir (aşağıda Step 2).
 
 - [ ] **Step 1: PriceChart.svelte'i tamamen değiştir**
@@ -514,14 +503,13 @@ git commit -m "feat(chart): drawChart modülü — DPR ölçek + dolgu + referan
 <script lang="ts">
 	import {
 		computeChartGeometry,
-		timeTicks,
+		tickIndices,
 		nearestIndex,
 		seriesCurrency,
-		tooltipTimeLabel,
 		type PricePoint,
 		type PeriodId,
 	} from '$lib/domain/series/series';
-	import { seriesPriceLabel } from '../format';
+	import { seriesPriceLabel, tickLabel, tooltipTimeLabel } from '../format';
 	import { renderChart, withAlpha } from './drawChart';
 
 	interface Props {
@@ -538,8 +526,13 @@ git commit -m "feat(chart): drawChart modülü — DPR ölçek + dolgu + referan
 
 	const geometry = $derived(computeChartGeometry(points, width, height));
 	const currency = $derived(seriesCurrency(source));
-	// Genişliğe göre 2-6 eksen etiketi (~90px başına bir).
-	const ticks = $derived(timeTicks(points, period, Math.max(2, Math.min(6, Math.floor(width / 90)))));
+	// Genişliğe göre 2-6 eksen etiketi (~90px başına bir); indeks seçimi domain'de, metin format.ts'te.
+	const ticks = $derived(
+		tickIndices(points.length, Math.max(2, Math.min(6, Math.floor(width / 90)))).map((index) => ({
+			index,
+			label: tickLabel(points[index].t, period),
+		})),
+	);
 
 	// term.* token'larının gerçek renk değerlerini computed style'dan al
 	// (fallback'ler tailwind.config.ts değerleriyle birebir; hard-coded tema rengi yazma).
@@ -915,7 +908,9 @@ git commit -m "refactor(chart): PeriodTabs + useSeries + PositionSummary ortakla
 Create `src/lib/components/ChartOverlay.svelte`:
 
 ```svelte
-<!-- src/lib/components/ChartOverlay.svelte — ⤢ BÜYÜT tam boy grafik + işlem modalı -->
+<!-- src/lib/components/ChartOverlay.svelte — ⤢ BÜYÜT tam boy grafik + işlem modalı.
+     AssetPopover ile kompozisyon benzerliği BİLİNÇLİ (logic tek kaynakta: useSeries/PeriodTabs/
+     PositionSummary/TradeForm) — ortak içerik bileşeni 3. yüzey çıkarsa düşünülür (plan Karar Notları #2). -->
 <script lang="ts">
 	import type { LiveGameStore, PriceRow } from '$lib/stores/liveGameStore.svelte';
 	import { type PeriodId, seriesChangePct } from '$lib/domain/series/series';
