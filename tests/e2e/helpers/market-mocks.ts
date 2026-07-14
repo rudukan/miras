@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
-import { FX_FIXTURE, CRYPTO_FIXTURE } from '../fixtures/market';
+import { FX_FIXTURE, CRYPTO_FIXTURE, SERIES_FIXTURE } from '../fixtures/market';
 
 /** Tüm piyasa kaynaklarını fixture'lara bağlar — dış dünyaya sıfır istek.
  *  Supabase'e DOKUNMAZ (auth/cloud testleri gerçek lokal stack'e gider). */
@@ -16,7 +16,7 @@ export async function mockMarketData(page: Page): Promise<void> {
   );
   // Aşağıdaki üçü kapsanan akışlarda çağrılmayabilir — savunma amaçlı sabitlenir.
   await page.route(/\/api\/series\?/, (route) =>
-    route.fulfill({ json: { value: [], asOf: Date.now(), stale: false } }),
+    route.fulfill({ json: { value: SERIES_FIXTURE, asOf: Date.now(), stale: false } }),
   );
   await page.route(/\/api\/usSearch\?/, (route) => route.fulfill({ json: { results: [] } }));
   await page.route(/\/api\/telemetry$/, (route) => route.fulfill({ status: 204 }));
