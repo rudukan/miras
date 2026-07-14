@@ -8,6 +8,7 @@ import { createTtlCache } from '$lib/api/cachedFetch';
 import { createBoundedRegistry } from '$lib/api/boundedRegistry';
 
 const VALID_PERIODS = new Set(PERIODS.map((p) => p.id));
+const VALID_SYMBOL_RE = /^[A-Z0-9]{1,12}$/;
 const EMPTY: PricePoint[] = [];
 
 // (symbol+source+period) başına ayrı TTL cache — talep üzerine lazy oluşturulur.
@@ -31,7 +32,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const source = url.searchParams.get('source');
 	const period = url.searchParams.get('period') as PeriodId | null;
 
-	if (!symbol || (source !== 'crypto' && source !== 'yahoo') || !period || !VALID_PERIODS.has(period)) {
+	if (!symbol || !VALID_SYMBOL_RE.test(symbol) || (source !== 'crypto' && source !== 'yahoo') || !period || !VALID_PERIODS.has(period)) {
 		return json({ error: 'geçersiz parametre' }, { status: 400 });
 	}
 	const headers = { 'cache-control': 'public, max-age=5' };

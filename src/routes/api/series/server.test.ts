@@ -21,6 +21,16 @@ describe('GET /api/series', () => {
 		expect(res.status).toBe(400);
 	});
 
+	it('enjeksiyon karakterli symbol → 400', async () => {
+		const res = await GET(makeEvent({ symbol: 'AAPL?x=1', source: 'yahoo', period: '1G' }));
+		expect(res.status).toBe(400);
+	});
+
+	it('12 karakterden uzun symbol → 400', async () => {
+		const res = await GET(makeEvent({ symbol: 'ABCDEFGHIJKLM', source: 'yahoo', period: '1G' }));
+		expect(res.status).toBe(400);
+	});
+
 	it('Binance kaynağı için klines çeker ve PricePoint[] döner', async () => {
 		globalThis.fetch = vi.fn(async () => ({
 			ok: true, status: 200,
