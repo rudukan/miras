@@ -47,6 +47,13 @@ legacy/            — v3.1.0 referans (build'den hariç, silinmeyecek)
 9 departman `.claude/agents/` altında, her biri model: sonnet.
 Delegasyon için `subagent-driven-development` ve `dispatching-parallel-agents` skill'lerini kullan.
 
+## İş Triyajı (model ekonomisi)
+Her oturumun İLK yanıtında gelen işi sınıflandır ve sınıfı AÇIKÇA söyle:
+- **Küçük** (≤3 dosya, mevcut kalıbın tekrarı, mimari/UX kararı yok — ör. metin/stil değişikliği, satır silme, küçük prop, bariz fix): spec/plan AÇMA; doğrudan TDD + verification. Güçlü modeldeysen (Opus/Fable) önce uyar: *"Durukan, bu küçük iş — büyük modelin düşünmesine gerek yok, Sonnet oturumunda hemen hallederiz."* Kullanıcı yine de burada isterse yap.
+- **Orta/Büyük** (yeni bileşen/modül, çok katman, "daha iyi olsun" gibi tanımsız hedef): güçlü modelde brainstorm→spec→plan; uygulama ayrı Sonnet oturumunda. Sonnet'teysen ve plan yoksa uyar: *"Bu iş plan istiyor — spec/planı güçlü model oturumunda yazalım."*
+- **Keşif/bug** (kök neden bilinmiyor, entegrasyon sürprizi): plan çürür — güçlü modelde iteratif, `systematic-debugging` ile.
+Karışık istek gelirse (küçük + orta bir arada) ayrıştırıp söyle: küçük parça beklemesin diye önce onu Sonnet'e almayı öner.
+
 ## Ekonomi Kanonları
 - Başlangıç: $1,000,000 USD
 - USD enflasyon: %0.01/gün → yıl sonu hedef: **$1,037,172**
