@@ -82,4 +82,35 @@ describe('POST /api/telemetry', () => {
       globalThis.fetch = real;
     }
   });
+
+  it('mention/markdown içeren playerId → 400 (Discord relay enjeksiyonu kapalı)', async () => {
+    expect((await POST(postReq({ ...VALID, playerId: '@everyone' }))).status).toBe(400);
+    expect((await POST(postReq({ ...VALID, playerId: '`nuke`' }))).status).toBe(400);
+    expect((await POST(postReq({ ...VALID, playerId: 'a\nb' }))).status).toBe(400);
+  });
+
+  it('aşırı uzun playerId → 400', async () => {
+    expect((await POST(postReq({ ...VALID, playerId: 'x'.repeat(65) }))).status).toBe(400);
+  });
+
+  it('gerçek UUID playerId → 204', async () => {
+    const uuid = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    expect((await POST(postReq({ ...VALID, playerId: uuid }))).status).toBe(204);
+  });
+
+  it('webhook body allowed_mentions.parse boş dizi içerir', async () => {
+    process.env.TELEMETRY_WEBHOOK_URL = 'https://discord.example/webhook';
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true } as Response));
+    const real = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      await POST(postReq(VALID));
+      await new Promise((r) => setTimeout(r, 0));
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      const body = JSON.parse(init.body as string);
+      expect(body.allowed_mentions).toEqual({ parse: [] });
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
 });

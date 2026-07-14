@@ -10,12 +10,16 @@ interface TelemetryPayload {
 
 const VALID_EVENTS = new Set<TelemetryEvent>(['visit', 'share_click', 'share_done']);
 
+/** playerId whitelist: crypto.randomUUID() + 'restored'/'local-player' fallback'lerini karşılar;
+ *  Discord mention (@), markdown (`), newline ve aşırı uzunluğu reddeder (güvenlik denetimi B1). */
+const PLAYER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
 function isValidPayload(body: unknown): body is TelemetryPayload {
   if (typeof body !== 'object' || body === null) return false;
   const b = body as Record<string, unknown>;
   return (
     typeof b.playerId === 'string' &&
-    b.playerId.length > 0 &&
+    PLAYER_ID_RE.test(b.playerId) &&
     typeof b.event === 'string' &&
     VALID_EVENTS.has(b.event as TelemetryEvent) &&
     typeof b.tsISO === 'string' &&
@@ -43,7 +47,10 @@ export const POST: RequestHandler = async ({ request }) => {
     void fetch(webhookUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content: `[${body.event}] ${body.playerId} @ ${body.tsISO}` }),
+      body: JSON.stringify({
+        content: `[${body.event}] ${body.playerId} @ ${body.tsISO}`,
+        allowed_mentions: { parse: [] },
+      }),
     }).catch(() => {});
   }
 
