@@ -34,6 +34,7 @@
 	import ClosingCard from '$lib/components/ClosingCard.svelte';
 	import DailyBreakdown from '$lib/components/DailyBreakdown.svelte';
 	import AssetPopover from '$lib/components/AssetPopover.svelte';
+	import ChartOverlay from '$lib/components/ChartOverlay.svelte';
 	import AccountPanel from '$lib/components/panels/AccountPanel.svelte';
 	import type { PriceRow } from '$lib/stores/liveGameStore.svelte';
 
@@ -149,6 +150,20 @@
 	}
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') closePopover();
+	}
+
+	// ⤢ BÜYÜT: tam boy grafik overlay'i — popover kapanır, overlay açılır (spec grafik-iyilestirme §3).
+	// Satır store.prices'tan derived akar; varlık listeden kalkarsa overlay kendini kapatır.
+	let overlayAssetId = $state<string | null>(null);
+	const overlayRow = $derived(
+		overlayAssetId === null ? null : (store?.prices.find((p) => p.id === overlayAssetId) ?? null),
+	);
+	function openOverlay() {
+		if (popoverRow) overlayAssetId = popoverRow.id;
+		closePopover();
+	}
+	function closeOverlay() {
+		overlayAssetId = null;
 	}
 
 	// Masaüstü konumlandırma: satırın sağına, ekran taşarsa soluna.
@@ -778,7 +793,7 @@
 				<!-- Mobil: arka örtü + alt sheet -->
 				<button type="button" class="fixed inset-0 bg-black/50 z-40" aria-label="Kapat" onclick={closePopover}></button>
 				<div class="fixed inset-x-0 bottom-0 z-50">
-					<AssetPopover {store} row={popoverRow} variant="mobile" onClose={closePopover} onTradeSuccess={showToast} />
+					<AssetPopover {store} row={popoverRow} variant="mobile" onClose={closePopover} onExpand={openOverlay} onTradeSuccess={showToast} />
 				</div>
 			{:else}
 				<!-- Masaüstü: anchor'a konumlu; içine tıkla/odaklan = pinle, pinliyken dışa tıkla/Esc/✕ kapatır -->
@@ -792,9 +807,13 @@
 					onclick={pinPopover}
 					onfocusin={pinPopover}
 				>
-					<AssetPopover {store} row={popoverRow} variant="desktop" onClose={closePopover} onTradeSuccess={showToast} />
+					<AssetPopover {store} row={popoverRow} variant="desktop" onClose={closePopover} onExpand={openOverlay} onTradeSuccess={showToast} />
 				</div>
 			{/if}
+		{/if}
+
+		{#if overlayRow && store}
+			<ChartOverlay {store} row={overlayRow} onClose={closeOverlay} onTradeSuccess={showToast} />
 		{/if}
 
 		{#if showCard && closingCardModel}
