@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd, tradeToastMessage, parseTypedAmount, formatTypedAmount, countNonCommaBefore, caretAfterNonComma } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd, tradeToastMessage, parseTypedAmount, formatTypedAmount, countNonCommaBefore, caretAfterNonComma, seriesPriceLabel } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -378,5 +378,15 @@ describe('caretAfterNonComma', () => {
 	});
 	it('sayı metinden büyükse sona sabitler', () => {
 		expect(caretAfterNonComma('1,000', 99)).toBe(5);
+	});
+});
+
+// ── seriesPriceLabel ────────────────────────────────────────────────────────────
+describe('seriesPriceLabel', () => {
+	it('USD → $ formatı (en-US)', () => {
+		expect(seriesPriceLabel(62740.36, 'USD')).toBe('$62,740.36');
+	});
+	it('TRY → ₺ formatı (tr-TR binlik nokta, ondalık virgül)', () => {
+		expect(seriesPriceLabel(2950679.13, 'TRY')).toBe('₺2.950.679,13');
 	});
 });

@@ -250,3 +250,8 @@ export function groupByCategory<T extends { category: string }>(
 	const unknown = [...map.keys()].filter((c) => !CATEGORY_ORDER.includes(c));
 	return [...known, ...unknown].map((category) => ({ category, rows: map.get(category)! }));
 }
+
+/** Grafik fiyat etiketi — serinin HAM birimiyle (crypto=USD, yahoo=TRY; bkz. seriesCurrency). */
+export function seriesPriceLabel(price: number, currency: 'USD' | 'TRY'): string {
+	return currency === 'USD' ? formatMoney(usd(price)) : formatMoney(tryM(price));
+}
