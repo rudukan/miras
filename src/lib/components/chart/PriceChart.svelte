@@ -77,6 +77,7 @@
 	});
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions (salt işaretçi/dokunmatik crosshair katmanı — bilgiler statik etiketlerde de var; tam erişilebilirlik SP3b'de) -->
 <div
 	class="relative select-none"
 	style="width:{width}px;height:{height}px;touch-action:none"
