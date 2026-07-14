@@ -132,10 +132,18 @@ export function nearestIndex(n: number, xRatio: number): number {
 	return Math.round(clamped * (n - 1));
 }
 
-/** Serinin HAM para birimi: Binance klines USD(T) bazlı, Yahoo TRY bazlı.
+// Yahoo kaynağındaki iki komodite (GC=F/SI=F, USD/ons) — TRY değil. Bu liste
+// src/lib/api/seriesSource.ts'teki YAHOO_SPECIAL'ın bir alt kümesini yansıtır;
+// domain katmanı api/'den import edemediği için kasıtlı olarak burada tekrarlanır
+// (TR_MONTHS_SHORT/format.ts emsali). EUR (EURTRY=X) burada YOK — o gerçekten TRY.
+const YAHOO_USD_ASSETS = new Set(['XAUGRAM', 'XAGGRAM']);
+
+/** Serinin HAM para birimi: Binance klines USD(T) bazlı; Yahoo çoğunlukla TRY bazlı,
+ *  ama XAUGRAM/XAGGRAM (COMEX GC=F/SI=F) USD/ons bazlı — assetId ile ayırt edilir.
  *  Tarihsel seri bugünkü kurla çevrilmez (yanlış tarih üretir) — etiketler bu birimle. */
-export function seriesCurrency(source: 'crypto' | 'yahoo'): 'USD' | 'TRY' {
-	return source === 'crypto' ? 'USD' : 'TRY';
+export function seriesCurrency(assetId: string, source: 'crypto' | 'yahoo'): 'USD' | 'TRY' {
+	if (source === 'crypto') return 'USD';
+	return YAHOO_USD_ASSETS.has(assetId) ? 'USD' : 'TRY';
 }
 
 /** Serinin ilk→son değişim yüzdesi. <2 nokta ya da ilk fiyat 0 → undefined. */

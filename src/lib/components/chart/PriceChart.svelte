@@ -16,16 +16,17 @@
 		points: PricePoint[];
 		width?: number;
 		height?: number;
+		assetId: string;
 		source: 'crypto' | 'yahoo';
 		period: PeriodId;
 	}
-	let { points, width = 260, height = 90, source, period }: Props = $props();
+	let { points, width = 260, height = 90, assetId, source, period }: Props = $props();
 
 	let canvas: HTMLCanvasElement | null = $state(null);
 	let hoverIndex = $state<number | null>(null);
 
 	const geometry = $derived(computeChartGeometry(points, width, height));
-	const currency = $derived(seriesCurrency(source));
+	const currency = $derived(seriesCurrency(assetId, source));
 	// Genişliğe göre 2-6 eksen etiketi (~90px başına bir).
 	const ticks = $derived(timeTicks(points, period, Math.max(2, Math.min(6, Math.floor(width / 90)))));
 

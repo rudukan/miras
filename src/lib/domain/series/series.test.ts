@@ -139,9 +139,17 @@ describe('nearestIndex', () => {
 });
 
 describe('seriesCurrency', () => {
-	it('crypto → USD (Binance USDT), yahoo → TRY', () => {
-		expect(seriesCurrency('crypto')).toBe('USD');
-		expect(seriesCurrency('yahoo')).toBe('TRY');
+	it('crypto her zaman USD (assetId farketmez)', () => {
+		expect(seriesCurrency('BTC', 'crypto')).toBe('USD');
+		expect(seriesCurrency('DOGE', 'crypto')).toBe('USD');
+	});
+	it('yahoo + adi hisse/FX → TRY', () => {
+		expect(seriesCurrency('THYAO', 'yahoo')).toBe('TRY');
+		expect(seriesCurrency('EUR', 'yahoo')).toBe('TRY');
+	});
+	it('yahoo + XAUGRAM/XAGGRAM (COMEX GC=F/SI=F) → USD, ₺ değil', () => {
+		expect(seriesCurrency('XAUGRAM', 'yahoo')).toBe('USD');
+		expect(seriesCurrency('XAGGRAM', 'yahoo')).toBe('USD');
 	});
 });
 
