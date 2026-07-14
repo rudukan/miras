@@ -31,7 +31,6 @@
 	import DepositCard from '$lib/components/DepositCard.svelte';
 	import PriceList from '$lib/components/PriceList.svelte';
 	import TradePanel from '$lib/components/TradePanel.svelte';
-	import ContextCard from '$lib/components/ContextCard.svelte';
 	import ClosingCard from '$lib/components/ClosingCard.svelte';
 	import DailyBreakdown from '$lib/components/DailyBreakdown.svelte';
 	import AssetPopover from '$lib/components/AssetPopover.svelte';
@@ -702,8 +701,6 @@
 						vsUsdHoldUsd={store.vsUsdHoldUsd}
 					/>
 				</div>
-
-				<ContextCard />
 			</header>
 
 			<!-- Ana içerik: mobilde TEK akışta kayan dikey yığın / md+ iki kolon (kolon içi kaydırma) -->
