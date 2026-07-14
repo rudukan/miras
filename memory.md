@@ -178,10 +178,9 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
    - **B3b (series route symbol guard'ı):** aynı whitelist regex `/api/series` GET guard'ına eklendi. Commit `5250aba`.
    - **B4 (yıkıcı POST'larda CSRF defense-in-depth — plan "opsiyonel" işaretlemişti, uygulandı çünkü `account/delete` geri alınamaz):** yeni `src/lib/server/csrf.ts` → `isSameOrigin()`, `account/delete` + `profile` POST'larına origin guard. Commit `6f12a5e`.
 2. **Plan tutarsızlığı bulundu ve düzeltildi (test tarafında, implementasyon değil):** `symbolLimit.test.ts`'in plan'daki Step 1 beklentisi (`'AAPL,BTC?x=1,...'` → `['AAPL','BTC']`) planın kendi Step 3 kodundaki tam-eşleşme regex'iyle (`VALID_SYMBOL_RE.test(s)`, anchored `^...$`) çelişiyordu — `.test()` alt-string aramaz, tüm string'i eşleştirir; `'BTC?X=1'` bütünüyle reddedilir, `'BTC'`ye kırpılmaz. Beklentiyi `['AAPL']`e düzelttim: planın kendi güvenlik gerekçesiyle tutarlı ("eler", kısmi kabul değil) ve `liveAssets.ts`/`bist100.ts`'teki tüm gerçek symbol id'lerinin zaten `^[A-Z0-9]{1,12}$`'e uyduğunu doğruladım (regresyon riski yok).
-3. **Doğrulama:** TDD (4 task, her biri RED→GREEN, kendi commit'i). `test 531 + check 0 + build` yeşil. **Henüz push edilmedi** — kullanıcı onayı bekleniyor.
+3. **Doğrulama:** TDD (4 task, her biri RED→GREEN, kendi commit'i). `test 531 + check 0 + build` yeşil. Commit'ler main'e **push edildi** (`26abae0..c29d06d`), Vercel otomatik prod deploy tetiklendi.
 
 ### B. Blokerler & Kalan İşler
-- **Push bekliyor:** 4 commit (`5c1006e`, `08b18a6`, `5250aba`, `6f12a5e`) main'de lokal, uzağa gitmedi.
 - **B2 (uygulama-katmanı rate-limit) BİLİNÇLİ ERTELENDİ** — in-memory serverless'te zayıf çözüm; doğrusu Vercel KV/Upstash, altyapı kararı gerektirir, kendi planını hak ediyor.
 - **B5 (CSP `script-src` yok) BİLİNÇLİ ERTELENDİ** — `kit.csp` nonce'lu tam politika + tarayıcı doğrulaması ister, launch sonrası (13. oturumdaki aynı gerekçe).
 - Task 4 Step 7 (Playwright "hesap|profil" E2E regresyon grep'i) lokal koşulmadı (Docker+Supabase gerektirir) — planın kendi notuyla tutarlı şekilde CI'ın `e2e` job'ına bırakıldı.
@@ -193,7 +192,7 @@ Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 ### D. Yeni Chat'te Başlangıç Rehberi
 1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır.
 2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
-3. **Güvenlik durumu:** B1/B3/B4 kapandı (bu oturum), lokal main'de commit'li, **push bekliyor**. B2/B5 bilinçli ertelendi (yukarıda gerekçe). P1-4 dashboard eyeball hâlâ kullanıcı elinde. Rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-report.md`, plan: `.claude/plans/guvenlik-sertlestirme-2.md`.
-4. **Sıradaki adım:** push onayı → sonra P1-4 dashboard teyidi veya B2/B5 kendi planları veya P2/SP2/SP3a. Lokal ≠ prod auth (lokalde `enable_confirmations=false`, prod'da true — bilinçli drift, prod'u değiştirme).
+3. **Güvenlik durumu:** B1/B3/B4 kapandı ve **canlıda** (bu oturum, push edildi). B2/B5 bilinçli ertelendi (yukarıda gerekçe). P1-4 dashboard eyeball hâlâ kullanıcı elinde. Rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-report.md`, plan: `.claude/plans/guvenlik-sertlestirme-2.md`.
+4. **Sıradaki adım:** P1-4 dashboard teyidi veya B2/B5 kendi planları veya P2/SP2/SP3a. Lokal ≠ prod auth (lokalde `enable_confirmations=false`, prod'da true — bilinçli drift, prod'u değiştirme).
 5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
