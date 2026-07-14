@@ -15,4 +15,13 @@ describe('parseSymbolList', () => {
     const many = Array.from({ length: MAX_SYMBOLS + 20 }, (_, i) => `S${i}`).join(',');
     expect(parseSymbolList(many)).toHaveLength(MAX_SYMBOLS);
   });
+
+  it('URL-anlamlı karakter içeren sembolleri eler (enjeksiyon savunması)', () => {
+    // Tam-eşleşme whitelist: 'BTC?x=1' kısmi 'BTC'ye kırpılmaz, token bütünüyle elenir.
+    expect(parseSymbolList('AAPL,BTC?x=1,../etc,A B,GC=F')).toEqual(['AAPL']);
+  });
+
+  it('12 karakterden uzun sembolü eler', () => {
+    expect(parseSymbolList('THYAO,ABCDEFGHIJKLM')).toEqual(['THYAO']);
+  });
 });
