@@ -184,7 +184,8 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 - **B2 (uygulama-katmanı rate-limit) BİLİNÇLİ ERTELENDİ** — in-memory serverless'te zayıf çözüm; doğrusu Vercel KV/Upstash, altyapı kararı gerektirir, kendi planını hak ediyor.
 - **B5 (CSP `script-src` yok) BİLİNÇLİ ERTELENDİ** — `kit.csp` nonce'lu tam politika + tarayıcı doğrulaması ister, launch sonrası (13. oturumdaki aynı gerekçe).
 - Task 4 Step 7 (Playwright "hesap|profil" E2E regresyon grep'i) lokal koşulmadı (Docker+Supabase gerektirir) — planın kendi notuyla tutarlı şekilde CI'ın `e2e` job'ına bırakıldı.
-- Taşınanlar (13. oturumdan hâlâ geçerli): **P1-4 dashboard eyeball** (Turnstile enabled+secret, reset mail şablonu, redirect allow-list — hiçbiri koda bağlı değil), P2 backlog (min-8 parola politikası, hesap-enumerasyon kararı), SP2 lig planı, SP3a domain.
+- **P1-4 dashboard eyeball — KULLANICI TARAFINDAN TAMAMLANDI BİLDİRİLDİ (2026-07-14, aynı oturum içinde).** Turnstile enabled+secret, reset mail şablonu, redirect allow-list — kullanıcı raporu, kod tarafından doğrulanamaz (dashboard-only config). Bununla **pre-launch güvenlik denetiminin (2026-07-12) tüm P0/P1 kritik yolu kapandı.**
+- Taşınanlar: P2 backlog (min-8 parola politikası, hesap-enumerasyon kararı [[authErrors]]), B2 (rate-limit, altyapı kararı gerekir), B5 (CSP script-src, kit.csp nonce işi), SP2 lig planı, SP3a domain.
 
 ### C. Değişiklik Geçmişi
 Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
@@ -192,7 +193,7 @@ Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 ### D. Yeni Chat'te Başlangıç Rehberi
 1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır.
 2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
-3. **Güvenlik durumu:** B1/B3/B4 kapandı ve **canlıda** (bu oturum, push edildi). B2/B5 bilinçli ertelendi (yukarıda gerekçe). P1-4 dashboard eyeball hâlâ kullanıcı elinde. Rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-report.md`, plan: `.claude/plans/guvenlik-sertlestirme-2.md`.
-4. **Sıradaki adım:** P1-4 dashboard teyidi veya B2/B5 kendi planları veya P2/SP2/SP3a. Lokal ≠ prod auth (lokalde `enable_confirmations=false`, prod'da true — bilinçli drift, prod'u değiştirme).
+3. **Güvenlik durumu: pre-launch denetiminin (2026-07-12) TÜM P0/P1 maddeleri kapandı** — B1/B3/B4 kodda+canlıda (bu oturum), P1-4 dashboard kullanıcı tarafından tamamlandı. B2/B5 bilinçli ertelendi (kendi planlarını hak ediyor, yukarıda gerekçe). Rapor: `docs/superpowers/specs/2026-07-12-security-hardening-review-report.md`, plan: `.claude/plans/guvenlik-sertlestirme-2.md`.
+4. **Sıradaki adım:** kod tarafında zorunlu bir güvenlik işi kalmadı — B2/B5 kendi planlarını ister, aksi halde P2 backlog veya SP2/SP3a roadmap işlerine geç. Lokal ≠ prod auth (lokalde `enable_confirmations=false`, prod'da true — bilinçli drift, prod'u değiştirme).
 5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
