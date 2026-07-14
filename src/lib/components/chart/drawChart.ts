@@ -32,7 +32,7 @@ export function renderChart(canvas: HTMLCanvasElement, g: ChartGeometry | null, 
 	if (!ctx) return;
 	ctx.setTransform(o.dpr, 0, 0, o.dpr, 0, 0);
 	ctx.clearRect(0, 0, o.w, o.h);
-	if (!g) return;
+	if (!g || g.points.length === 0) return;
 
 	const first = g.points[0];
 	const last = g.points[g.points.length - 1];
