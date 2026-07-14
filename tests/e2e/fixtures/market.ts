@@ -18,3 +18,11 @@ export const CRYPTO_FIXTURE = {
   asOf: 0,
   stale: false,
 };
+
+/** /api/series fixture — 30 nokta, 5 dk aralıklı, hafif yükselen testere.
+ *  Taban: 2026-07-14 09:00 UTC (TSİ 12:00) — eksen etiketleri deterministik.
+ *  Min fiyat TAM 62000 (i=0) → grafik min etiketi '$62,000.00' (chart-overlay.spec bunu asserts eder). */
+export const SERIES_FIXTURE = Array.from({ length: 30 }, (_, i) => ({
+  t: Date.UTC(2026, 6, 14, 9, 0) + i * 300_000,
+  price: 62_000 + i * 25 + (i % 3) * 40,
+}));
