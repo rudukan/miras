@@ -84,3 +84,24 @@ export function createCloudPush(
     },
   };
 }
+
+export interface SavesPusherDeps {
+  /** Oturum kullanıcısı; auth hatasında THROW eder, oturum yoksa null döner. */
+  getUser: () => Promise<{ id: string } | null>;
+  /** saves upsert; Supabase yanıt zarfını aynen döner (throw etmez).
+   *  PromiseLike: Supabase query builder thenable'dır, Promise DEĞİL. */
+  upsertSave: (userId: string, env: SaveEnvelopeV1) => PromiseLike<{ error: { message: string } | null }>;
+  getOwnerId: () => string | null;
+}
+
+/** upsert() sonucunu okuyup hatayı yüzeyler (audit P0 — bkz. dosya başı özet): bugün RLS/grant/5xx
+ *  hataları sessizce "başarı" sayılıp çıkışta clearSave son ilerlemeyi siliyordu. */
+export function createSavesPusher(deps: SavesPusherDeps): (env: SaveEnvelopeV1) => Promise<void> {
+  return async (env: SaveEnvelopeV1): Promise<void> => {
+    const user = await deps.getUser();
+    if (user == null) throw new Error('cloud-push: oturum yok, teslim edilemedi');
+    if (deps.getOwnerId() !== user.id) return; // yabancı oyun: kullanıcının kasasına yazılmaz (bilinçli no-op)
+    const { error } = await deps.upsertSave(user.id, env);
+    if (error != null) throw new Error(`cloud-push: ${error.message}`);
+  };
+}

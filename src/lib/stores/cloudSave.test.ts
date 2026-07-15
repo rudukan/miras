@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { chooseSource, createCloudPush, type ChooseSourceInput } from './cloudSave';
+import { chooseSource, createCloudPush, createSavesPusher, type ChooseSourceInput } from './cloudSave';
 import type { SaveEnvelopeV1 } from './savegame';
 
 const env = { v: 1, game: {} as never, activeBist: [] } as unknown as SaveEnvelopeV1;
@@ -142,5 +142,32 @@ describe('createCloudPush v2 — kapı/cancel/flush', () => {
     expect(await sync.flush()).toBe(false); // ilk push patladı
     sync.schedule(env);
     expect(await sync.flush()).toBe(true);
+  });
+});
+
+describe('createSavesPusher', () => {
+  it('upsert {error} dönerse throw eder', async () => {
+    const push = createSavesPusher({
+      getUser: async () => ({ id: 'u1' }),
+      upsertSave: async () => ({ error: { message: 'permission denied' } }),
+      getOwnerId: () => 'u1',
+    });
+    await expect(push(env)).rejects.toThrow('permission denied');
+  });
+  it('oturum yoksa throw eder (teslim edilemedi)', async () => {
+    const push = createSavesPusher({ getUser: async () => null, upsertSave: async () => ({ error: null }), getOwnerId: () => 'u1' });
+    await expect(push(env)).rejects.toThrow();
+  });
+  it('yabancı ownerId: upsert ÇAĞRILMADAN sessiz başarı', async () => {
+    const upsertSave = vi.fn(async () => ({ error: null }));
+    const push = createSavesPusher({ getUser: async () => ({ id: 'u1' }), upsertSave, getOwnerId: () => 'BAŞKASI' });
+    await expect(push(env)).resolves.toBeUndefined();
+    expect(upsertSave).not.toHaveBeenCalled();
+  });
+  it('başarıda upsert doğru argümanlarla çağrılır', async () => {
+    const upsertSave = vi.fn(async () => ({ error: null }));
+    const push = createSavesPusher({ getUser: async () => ({ id: 'u1' }), upsertSave, getOwnerId: () => 'u1' });
+    await push(env);
+    expect(upsertSave).toHaveBeenCalledWith('u1', env);
   });
 });
