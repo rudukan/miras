@@ -10,7 +10,7 @@
 		getResetAt, markReset, persistAllowed, clearLocalIdentity,
 		type SaveEnvelopeV1,
 	} from '$lib/stores/savegame';
-	import { chooseSource, createCloudPush } from '$lib/stores/cloudSave';
+	import { chooseSource, createCloudPush, createSavesPusher } from '$lib/stores/cloudSave';
 	import { initialPhase, type StartPhase } from '$lib/stores/bootPhase';
 	import WelcomeScreen from '$lib/components/WelcomeScreen.svelte';
 	import EmailAuthForm from '$lib/components/EmailAuthForm.svelte';
@@ -51,16 +51,20 @@
 	// Kimlik ERTELENDİ (spec §4.F): playerId/telemetri yalnız oyuna girişte üretilir.
 	let playerId = $state<string | null>(null);
 
-	const cloudPush = createCloudPush(async (envelope: SaveEnvelopeV1) => {
-		const {
-			data: { user },
-		} = await data.supabase.auth.getUser();
-		if (!user) return; // oturum yoksa bulut yok — oyun localStorage ile yaşar
-		if (getOwnerId(localStorage) !== user.id) return; // yabancı oyun kullanıcının kasasına yazılmaz
-		await data.supabase
-			.from('saves')
-			.upsert({ user_id: user.id, payload: envelope, schema_version: envelope.v });
-	});
+	const cloudPush = createCloudPush(
+		createSavesPusher({
+			getUser: async () => {
+				const { data: userData, error } = await data.supabase.auth.getUser();
+				if (error) throw new Error(`auth: ${error.message}`);
+				return userData.user;
+			},
+			upsertSave: (userId, envelope) =>
+				data.supabase
+					.from('saves')
+					.upsert({ user_id: userId, payload: envelope, schema_version: envelope.v }),
+			getOwnerId: () => getOwnerId(localStorage),
+		}),
+	);
 
 	// Bayat-sekme tombstone guard'ının history persist'ine taşınması için son karar tutulur.
 	let lastPersistAllowed = true;
