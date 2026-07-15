@@ -47,6 +47,7 @@ export function createCloudPush(
   let enabled = false; // boot uzlasmasi (chooseSource karari) bitmeden push yok — yaris kapisi
   let pending: SaveEnvelopeV1 | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let cancelled = false; // uçuştaki push cancel() ile yarıştıysa reddedilince diriltilmesin (review bulgusu)
 
   async function fire(): Promise<boolean> {
     if (pending == null) return true;
@@ -56,7 +57,8 @@ export function createCloudPush(
       await push(env);
       return true;
     } catch {
-      if (pending == null) pending = env; // uçuşta yeni envelope geldiyse o kazanır
+      if (pending == null && !cancelled) pending = env; // iptal edilmişse diriltme
+      cancelled = false;
       return false;
     }
   }
@@ -64,6 +66,7 @@ export function createCloudPush(
   return {
     schedule(env: SaveEnvelopeV1): void {
       if (!enabled) return;
+      cancelled = false; // yeni meşru kayıt: önceki cancel()'ın gölgesi temizlenir
       pending = env;
       if (timer != null) clearTimeout(timer);
       timer = setTimeout(() => void fire(), debounceMs);
@@ -73,6 +76,7 @@ export function createCloudPush(
     },
     cancel(): void {
       pending = null;
+      cancelled = true;
       if (timer != null) {
         clearTimeout(timer);
         timer = null;

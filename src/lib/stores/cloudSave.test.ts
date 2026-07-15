@@ -191,6 +191,36 @@ describe('createCloudPush v3 — başarısız push envelope\'u korur (P0 fix)', 
   });
 });
 
+describe('createCloudPush v4 — cancel() uçuştaki push ile yarışır (review bulgusu)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('cancel() uçuştaki push başarısız olursa envelope diriltilmez', async () => {
+    const push = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(undefined);
+    const sync = createCloudPush(push, { debounceMs: 1 });
+    sync.enable();
+    sync.schedule(env);
+    const flushPromise = sync.flush(); // push başladı (uçuşta), henüz reject olmadı
+    sync.cancel(); // handleResetSave senaryosu: uçuş sırasında iptal
+    expect(await flushPromise).toBe(false); // push başarısız oldu
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(await sync.flush()).toBe(true); // bekleyen yok: envelope DİRİLTİLMEDİ
+    expect(push).toHaveBeenCalledTimes(1); // push tekrar ÇAĞRILMADI (resurrection yok)
+  });
+
+  it('cancel() sonrası yeni schedule() cancelled bayrağını sıfırlar (sonraki retry normal çalışır)', async () => {
+    const push = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(undefined);
+    const sync = createCloudPush(push, { debounceMs: 1 });
+    sync.enable();
+    sync.schedule(env);
+    sync.cancel(); // hiçbir push uçuşta değilken iptal
+    sync.schedule(env); // yeni, meşru kayıt — cancelled sıfırlanmalı
+    expect(await sync.flush()).toBe(false); // push başarısız
+    expect(await sync.flush()).toBe(true);  // retry normal çalışır, envelope dirilir
+    expect(push).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('createSavesPusher', () => {
   it('upsert {error} dönerse throw eder', async () => {
     const push = createSavesPusher({
