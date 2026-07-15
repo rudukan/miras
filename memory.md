@@ -110,6 +110,8 @@ Bloomberg Terminali ve Binance estetiğini korumak için belirlenen kurallar:
 
 > **Öncelik notu (2026-07-02):** Aktif geliştirme odağı CANLI SEANS'a kaydı. VASİYET SEFERİ + Faz 2 (2001 Kriz, 2018 Kur Şoku) aşağıda roadmap'te duruyor ama aktif çalışma yok — kullanıcı açıkça istemedikçe bu modlara dokunulmuyor.
 
+> **Kapı güncellemesi (2026-07-15, dış audit + kurucu onayı):** SP2 lig planı yazılmadan önce iki kapı var: **Faz 0** (güven/doğruluk düzeltmeleri — `docs/superpowers/plans/2026-07-15-faz0-guven-duzeltmeleri.md`) ve **Faz 1** (funnel + drift temizliği + küçük kullanıcı deneyi). Yeni özellik genişletmesi bu iki kapı kapanana dek dondu.
+
 ### ANA PLAN (2026-07-04): Çok Kullanıcılı Yayın (Multiplayer Launch)
 Onaylı spec: **`docs/superpowers/specs/2026-07-04-cok-kullanicili-yayin-design.md`** — hesaplı (Google + anonim misafir, linkIdentity ile yükseltme), haftalık ligli (**CANLI SEANS = lig**: Pazartesi 00:00 TSİ $1M reset, Cuma NYSE kapanışında kilit — DST-duyarlı, ABD tatil cumasında BIST 18:15; hafta sonu antrenman), kendi domaininde, Supabase Pro (eu-central-1) + Vercel Pro üzerinde, "olabilecek en güvenli" duruşla (GRANT+RLS çift katman, httpOnly cookie/PKCE, `getUser()` kuralı, Turnstile, sunucu damgalı fiyat + replay hile koruması, KVKK yurt dışı aktarım beyanı). Monetization launch sonrası; realtime etkileşim kapsam dışı.
 
@@ -167,25 +169,26 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-14 — 15. oturum, GRAFİK İYİLEŞTİRME + BAĞLAM KALDIRMA)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-15 — 16. oturum, DIŞ AUDIT DEĞERLENDİRMESİ + FAZ 0 PLANI)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (14. — güvenlik sertleştirme #2: B1+B3+B4) için: `git show 4d5613d:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (15. — grafik iyileştirme) için: `git show ce5ca2a:memory.md`.
 
 ### A. Bu Oturumda Tamamlananlar
-1. **`docs/superpowers/plans/2026-07-14-grafik-iyilestirme.md` uygulandı** — subagent-driven-development ile izole worktree'de (EnterWorktree), 9/9 task + her task'a ayrı reviewer, main'e merge edildi (`f529e9e`, 12 commit):
-   - **BAĞLAM satırı silindi** (ContextCard + contextCard.ts + testi; `+page.svelte`'den söküldü).
-   - **PriceChart v2:** DPR-keskin canvas (`drawChart.ts` saf modül), min/max fiyat etiketleri, zaman ekseni (sabit UTC+3 + elle Türkçe kısaltmalar, Intl YOK — CI determinizmi), crosshair + fiyat/zaman tooltip (HTML bindirme, hover'da canvas yeniden çizilmez).
-   - **PeriodTabs + useSeries + PositionSummary** ortak parçalara çıkarıldı; **⤢ BÜYÜT → ChartOverlay** tam boy modal (role=dialog + aria-label="{label} grafiği", Escape/backdrop/✕, mobilde tam ekran, TradeForm dahil).
-   - **E2E 12 senaryo** (yeni: chart-overlay smoke + deterministik SERIES_FIXTURE; CLAUDE.md'deki "10 senaryo" zaten bayattı → 12'ye senkronlandı).
-2. **Task-review döngüsü 2 gerçek bulgu yakaladı ve düzeltti:** renderChart boş-dizi guard'ı (`0b9edf7`), a11y uyarısı svelte-ignore emsaliyle (`9fd644a`).
-3. **Final whole-branch review (opus) 1 Important buldu → düzeltildi (`d27be47`):** `seriesCurrency` tüm 'yahoo' kaynağını ₺ sayıyordu ama XAUGRAM/XAGGRAM upstream'i `GC=F`/`SI=F` (COMEX, **USD/ons**) — altın/gümüş grafiği yanlış ₺ etiketiyle ham USD/ons gösteriyordu (spec'in kendi "yahoo→₺" varsayımı hatalıydı). Fix: `seriesCurrency(assetId, source)` + `YAHOO_USD_ASSETS={XAUGRAM,XAGGRAM}` (domain api/'den import edemez → TR_MONTHS_SHORT emsaliyle yerel liste). **Bu fix'in ayrı reviewer round'u kullanıcı kararıyla atlandı** (TDD kanıtı + 543/543 + check/build yeşiline güvenildi — bilinçli disiplin sapması).
-4. **Canlı doğrulama (controller, gerçek tarayıcı):** BTC $ / THYAO ₺ tooltip'leri, overlay aç/kapa (desktop+mobil), **gerçek AL işlemi** (10 THYAO → nakit/pozisyon/maliyet doğru düştü).
-5. **Merge sonrası birleşik main:** test **554/554** (worktree'nin 543'ü + 14. oturumun 11 güvenlik testi sorunsuz bir arada), check 0/0, build yeşil. Worktree + branch temizlendi.
+1. **Codex (GPT-5) dış audit raporu değerlendirildi** (`docs/external-ai-audit-2026-07-14.md`, tabanı = HEAD `ce5ca2a`): 4 yüksek riskli bulgunun **4'ü de kod üzerinde doğrulandı**, ikisi rapordakinden de ciddi çıktı:
+   - **P0 cloud save sessiz veri kaybı:** `upsert()` `{error}` dönüşü kontrolsüz (`+page.svelte:60`) → Supabase HTTP hatalarında flush İLK denemede `true` döner (uyarı bile çıkmaz); `pending` push öncesi null'lanıp hatada geri konmuyor (`cloudSave.ts:53`); mevcut unit test bu davranışı onaylıyordu. Prod'da yaşanmış 0002 grant hatası bu yolun gerçekliğinin kanıtı.
+   - **P1 reaktif olmayan zaman:** `depositUsd`/`propertiesUsd` `$derived`'ları düz `Date.now` okuyor → faiz/kira tahakkuku ekranda donuyor; `netWorth` catch fallback'i nakit + fiyatı BİLİNEN pozisyonları da düşürüyor.
+   - **P1 cache bypass (audit'ten geniş):** `activeBist` her oyuncuda dolu başlıyor → HER 20s poll parametreli → 5s server cache normal trafikte **%100 bypass** (endpoint yorumu bile "basit v1" diye itiraf ediyor).
+   - **P1 kapalı/stale trade:** `marketOpen`/`dataStale` yalnız görsel rozet; TradeForm/reducer'da sıfır guard — 15dk gecikme arbitrajı (lig fairness deliği).
+   - Ayrıca doğrulanan: `toUSD` komisyon bug'ı (gerçek, ama yalnız testlerde kullanılıyor — latent), mevduat %50 vs senaryo %42 (**balance sim domain `openDeposit` üzerinden %50'yi miras alıyor**), README drift (471→554 test, Playwright "yol haritasında", Supabase "sırada", "%30-70 her strateji", "float sınıf olarak yok edildi"), doc/kod ≈2.4x (15.6K vs 6.4K satır), telemetri yalnız 3 olay (funnel yok).
+   - Audit'in küçük hataları (sonucu değiştirmiyor): satır sayıları ~%7 şişkin (sayım yöntemi), "gerçek 2025 verileri" ifadesi README'de değil CLAUDE.md/memory'de.
+2. **Kurucu kararları:** (a) **Faz 0 → Faz 1 → SP2 sıralaması ONAYLANDI** (yeni özellik dondu); (b) kapalı piyasa semantiği = **YASAK** (kripto 7/24; stale'de kripto-dışı yasak; emir kuyruğu/son-kapanış kapsam dışı); (c) audit raporu + plan commit'lendi, `AGENTS.md`/`.codex/` untracked kaldı → Faz 1 drift temizliğine.
+3. **Faz 0 planı yazıldı:** `docs/superpowers/plans/2026-07-15-faz0-guven-duzeltmeleri.md` — 13 task: cloud save zinciri (createSavesPusher + fire requeue + kablolama + E2E signout-persistence), reaktif saat (`nowMsTick`), `netWorthPartsUsd` (kısmi toplam), `createKeyedTtlCache` + endpoint geçişi + poll self-scheduling, `tradeBlockReason` guard'ı, `toUSD` fix, `openDeposit` oran seam'i (davranış değişikliği SIFIR — kalibrasyon VASİYET backlog'unda), CLAUDE.md senkron + final doğrulama. **Review süreci risk-bazlı (audit §8.3 benimsendi):** Task 1-4 review'lu, 5-13 yalnız final review.
+4. Plan yazımında yakalanan iki kritik gerçek: E2E zaten her işlemde BTC kullanıyor → kapalı-piyasa guard'ı CI'ı KIRMAZ; balance sim `openDeposit`'i kullandığı için oran seam'i doğrudan kalibrasyon backlog'una hizmet ediyor.
 
 ### B. Blokerler & Kalan İşler
-- **ABD hissesi grafikleri "veri yok" gösterir (bilinen sınırlama, bu oturum ÖNCESİNDEN):** `upstreamFor` US sembole `.IS` ekler (AAPL.IS → Yahoo boş), `seriesCurrency` de US için sembol-bazlı ele alınmalı. ABD borsası seri desteği ayrı dilim — final review'ın forward-looking notu.
-- Mobilde overlay arkasında body scroll-lock yok (Minor, cila — final review).
-- Devir: B2 rate-limit + B5 CSP (kendi planlarını bekliyor), P2 backlog, SP2 lig planı, SP3a domain — 14. oturumdan değişmedi.
+- **Faz 0 uygulaması → yeni Sonnet oturumu** (plan hazır, subagent-driven, izole worktree; Task 10 → Task 5'e bağımlı, sıra korunur).
+- **Faz 1 planı Faz 0 bitince** (kısa güçlü-model oturumu): funnel telemetri olayları, README/AGENTS/`.codex` drift temizliği, veri metodolojisi dili ("2025'ten esinlenen kurmaca senaryo" / "gecikmeli referans fiyatlı paper-trading"), 10-15 kişilik deney + GO/NO-GO eşikleri.
+- **SP2 lig planı Faz 0+1 kapılarından SONRA** (audit hükmü, kurucu onaylı). ABD hissesi grafik dilimi ayrı (bilinen sınırlama). B2 rate-limit + B5 CSP kendi planlarını bekliyor.
 
 ### C. Değişiklik Geçmişi
 Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
@@ -194,6 +197,6 @@ Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır. (Supabase lokal stack bu oturum sonunda durduruldu — gerekirse `npx supabase start`.)
 2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
 3. **Güvenlik durumu:** pre-launch P0/P1 tümü kapalı (14. oturum); bu oturum güvenliğe dokunmadı, iki iş akışı merge'de sorunsuz birleşti.
-4. **Sıradaki adım:** SP2 lig planı / SP3a domain / P2 backlog — ya da ABD hissesi grafik serisi dilimi (yukarıdaki bilinen sınırlama).
+4. **Sıradaki adım: FAZ 0 UYGULAMASI** — Sonnet oturumunda `docs/superpowers/plans/2026-07-15-faz0-guven-duzeltmeleri.md` koşulur (subagent-driven, izole worktree). Sonra Faz 1 planı (güçlü model), sonra SP2.
 5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
