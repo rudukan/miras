@@ -23,3 +23,15 @@ export async function seedConfirmedUser(): Promise<{ email: string; password: st
   if (error) throw new Error(`test kullanıcısı üretilemedi: ${error.message}`);
   return { email, password };
 }
+
+/** saves satırını service-role ile (RLS bypass) okur — Task 4: çıkış sonrası "request gitti"
+ *  değil "veri gerçekten kalıcı" kanıtı için fresh select. Satır yoksa/birden fazlaysa throw eder. */
+export async function getSaveRow(userId: string): Promise<{ payload: unknown }> {
+  const { data, error } = await adminClient()
+    .from('saves')
+    .select('payload')
+    .eq('user_id', userId)
+    .single();
+  if (error) throw new Error(`saves satırı okunamadı (user_id=${userId}): ${error.message}`);
+  return data;
+}
