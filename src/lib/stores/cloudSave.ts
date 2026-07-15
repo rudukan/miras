@@ -56,7 +56,7 @@ export function createCloudPush(
       await push(env);
       return true;
     } catch {
-      // Sessiz: offline oyunu bozmasin; sonraki schedule yeniden dener.
+      if (pending == null) pending = env; // uçuşta yeni envelope geldiyse o kazanır
       return false;
     }
   }
