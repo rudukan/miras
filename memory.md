@@ -169,33 +169,30 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-15 — 17. oturum, FAZ 0 UYGULAMASI BAŞLADI — YARIM, DEVAM EDECEK)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-15 — 18. oturum, TOKEN EKONOMİSİ KAFA YAPISI + FAZ 0 TIER/BÜTÇE PLANI — Fable, kod değişikliği YOK)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (16. — dış audit değerlendirmesi + Faz 0 planı) için: `git show 274b7c3:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (17. — Faz 0 Task 1-2 tamam + Task 3 yarım) için: `git show 4b45f42:memory.md`.
 
 ### A. Bu Oturumda Tamamlananlar
-1. **Faz 0 uygulaması başladı** — izole worktree kuruldu: `.claude/worktrees/faz0-guven-duzeltmeleri` (branch `worktree-faz0-guven-duzeltmeleri`), superpowers:subagent-driven-development ile `docs/superpowers/plans/2026-07-15-faz0-guven-duzeltmeleri.md` koşuluyor. **Henüz main'e merge edilmedi, worktree hâlâ açık.**
-2. **Pre-flight scan:** planın dosya/satır referansları HEAD'e karşı tek tek doğrulandı — şaşırtıcı derecede isabetli çıktı. Tek sapma: Task 7'nin önerdiği `createKeyedTtlCache` ismi, `src/lib/api/keyedTtlCache.ts`'teki mevcut ve alakasız (senkron get/set, `/api/usSearch` için) bir cache ile çakışıyordu → `createKeyedTtlFetchCache` olarak yeniden adlandırıldı (ledger'da not var).
-3. **Task 1 (`createSavesPusher`) TAMAMLANDI** — implement (sonnet) + review (sonnet), ilk turda onaylandı. Commit `877d632`.
-4. **Task 2 (`fire()` requeue) TAMAMLANDI** — implement (haiku) + review (sonnet) döngüsünde review gerçek bir P0-sınıfı bug yakaladı: `cancel()`, uçuştaki (in-flight) başarısız bir push ile aynı ana denk gelirse iptal edilen envelope'u diriltebiliyordu — `handleResetSave`'in az önce sildiği bulut kaydını, kaçak bir `visibilitychange` flush'ı geri yazabilirdi (tam da audit'in hedeflediği "sessiz veri dirilmesi" sınıfı, ve doğrudan planın kendi referans koduna izleniyor — implementer hatası değil). Kurucuya soruldu, onaylanan generation-flag (`cancelled`) fix'i uygulandı, re-review onayladı. Commit'ler `98ad484`, `fca2bf1`.
-5. **Task 3 YARIM KALDI** — implementer subagent `+page.svelte` kablolamasını doğru yaptı (plana birebir uygun, `data` prop gölgelenmesi düzeltmesi dahil — bkz. task-3-brief.md) ama oturum token limiti nedeniyle kullanıcı burada durdurdu. **Bu değişiklik worktree'de UNCOMMITTED duruyor** (`git diff src/routes/+page.svelte` ile görünür) — henüz test/check/build/smoke/review'dan geçmedi. Sonraki oturum ya bu diff'i doğrulayıp commit'e taşımalı ya da (güvenmiyorsa) sıfırdan Task 3'ü tekrar dispatch etmeli.
-6. Maliyet gözlemi: Task 1 (~176K token, tam mekanik/plan-verilmiş bir task için) ve Task 2 (~407K token, fix döngüsü dahil) — kullanıcıyla konuşuldu, mekanik task'larda (2, 3, 9, 11, 12) implementer'ı haiku'ya düşürme kararı alındı (review rigor'u etkilemez, yalnız implementer model tier'ı).
+1. **Token ekonomisi düşünme oturumu** (kurucu talebiyle, bilinçli Fable harcaması): 6 prensiplik kafa yapısı kuruldu — (1) harcama işin boyutuyla değil yanılmanın faturasıyla orantılı (Task 2'nin 407K'sı ucuzdu: P0 yakaladı; Task 1'in 176K'sı pahalıydı: yakalanacak şey yoktu); (2) yazı = pahalı düşüncenin önbelleği (plan/ledger/memory en yüksek ROI'li token'lar); (3) en pahalı token = ikinci kez harcanan; (4) işi bütçeye kuantala — her oturum ya committed ya ledger'lı biter, "havada iş" yasak; (5) "kim cevaplasın" hiyerarşisi: dosya okuma < grep < test < haiku < sonnet < Fable < kurucu dikkati (en kıt kaynak — yalnız makinenin veremeyeceği kararlar yükselir); (6) uzun oturum bileşik faiz işletir. **KISILMAZ kalemler:** review rigor'u (Task 2 kanıt), verification, ledger yazımı, güçlü-model final/güvenlik review.
+2. **Faz 0 Tier & Bütçe Planı ledger'a yazıldı** (worktree `.superpowers/sdd/progress.md` — NOT: `.superpowers` gitignore'da, ledger bilinçli git-dışı, yalnız diskte): Task 3 → **re-dispatch YOK** (diff doğrulandı: `+page.svelte` 15+/11- yerinde; orchestrator inline test/check/build → misafir smoke → review → commit); Task 4 sonnet+review (E2E varyans, ~300K'da dur kuralı, tek-spec iterasyon); batch'ler: **5+9** (aynı dosya, sonnet, iki ayrı commit), **7+8** (cache+tüketici, sonnet — ad: `createKeyedTtlFetchCache`), **11+12** (haiku — tam mekanik, test-kilitli); Task 6 sonnet (mevcut test sözleşmesi değişiyor `netWorth: null`→`Money` — sözleşme değiştiren iş haiku'ya verilmez); Task 10 sonnet (Task 5 bağımlılığı); **final whole-branch review OPUS** (SP1 emsali: opus review prod grant bug'ı yakalamıştı — kısılmaz). Oturum kuantaları: **A** (Task 3 bitir + Task 4, +headroom ≥200K ise 5+9 — ortam-ağır işler tek oturumda), **B** (5+9, 6, 7+8), **C** (10, 11+12, 13, final review; headroom <200K ise review ayrı D oturumu). Toplam kalan tahmin: **~0.9-1.4M token, 3-4 Sonnet oturumu** (±%50 — Oturum A sonrası ledger tablosu gerçek sayılarla kalibre edilecek).
+3. **Metrik standardı:** token/verified-commit — her task kapanışında gerçek sayı ledger'daki Tasks listesine yazılır (Task 1: ~176K, Task 2: ~407K işlendi).
 
 ### B. Blokerler & Kalan İşler
-- **Faz 0 devam ediyor** — worktree açık, ledger güncel: `.claude/worktrees/faz0-guven-duzeltmeleri/.superpowers/sdd/progress.md` (Task 1-2 detayları, pre-flight notu). Devam: worktree'ye gir → ledger'ı oku → Task 3'ün uncommitted diff'ini doğrula (test/check/build/smoke) → commit → review → Task 4 (E2E signout-persistence) → ... → Task 13 → final whole-branch review → preview smoke → finishing-a-development-branch (merge kararı kurucuyla).
-- Task 10 hâlâ Task 5'in `nowMsTick`'ine bağımlı — sıra (1→13) korunmalı.
-- **Lokal Supabase stack bu oturumda durduruldu** (`npx supabase stop`, veri Docker volume'ünde duruyor). Task 4/13 E2E için tekrar gerekecek: **ANA checkout'tan** `npx supabase start` (worktree içinden DEĞİL — bkz. `[[worktree-oturum-notlari]]`, bind-mount kilidi riski).
-- **Faz 1 planı Faz 0 bitince** (kısa güçlü-model oturumu): funnel telemetri olayları, README/AGENTS/`.codex` drift temizliği, veri metodolojisi dili, 10-15 kişilik deney + GO/NO-GO eşikleri.
+- **Faz 0 devam ediyor** — worktree açık (`.claude/worktrees/faz0-guven-duzeltmeleri`, branch `worktree-faz0-guven-duzeltmeleri`), Task 3 diff'i bilinçli uncommitted (Oturum A'nın ilk işi). Ledger artık tam yürütme planı: tier + bütçe + batch + sıra + kapanış kuralları — Sonnet oturumu karar düşünmeden koşar.
+- Task 10 → Task 5 (`nowMsTick`) bağımlılığı; sıra korunur.
+- **Lokal Supabase stack kapalı** (veri Docker volume'ünde). Task 4/13 E2E için: **ANA checkout'tan** `npx supabase start` (worktree'den DEĞİL — bind-mount kilidi, bkz. `[[worktree-oturum-notlari]]`).
+- **Faz 1 planı Faz 0 bitince** (kısa güçlü-model oturumu): funnel telemetri, README/AGENTS/`.codex` drift temizliği, veri metodolojisi dili, 10-15 kişilik deney + GO/NO-GO eşikleri.
 - **SP2 lig planı Faz 0+1 kapılarından SONRA** (audit hükmü, kurucu onaylı). ABD hissesi grafik dilimi ayrı (bilinen sınırlama). B2 rate-limit + B5 CSP kendi planlarını bekliyor.
 
 ### C. Değişiklik Geçmişi
 Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 
 ### D. Yeni Chat'te Başlangıç Rehberi
-1. **Faz 0 worktree'sine dön:** `.claude/worktrees/faz0-guven-duzeltmeleri` (branch `worktree-faz0-guven-duzeltmeleri`) — silinmedi, açık. `git status` ile Task 3'ün uncommitted `+page.svelte` diff'ini kontrol et.
-2. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → ANA checkout'tan `npx supabase start` → worktree'den `npm run e2e`. NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır.
-3. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
-4. **Güvenlik durumu:** pre-launch P0/P1 tümü kapalı (14. oturum); değişmedi.
-5. **Sıradaki adım: FAZ 0'A DEVAM** — Task 3'ün yarım kalan diff'inden başla (yukarıya bak), sonra Task 4→13, final review, smoke, merge kararı. Sonra Faz 1 planı (güçlü model), sonra SP2.
+1. **SONNET oturumu aç** (sıradaki iş tamamen uygulama — güçlü model gerekmez). Açılış cümlesi: *"Faz 0'a devam — memory.md 6.D'yi izle, worktree ledger'ındaki Tier & Bütçe Planı'na göre Oturum A'yı koş."*
+2. **Worktree:** `.claude/worktrees/faz0-guven-duzeltmeleri`. İlk iş: ledger'ı oku (`.superpowers/sdd/progress.md`) → Task 3'ü bitir (diff hazır, RE-DISPATCH YOK) → Task 4 (E2E signout-persistence).
+3. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). NOT: `.env.local` PROD'u gösteriyor — smoke'ta yalnız misafir girişi, manuel kayıt GERÇEK prod kullanıcısı yaratır. E2E: Docker açık → ANA checkout'tan `npx supabase start` → worktree'den `npm run e2e`.
+4. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` (+ task gerektirdiğinde `npm run e2e`; sabit sayı yazma).
+5. **Güvenlik durumu:** pre-launch P0/P1 tümü kapalı (14. oturum); değişmedi.
 6. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 7. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
