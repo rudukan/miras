@@ -169,34 +169,33 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-15 — 16. oturum, DIŞ AUDIT DEĞERLENDİRMESİ + FAZ 0 PLANI)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-15 — 17. oturum, FAZ 0 UYGULAMASI BAŞLADI — YARIM, DEVAM EDECEK)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (15. — grafik iyileştirme) için: `git show ce5ca2a:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (16. — dış audit değerlendirmesi + Faz 0 planı) için: `git show 274b7c3:memory.md`.
 
 ### A. Bu Oturumda Tamamlananlar
-1. **Codex (GPT-5) dış audit raporu değerlendirildi** (`docs/external-ai-audit-2026-07-14.md`, tabanı = HEAD `ce5ca2a`): 4 yüksek riskli bulgunun **4'ü de kod üzerinde doğrulandı**, ikisi rapordakinden de ciddi çıktı:
-   - **P0 cloud save sessiz veri kaybı:** `upsert()` `{error}` dönüşü kontrolsüz (`+page.svelte:60`) → Supabase HTTP hatalarında flush İLK denemede `true` döner (uyarı bile çıkmaz); `pending` push öncesi null'lanıp hatada geri konmuyor (`cloudSave.ts:53`); mevcut unit test bu davranışı onaylıyordu. Prod'da yaşanmış 0002 grant hatası bu yolun gerçekliğinin kanıtı.
-   - **P1 reaktif olmayan zaman:** `depositUsd`/`propertiesUsd` `$derived`'ları düz `Date.now` okuyor → faiz/kira tahakkuku ekranda donuyor; `netWorth` catch fallback'i nakit + fiyatı BİLİNEN pozisyonları da düşürüyor.
-   - **P1 cache bypass (audit'ten geniş):** `activeBist` her oyuncuda dolu başlıyor → HER 20s poll parametreli → 5s server cache normal trafikte **%100 bypass** (endpoint yorumu bile "basit v1" diye itiraf ediyor).
-   - **P1 kapalı/stale trade:** `marketOpen`/`dataStale` yalnız görsel rozet; TradeForm/reducer'da sıfır guard — 15dk gecikme arbitrajı (lig fairness deliği).
-   - Ayrıca doğrulanan: `toUSD` komisyon bug'ı (gerçek, ama yalnız testlerde kullanılıyor — latent), mevduat %50 vs senaryo %42 (**balance sim domain `openDeposit` üzerinden %50'yi miras alıyor**), README drift (471→554 test, Playwright "yol haritasında", Supabase "sırada", "%30-70 her strateji", "float sınıf olarak yok edildi"), doc/kod ≈2.4x (15.6K vs 6.4K satır), telemetri yalnız 3 olay (funnel yok).
-   - Audit'in küçük hataları (sonucu değiştirmiyor): satır sayıları ~%7 şişkin (sayım yöntemi), "gerçek 2025 verileri" ifadesi README'de değil CLAUDE.md/memory'de.
-2. **Kurucu kararları:** (a) **Faz 0 → Faz 1 → SP2 sıralaması ONAYLANDI** (yeni özellik dondu); (b) kapalı piyasa semantiği = **YASAK** (kripto 7/24; stale'de kripto-dışı yasak; emir kuyruğu/son-kapanış kapsam dışı); (c) audit raporu + plan commit'lendi, `AGENTS.md`/`.codex/` untracked kaldı → Faz 1 drift temizliğine.
-3. **Faz 0 planı yazıldı:** `docs/superpowers/plans/2026-07-15-faz0-guven-duzeltmeleri.md` — 13 task: cloud save zinciri (createSavesPusher + fire requeue + kablolama + E2E signout-persistence), reaktif saat (`nowMsTick`), `netWorthPartsUsd` (kısmi toplam), `createKeyedTtlCache` + endpoint geçişi + poll self-scheduling, `tradeBlockReason` guard'ı, `toUSD` fix, `openDeposit` oran seam'i (davranış değişikliği SIFIR — kalibrasyon VASİYET backlog'unda), CLAUDE.md senkron + final doğrulama. **Review süreci risk-bazlı (audit §8.3 benimsendi):** Task 1-4 review'lu, 5-13 yalnız final review.
-4. Plan yazımında yakalanan iki kritik gerçek: E2E zaten her işlemde BTC kullanıyor → kapalı-piyasa guard'ı CI'ı KIRMAZ; balance sim `openDeposit`'i kullandığı için oran seam'i doğrudan kalibrasyon backlog'una hizmet ediyor.
+1. **Faz 0 uygulaması başladı** — izole worktree kuruldu: `.claude/worktrees/faz0-guven-duzeltmeleri` (branch `worktree-faz0-guven-duzeltmeleri`), superpowers:subagent-driven-development ile `docs/superpowers/plans/2026-07-15-faz0-guven-duzeltmeleri.md` koşuluyor. **Henüz main'e merge edilmedi, worktree hâlâ açık.**
+2. **Pre-flight scan:** planın dosya/satır referansları HEAD'e karşı tek tek doğrulandı — şaşırtıcı derecede isabetli çıktı. Tek sapma: Task 7'nin önerdiği `createKeyedTtlCache` ismi, `src/lib/api/keyedTtlCache.ts`'teki mevcut ve alakasız (senkron get/set, `/api/usSearch` için) bir cache ile çakışıyordu → `createKeyedTtlFetchCache` olarak yeniden adlandırıldı (ledger'da not var).
+3. **Task 1 (`createSavesPusher`) TAMAMLANDI** — implement (sonnet) + review (sonnet), ilk turda onaylandı. Commit `877d632`.
+4. **Task 2 (`fire()` requeue) TAMAMLANDI** — implement (haiku) + review (sonnet) döngüsünde review gerçek bir P0-sınıfı bug yakaladı: `cancel()`, uçuştaki (in-flight) başarısız bir push ile aynı ana denk gelirse iptal edilen envelope'u diriltebiliyordu — `handleResetSave`'in az önce sildiği bulut kaydını, kaçak bir `visibilitychange` flush'ı geri yazabilirdi (tam da audit'in hedeflediği "sessiz veri dirilmesi" sınıfı, ve doğrudan planın kendi referans koduna izleniyor — implementer hatası değil). Kurucuya soruldu, onaylanan generation-flag (`cancelled`) fix'i uygulandı, re-review onayladı. Commit'ler `98ad484`, `fca2bf1`.
+5. **Task 3 YARIM KALDI** — implementer subagent `+page.svelte` kablolamasını doğru yaptı (plana birebir uygun, `data` prop gölgelenmesi düzeltmesi dahil — bkz. task-3-brief.md) ama oturum token limiti nedeniyle kullanıcı burada durdurdu. **Bu değişiklik worktree'de UNCOMMITTED duruyor** (`git diff src/routes/+page.svelte` ile görünür) — henüz test/check/build/smoke/review'dan geçmedi. Sonraki oturum ya bu diff'i doğrulayıp commit'e taşımalı ya da (güvenmiyorsa) sıfırdan Task 3'ü tekrar dispatch etmeli.
+6. Maliyet gözlemi: Task 1 (~176K token, tam mekanik/plan-verilmiş bir task için) ve Task 2 (~407K token, fix döngüsü dahil) — kullanıcıyla konuşuldu, mekanik task'larda (2, 3, 9, 11, 12) implementer'ı haiku'ya düşürme kararı alındı (review rigor'u etkilemez, yalnız implementer model tier'ı).
 
 ### B. Blokerler & Kalan İşler
-- **Faz 0 uygulaması → yeni Sonnet oturumu** (plan hazır, subagent-driven, izole worktree; Task 10 → Task 5'e bağımlı, sıra korunur).
-- **Faz 1 planı Faz 0 bitince** (kısa güçlü-model oturumu): funnel telemetri olayları, README/AGENTS/`.codex` drift temizliği, veri metodolojisi dili ("2025'ten esinlenen kurmaca senaryo" / "gecikmeli referans fiyatlı paper-trading"), 10-15 kişilik deney + GO/NO-GO eşikleri.
+- **Faz 0 devam ediyor** — worktree açık, ledger güncel: `.claude/worktrees/faz0-guven-duzeltmeleri/.superpowers/sdd/progress.md` (Task 1-2 detayları, pre-flight notu). Devam: worktree'ye gir → ledger'ı oku → Task 3'ün uncommitted diff'ini doğrula (test/check/build/smoke) → commit → review → Task 4 (E2E signout-persistence) → ... → Task 13 → final whole-branch review → preview smoke → finishing-a-development-branch (merge kararı kurucuyla).
+- Task 10 hâlâ Task 5'in `nowMsTick`'ine bağımlı — sıra (1→13) korunmalı.
+- **Lokal Supabase stack bu oturumda durduruldu** (`npx supabase stop`, veri Docker volume'ünde duruyor). Task 4/13 E2E için tekrar gerekecek: **ANA checkout'tan** `npx supabase start` (worktree içinden DEĞİL — bkz. `[[worktree-oturum-notlari]]`, bind-mount kilidi riski).
+- **Faz 1 planı Faz 0 bitince** (kısa güçlü-model oturumu): funnel telemetri olayları, README/AGENTS/`.codex` drift temizliği, veri metodolojisi dili, 10-15 kişilik deney + GO/NO-GO eşikleri.
 - **SP2 lig planı Faz 0+1 kapılarından SONRA** (audit hükmü, kurucu onaylı). ABD hissesi grafik dilimi ayrı (bilinen sınırlama). B2 rate-limit + B5 CSP kendi planlarını bekliyor.
 
 ### C. Değişiklik Geçmişi
 Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz).
 
 ### D. Yeni Chat'te Başlangıç Rehberi
-1. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → `npx supabase start` → `npm run e2e` (port 5199). NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor (`kmlogklnyxzptnrygyya`) — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır. (Supabase lokal stack bu oturum sonunda durduruldu — gerekirse `npx supabase start`.)
-2. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
-3. **Güvenlik durumu:** pre-launch P0/P1 tümü kapalı (14. oturum); bu oturum güvenliğe dokunmadı, iki iş akışı merge'de sorunsuz birleşti.
-4. **Sıradaki adım: FAZ 0 UYGULAMASI** — Sonnet oturumunda `docs/superpowers/plans/2026-07-15-faz0-guven-duzeltmeleri.md` koşulur (subagent-driven, izole worktree). Sonra Faz 1 planı (güçlü model), sonra SP2.
-5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
-6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
+1. **Faz 0 worktree'sine dön:** `.claude/worktrees/faz0-guven-duzeltmeleri` (branch `worktree-faz0-guven-duzeltmeleri`) — silinmedi, açık. `git status` ile Task 3'ün uncommitted `+page.svelte` diff'ini kontrol et.
+2. **Çalıştırma:** `npm run dev` (`http://localhost:5173`). E2E: Docker açık → ANA checkout'tan `npx supabase start` → worktree'den `npm run e2e`. NOT: `.env.local`'daki `PUBLIC_SUPABASE_URL` PROD'u gösteriyor — `npm run dev`'de manuel kayıt GERÇEK prod kullanıcısı yaratır.
+3. **Doğrulama:** `npm run test` + `npm run check` + `npm run build` + `npm run e2e` (sabit sayı yazma).
+4. **Güvenlik durumu:** pre-launch P0/P1 tümü kapalı (14. oturum); değişmedi.
+5. **Sıradaki adım: FAZ 0'A DEVAM** — Task 3'ün yarım kalan diff'inden başla (yukarıya bak), sonra Task 4→13, final review, smoke, merge kararı. Sonra Faz 1 planı (güçlü model), sonra SP2.
+6. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
+7. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
