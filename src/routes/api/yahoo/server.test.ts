@@ -166,11 +166,68 @@ describe('GET /api/yahoo', () => {
     const real = globalThis.fetch;
     globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 503 } as Response)) as unknown as typeof fetch;
     try {
-      const res = await GET({ url: new URL('http://localhost/api/yahoo?bist=THYAO') } as any);
+      // Task 8: tüm istekler artık keyed cache'ten geçer (modül-seviyesi, dosya boyunca paylaşılır).
+      // Önceki testlerde cache'lenmiş olmayan benzersiz sembol kullan (aksi halde ısınmış
+      // 'THYAO|' key'i başarı değerini döner, upstream hatasını hiç tetiklemez).
+      const res = await GET({ url: new URL('http://localhost/api/yahoo?bist=YAHOOFAIL') } as any);
       const body = await res.json();
       expect(body.stale).toBe(true);
       expect(body.asOf).toBe(0);
       expect(body.value.usdTry).toBe(40); // FALLBACK
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});
+
+/** Global fetch'i sarıp toplam çağrı sayısını izleyen yardımcı — TTL cache hit/miss'i
+ *  gerçek fetch adediyle doğrulamak için (call-count assertion'ları). */
+function countingFetch(inner: typeof fetch): { fetch: typeof fetch; count: () => number } {
+  let calls = 0;
+  const wrapped = ((...args: Parameters<typeof fetch>) => {
+    calls++;
+    return inner(...args);
+  }) as typeof fetch;
+  return { fetch: wrapped, count: () => calls };
+}
+
+describe('GET /api/yahoo — keyed cache (audit P1, Task 8: parametreli istekler artık bypass etmiyor)', () => {
+  it('?bist=THYAO,EREGL TTL içinde tekrar istenirse VE sırası değişirse (EREGL,THYAO) upstream fetch tetiklemez', async () => {
+    const real = globalThis.fetch;
+    const { fetch: f, count } = countingFetch(routedFetch());
+    globalThis.fetch = f;
+    try {
+      await GET({ url: new URL('http://localhost/api/yahoo?bist=THYAO,EREGL') } as any); // ısıt
+      const afterFirst = count();
+      expect(afterFirst).toBeGreaterThan(0); // gerçek upstream fetch tetiklendi
+
+      await GET({ url: new URL('http://localhost/api/yahoo?bist=THYAO,EREGL') } as any); // aynı sıra
+      expect(count()).toBe(afterFirst); // TTL içinde -> upstream tekrar çağrılmadı
+
+      const res = await GET({ url: new URL('http://localhost/api/yahoo?bist=EREGL,THYAO') } as any); // ters sıra
+      expect(count()).toBe(afterFirst); // dedupe+sort normalize -> AYNI cache key, upstream yine çağrılmadı
+      const body = await res.json();
+      expect(body.stale).toBe(false);
+      expect(body.value.prices.THYAO).toBe(300); // ısınmış cache'ten geldi
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  it('parametresiz istek default-set key\'ini kullanır; 2. çağrıda upstream tekrar çağrılmaz', async () => {
+    const real = globalThis.fetch;
+    const { fetch: f, count } = countingFetch(routedFetch());
+    globalThis.fetch = f;
+    try {
+      const res1 = await GET({ url: new URL('http://localhost/api/yahoo') } as any);
+      const afterFirst = count();
+      expect(afterFirst).toBeGreaterThan(0);
+      const body1 = await res1.json();
+      expect(body1.stale).toBe(false);
+      expect(body1.value.prices.THYAO).toBe(300); // DEFAULT_BIST içeriyor
+
+      await GET({ url: new URL('http://localhost/api/yahoo') } as any);
+      expect(count()).toBe(afterFirst); // TTL içinde -> upstream tekrar çağrılmadı
     } finally {
       globalThis.fetch = real;
     }

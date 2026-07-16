@@ -5,7 +5,7 @@ import {
   createGameState,
   buyAsset,
   sellAsset,
-  netWorthUsd as netWorthUsdFn,
+  netWorthPartsUsd,
   openDeposit,
   breakDeposit,
   buyProperty,
@@ -96,6 +96,9 @@ export interface LiveGameStore {
   readonly properties: OwnedProperty[];
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
+  /** Bir varlıkta şu an işlem (al/sat) serbest mi? null = serbest; aksi halde kullanıcıya
+   *  gösterilecek Türkçe blok nedeni. Guard (apply içi) ve UI (TradeForm) TEK bu kaynağı okur. */
+  tradeBlockReason(assetId: string): string | null;
   openDeposit(usdAmount: number): void;
   breakDeposit(): void;
   buyProperty(propertyId: string): void;
@@ -166,6 +169,11 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   const initial = opts.initial ?? null;
 
   // --- reaktif durum ---
+  // "Duvar saati" cache'i: start()'ta 1s'de bir now() ile tazelenir (setInterval yalnız state
+  // besliyor, DOM'a dokunmaz — mevcut poll kalıbıyla aynı). depositUsd/propertiesUsd bunu okur
+  // ki aksiyon olmasa da mevduat/kira tahakkuku ekranda akıyor görünsün (audit P1). Aksiyon-zamanı
+  // hesaplamalar (apply/openDeposit vb.) enjekte edilebilir now()'ı kullanmaya devam eder.
+  let nowMsTick = $state(now());
   let game = $state<GameState>(initial?.game ?? createGameState('canli', seed, playerId, now()));
   let fxCache = $state<FxValue>(FALLBACK_FX); // tüm fiyatlar TRY
   let cryptoUsd = $state<Record<string, number>>({}); // USD (TRY çevrimi source'da)
@@ -223,40 +231,29 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   };
 
   // --- türev değerler ($derived; render bunlardan, setInterval yalnız cache'i besler) ---
-  // netWorth: holding fiyatı yoksa reducer throw eder → try/catch ile null'a düşürülür (UI "—").
+  // netWorth: nakit + fiyatlanabilen HER holding (netWorthPartsUsd) — bir holding'in fiyatı
+  // eksikse yalnız o holding atlanır, toplam nakite çökmez (audit P1). Eksik veri varsa
+  // netWorthDataComplete=false olur; kâr göstergeleri (profit/vsUsdHold) o zaman null kalır,
+  // ama netWorth kendisi hep bilinen kısmi toplamı gösterir (asla null değil).
   // Mevduat USD değeri (mark-to-market): anapara + birikmiş net faiz / canlı kur.
   const depositUsd = $derived(
-    game.deposit === null ? 0 : currentValueTry(game.deposit, now()).amount / sealedUsdTry(),
+    game.deposit === null ? 0 : currentValueTry(game.deposit, nowMsTick).amount / sealedUsdTry(),
   );
   // Emlak USD değeri: bedel (TL sabit) + kasadaki birikmiş kira, mühürlü kurdan.
   const propertiesUsd = $derived.by<number>(() => {
     let total = 0;
     for (const p of game.properties) {
-      total += (p.priceTryAtBuy.amount + accruedRentTry(p, now()).amount) / sealedUsdTry();
+      total += (p.priceTryAtBuy.amount + accruedRentTry(p, nowMsTick).amount) / sealedUsdTry();
     }
     return total;
   });
-  const netWorth = $derived.by<Money | null>(() => {
-    try {
-      return usd(netWorthUsdFn(game, oracle).amount + depositUsd + propertiesUsd);
-    } catch {
-      return game.deposit !== null || game.properties.length > 0
-        ? usd(depositUsd + propertiesUsd)
-        : null;
-    }
-  });
-  // Mevduat açıkken bir holding fiyatı eksikse netWorth depositUsd'a düşer (null DEĞİL) —
+  const nwParts = $derived(netWorthPartsUsd(game, oracle));
+  const netWorth = $derived<Money>(usd(nwParts.totalUsd + depositUsd + propertiesUsd));
+  // Bir holding fiyatı eksikse netWorth kısmi toplama düşer (asla null değil) — ama
   // recordSnapshot bu eksik durumu ayrıca bilmeli, yoksa degrade değer history'yi ezer.
-  const netWorthDataComplete = $derived.by<boolean>(() => {
-    try {
-      netWorthUsdFn(game, oracle);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-  const profit = $derived(netWorth === null ? null : netWorth.amount / STARTING_USD);
-  const vsUsdHold = $derived(netWorth === null ? null : usd(netWorth.amount - STARTING_USD));
+  const netWorthDataComplete = $derived<boolean>(nwParts.complete);
+  const profit = $derived(netWorthDataComplete ? netWorth.amount / STARTING_USD : null);
+  const vsUsdHold = $derived(netWorthDataComplete ? usd(netWorth.amount - STARTING_USD) : null);
 
   const positions = $derived.by<PositionRow[]>(() =>
     game.holdings.map((h) => {
@@ -341,8 +338,34 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       lastError = e instanceof Error ? e.message : String(e);
     }
   }
-  const buy = (assetId: string, units: number) => apply(() => buyAsset(game, oracle, assetId, units));
-  const sell = (assetId: string, units: number) => apply(() => sellAsset(game, oracle, assetId, units));
+  /** İşlem guard'ı (audit P1) — kapalı piyasada / stale fiyatta 15dk gecikmeli son fiyattan
+   *  arbitraj deliğini kapatır. Kategori çözümü `rows`/`prices` derived'ının aynı örüntüsü
+   *  (CATALOG üyeliği → yoksa activeUs'te mi → değilse 'bist'). Kripto her zaman muaf (7/24).
+   *  `nowMsTick` (reaktif saat) okunur ki seans açılınca UI'daki $derived kendiliğinden güncellensin. */
+  function tradeBlockReason(assetId: string): string | null {
+    const category: AssetCategory =
+      CATALOG[assetId]?.category ?? (activeUs.includes(assetId) ? 'us' : 'bist');
+    if (category === 'crypto') return null;
+    if (!isMarketOpen(category, new Date(nowMsTick))) {
+      return 'PİYASA KAPALI — bu varlık yalnız seans saatlerinde işlem görür';
+    }
+    if (fxStale) {
+      return 'FİYAT VERİSİ ESKİ — bağlantı dönene dek işlem kapalı';
+    }
+    return null;
+  }
+  const buy = (assetId: string, units: number) =>
+    apply(() => {
+      const blocked = tradeBlockReason(assetId);
+      if (blocked) throw new Error(blocked);
+      return buyAsset(game, oracle, assetId, units);
+    });
+  const sell = (assetId: string, units: number) =>
+    apply(() => {
+      const blocked = tradeBlockReason(assetId);
+      if (blocked) throw new Error(blocked);
+      return sellAsset(game, oracle, assetId, units);
+    });
   const openDepositAction = (usdAmount: number) =>
     apply(() => openDeposit(game, sealedUsdTry(), usdAmount, now()));
   const breakDepositAction = () => apply(() => breakDeposit(game, sealedUsdTry(), now()));
@@ -379,7 +402,8 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   // --- canlı veri yaşam döngüsü ---
   let feed: BinanceFeed | null = null;
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
+  let tickTimer: ReturnType<typeof setInterval> | null = null;
   let throttleTimer: ReturnType<typeof setTimeout> | null = null;
   let pending: Record<string, number> = {};
   let started = false;
@@ -485,10 +509,11 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     }
   }
 
-  // Fiyat eksikse ATLA — çöp veri yazılmaz (mevduat açıkken netWorth null DEĞİL, depositUsd'a
-  // düşer; bu yüzden netWorthDataComplete ayrıca kontrol edilir).
+  // Fiyat eksikse ATLA — çöp veri yazılmaz. netWorth artık hep Money (kısmi toplam, asla null
+  // değil — netWorthPartsUsd), bu yüzden asıl kapı burada netWorthDataComplete: eksik fiyat
+  // varsa kısmi netWorth'ü snapshot'a yazmayız (vsUsdHold da complete değilse null kalır).
   function recordSnapshot(): void {
-    if (netWorth === null || vsUsdHold === null || !netWorthDataComplete) return;
+    if (vsUsdHold === null || !netWorthDataComplete) return;
     const snap: DailySnapshot = {
       dateKey: istanbulParts(new Date(now())).key,
       netWorthUsd: netWorth,
@@ -506,18 +531,38 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     opts.onPersistHistory?.(history);
   }
 
+  // Self-scheduling poll: bir sonraki çekim ancak öncekisi bitince planlanır — yavaş upstream
+  // yanıtı üst üste binen pollFx çağrıları biriktirmez (audit P1).
+  function scheduleNextPoll(): void {
+    pollTimer = setTimeout(() => void runPoll(), pollMs);
+  }
+  async function runPoll(): Promise<void> {
+    try {
+      await pollFx();
+    } finally {
+      if (started) scheduleNextPoll();
+    }
+  }
+
   async function start(): Promise<void> {
     if (started) return;
     started = true;
     feed = makeFeed({ symbols: [...CRYPTO_SYMBOLS], fxPairs: ['USDTTRY'], onPrice, onStatus, onFxRate });
-    pollTimer = setInterval(() => void pollFx(), pollMs);
+    tickTimer = setInterval(() => {
+      nowMsTick = now();
+    }, 1000);
     await pollFx(); // ilk çekim
+    if (started) scheduleNextPoll();
   }
   function stop(): void {
     started = false;
     if (pollTimer !== null) {
-      clearInterval(pollTimer);
+      clearTimeout(pollTimer);
       pollTimer = null;
+    }
+    if (tickTimer !== null) {
+      clearInterval(tickTimer);
+      tickTimer = null;
     }
     if (throttleTimer !== null) {
       clearTimeout(throttleTimer);
@@ -575,6 +620,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     },
     buy,
     sell,
+    tradeBlockReason,
     openDeposit: openDepositAction,
     breakDeposit: breakDepositAction,
     buyProperty: buyPropertyAction,

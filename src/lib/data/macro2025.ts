@@ -74,6 +74,7 @@ export const VASIYET_2025: Scenario = {
     usdTryVolatility: 0.012,
     assets: ASSETS_2025,
     dailyInflation: 0.0001,
+    // SENARYO oranı (yalnız VASİYET); canlı mod domain DEPOSIT_ANNUAL_RATE (%50) kullanır. Kalibrasyonda runner'a enjekte edilecek (winnability backlog).
     depositAnnualRate: 0.42,
   },
 };

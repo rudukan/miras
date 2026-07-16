@@ -1,29 +1,27 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createTtlCache } from '$lib/api/cachedFetch';
+import { createKeyedTtlFetchCache } from '$lib/api/cachedFetch';
 import type { CryptoValue } from '$lib/api/types';
 import { fetchCryptoValue, CRYPTO_FALLBACK, DEFAULT_COINS, CRYPTO_TTL_MS } from '$lib/api/cryptoSource';
 import { parseSymbolList } from '$lib/api/symbolLimit';
 
-const cache = createTtlCache<CryptoValue>({
+/** Coin listesini normalize eder: dedupe + sort + join — sırası farklı istekler
+ *  (`BTC,ETH` vs `ETH,BTC`) aynı cache key'ine düşsün (audit P1). */
+function normalizeSymbols(list: readonly string[]): string {
+  return Array.from(new Set(list)).sort().join(',');
+}
+
+// Coin-set-başına 5s TTL önbellek + inflight dedup (audit P1: parametreli istekler artık
+// cache'i bypass etmiyor — tek kod yolu, ?coins= dahil).
+const cache = createKeyedTtlFetchCache<CryptoValue>({
   ttlMs: CRYPTO_TTL_MS,
   fallback: CRYPTO_FALLBACK,
-  fetcher: () => fetchCryptoValue(DEFAULT_COINS, fetch),
+  fetcher: (key) => fetchCryptoValue(key ? key.split(',') : [], fetch),
 });
 
 export const GET: RequestHandler = async ({ url }) => {
-  const coinsParam = url.searchParams.get('coins');
+  const hasParams = url.searchParams.has('coins');
+  const coins = hasParams ? parseSymbolList(url.searchParams.get('coins')) : DEFAULT_COINS;
   const headers = { 'cache-control': 'public, max-age=5' };
-
-  if (coinsParam) {
-    const coins = parseSymbolList(coinsParam);
-    try {
-      const value = await fetchCryptoValue(coins, fetch);
-      return json({ value, asOf: Date.now(), stale: false }, { headers });
-    } catch (err) {
-      console.error('[api/crypto] ?coins= fetch başarısız, fallback dönülüyor', err);
-      return json({ value: CRYPTO_FALLBACK, asOf: 0, stale: true }, { headers });
-    }
-  }
-  return json(await cache(), { headers });
+  return json(await cache(normalizeSymbols(coins)), { headers });
 };

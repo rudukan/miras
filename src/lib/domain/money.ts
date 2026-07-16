@@ -52,8 +52,7 @@ export function toTRY(m: Money, rate: number, commission = 0): Money {
 /** TRY → USD. commission örn. 0.001 = %0.1 */
 export function toUSD(m: Money, rate: number, commission = 0): Money {
 	if (m.currency === 'USD') return m;
-	const effectiveRate = rate * (1 - commission);
-	return { amount: round2(m.amount / effectiveRate), currency: 'USD' };
+	return { amount: round2((m.amount / rate) * (1 - commission)), currency: 'USD' };
 }
 
 export function gte(a: Money, b: Money): boolean {

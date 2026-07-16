@@ -47,6 +47,7 @@ export function createCloudPush(
   let enabled = false; // boot uzlasmasi (chooseSource karari) bitmeden push yok — yaris kapisi
   let pending: SaveEnvelopeV1 | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let cancelled = false; // uçuştaki push cancel() ile yarıştıysa reddedilince diriltilmesin (review bulgusu)
 
   async function fire(): Promise<boolean> {
     if (pending == null) return true;
@@ -56,7 +57,8 @@ export function createCloudPush(
       await push(env);
       return true;
     } catch {
-      // Sessiz: offline oyunu bozmasin; sonraki schedule yeniden dener.
+      if (pending == null && !cancelled) pending = env; // iptal edilmişse diriltme
+      cancelled = false;
       return false;
     }
   }
@@ -64,6 +66,7 @@ export function createCloudPush(
   return {
     schedule(env: SaveEnvelopeV1): void {
       if (!enabled) return;
+      cancelled = false; // yeni meşru kayıt: önceki cancel()'ın gölgesi temizlenir
       pending = env;
       if (timer != null) clearTimeout(timer);
       timer = setTimeout(() => void fire(), debounceMs);
@@ -73,6 +76,7 @@ export function createCloudPush(
     },
     cancel(): void {
       pending = null;
+      cancelled = true;
       if (timer != null) {
         clearTimeout(timer);
         timer = null;
@@ -82,5 +86,26 @@ export function createCloudPush(
       if (timer != null) clearTimeout(timer);
       return fire();
     },
+  };
+}
+
+export interface SavesPusherDeps {
+  /** Oturum kullanıcısı; auth hatasında THROW eder, oturum yoksa null döner. */
+  getUser: () => Promise<{ id: string } | null>;
+  /** saves upsert; Supabase yanıt zarfını aynen döner (throw etmez).
+   *  PromiseLike: Supabase query builder thenable'dır, Promise DEĞİL. */
+  upsertSave: (userId: string, env: SaveEnvelopeV1) => PromiseLike<{ error: { message: string } | null }>;
+  getOwnerId: () => string | null;
+}
+
+/** upsert() sonucunu okuyup hatayı yüzeyler (audit P0 — bkz. dosya başı özet): bugün RLS/grant/5xx
+ *  hataları sessizce "başarı" sayılıp çıkışta clearSave son ilerlemeyi siliyordu. */
+export function createSavesPusher(deps: SavesPusherDeps): (env: SaveEnvelopeV1) => Promise<void> {
+  return async (env: SaveEnvelopeV1): Promise<void> => {
+    const user = await deps.getUser();
+    if (user == null) throw new Error('cloud-push: oturum yok, teslim edilemedi');
+    if (deps.getOwnerId() !== user.id) return; // yabancı oyun: kullanıcının kasasına yazılmaz (bilinçli no-op)
+    const { error } = await deps.upsertSave(user.id, env);
+    if (error != null) throw new Error(`cloud-push: ${error.message}`);
   };
 }

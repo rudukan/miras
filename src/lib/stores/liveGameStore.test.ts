@@ -180,7 +180,68 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect((t.fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterStart);
   });
 
-  it('9) netWorth throw-guard: holding fiyatı kaybolursa null (çökmez)', async () => {
+  it('8b) reaktif saat: start() sonrası 1sn\'de bir now() ile nowMsTick tazelenir; stop() ile durur (audit P1)', async () => {
+    vi.useFakeTimers();
+    const nowSpy = vi.fn(() => FIXED_NOW);
+    const t = setup({ now: nowSpy });
+    await t.store.start();
+    const callsAfterStart = nowSpy.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(3000); // 3 tick (1sn aralık) — pollMs 5000'e ulaşmaz
+    expect(nowSpy.mock.calls.length).toBeGreaterThanOrEqual(callsAfterStart + 3);
+
+    t.store.stop();
+    const callsAfterStop = nowSpy.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(nowSpy.mock.calls.length).toBe(callsAfterStop); // tick de poll gibi durdu
+  });
+
+  it('8c) poll self-scheduling: yavaş yanıt üst üste binmez, çözülünce pollMs sonra bir sonraki çağrı gelir (audit P1)', async () => {
+    vi.useFakeTimers();
+    let yahooCalls = 0;
+    // TS narrows a bare `let` only reassigned inside a nested closure to `never` at the outer
+    // call site — bir tutucu nesne (property erişimi) bu CFA tuhaflığını atlar.
+    const slowYahoo: { resolve: (() => void) | null } = { resolve: null };
+    const fetchFn = vi.fn((url: string) => {
+      if (url.startsWith('/api/crypto')) {
+        return Promise.resolve(resp({ value: { prices: { BTC: 60000, ETH: 3000 } }, asOf: 1, stale: false }));
+      }
+      yahooCalls++;
+      if (yahooCalls === 1) {
+        // start()'taki ilk pollFx — hemen çözülür.
+        return Promise.resolve(
+          resp({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 1, stale: false }),
+        );
+      }
+      // İkinci (interval-tetiklemeli) çağrı — bilerek asılı bırakılır.
+      return new Promise<Response>((resolve) => {
+        slowYahoo.resolve = () =>
+          resolve(resp({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 2, stale: false }));
+      });
+    }) as unknown as typeof fetch;
+    const makeFeed = (): BinanceFeed => ({ stop: vi.fn() });
+
+    const store = createLiveGameStore({ fetchFn, makeFeed, now: () => FIXED_NOW, throttleMs: 0, pollMs: 5000 });
+    await store.start();
+    expect(yahooCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(5000); // pollMs geçti → 2. çağrı (asılı) başlar
+    expect(yahooCalls).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(10000); // 2×pollMs daha — 2. çağrı hâlâ çözülmedi, bindirme YOK
+    expect(yahooCalls).toBe(2);
+
+    slowYahoo.resolve?.();
+    await vi.advanceTimersByTimeAsync(0); // asılı promise çözülsün, finally scheduleNextPoll çalışsın
+    expect(yahooCalls).toBe(2); // henüz pollMs geçmedi — 3. çağrı hemen gelmez
+
+    await vi.advanceTimersByTimeAsync(5000); // reschedule'dan sonra pollMs → 3. çağrı
+    expect(yahooCalls).toBe(3);
+
+    store.stop();
+  });
+
+  it('9) netWorth kısmi toplam: holding fiyatı kaybolursa nakit + bilinen pozisyonlar toplanır (null OLMAZ), profit null', async () => {
     vi.useFakeTimers();
     const t = setup();
     await t.store.start();
@@ -191,7 +252,11 @@ describe('createLiveGameStore (USD-taban)', () => {
     t.setYahoo({ value: { usdTry: 40, prices: { ASELS: 200, XAUGRAM: 5000, EUR: 45 } }, asOf: 222, stale: false });
     await vi.advanceTimersByTimeAsync(5000);
     flushSync();
-    expect(t.store.netWorthUsd).toBeNull();
+    // THYAO fiyatı kayboldu ama holding tek başınaydı — kalan tek bilinen bileşen nakit.
+    // netWorth null'a ÇÖKMEZ, kısmi toplama (yalnız nakit) düşer.
+    expect(t.store.netWorthUsd).not.toBeNull();
+    expect(t.store.netWorthUsd?.amount).toBeCloseTo(1_000_000 - 750, 2);
+    // Eksik veri yüzünden kâr göstergesi yanıltıcı bir % göstermesin diye null kalır.
     expect(t.store.profitRate).toBeNull();
   });
 
@@ -256,7 +321,10 @@ describe('createLiveGameStore (USD-taban)', () => {
   });
 
   it('12b) on-demand: addUs + fiyat gelince oto-takas buy çalışır (addBist ile mirror)', async () => {
-    const t = setup();
+    // FIXED_NOW BIST için seans içi ama NYSE için değil (05:00 EDT) — AAPL alımı guard'a
+    // takılmasın diye burada NYSE seans saatine denk gelen ayrı bir an enjekte edilir.
+    const NYSE_OPEN_NOW = new Date('2026-06-01T16:00:00Z').getTime(); // 12:00 EDT, Pazartesi
+    const t = setup({ now: () => NYSE_OPEN_NOW });
     await t.store.start();
     flushSync();
     expect(t.store.prices.some((p) => p.id === 'AAPL')).toBe(false);
@@ -453,7 +521,7 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(t.store.history).toHaveLength(1);
   });
 
-  it('23) günlük snapshot: fiyat eksikse (netWorth null) ATLA — history büyümez', async () => {
+  it('23) günlük snapshot: fiyat eksikse (netWorthDataComplete=false) ATLA — history büyümez', async () => {
     vi.useFakeTimers();
     const t = setup();
     await t.store.start();
@@ -465,7 +533,9 @@ describe('createLiveGameStore (USD-taban)', () => {
     await vi.advanceTimersByTimeAsync(5000);
     flushSync();
 
-    expect(t.store.netWorthUsd).toBeNull();
+    // netWorth artık null OLMAZ (kısmi toplam) — ama eksik veri yüzünden recordSnapshot yine
+    // yazmaz (netWorthDataComplete=false guard'ı asıl kapı).
+    expect(t.store.netWorthUsd).not.toBeNull();
     expect(t.store.history).toHaveLength(1); // büyümedi
   });
 
@@ -610,6 +680,81 @@ describe('createLiveGameStore (USD-taban)', () => {
       });
       expect(t2.store.usdTry).toBe(38);
     });
+  });
+});
+
+describe('trade guard: kapalı/stale piyasada işlem yasağı (audit P1)', () => {
+  it('kapalı piyasada (Cumartesi) BIST alımı yasak — holdings değişmez', async () => {
+    const closedAt = new Date('2026-07-18T09:00:00Z').getTime(); // Cumartesi 12:00 İstanbul
+    const t = setup({ now: () => closedAt });
+    await t.store.start();
+    flushSync();
+    const before = t.store.game;
+
+    t.store.buy('THYAO', 1);
+    flushSync();
+
+    expect(t.store.lastError).toMatch(/PİYASA KAPALI/);
+    expect(t.store.game).toBe(before);
+  });
+
+  it('kapalı piyasada bile kripto alımı serbest (7/24 muaf)', async () => {
+    const closedAt = new Date('2026-07-18T09:00:00Z').getTime(); // aynı Cumartesi
+    const t = setup({ now: () => closedAt });
+    await t.store.start();
+    flushSync();
+
+    t.store.buy('BTC', 1);
+    flushSync();
+
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'BTC')).toBe(true);
+  });
+
+  it('açık piyasada (hafta içi seans saati) BIST alımı serbest', async () => {
+    const t = setup(); // FIXED_NOW = Pazartesi 12:00 İstanbul, BIST açık
+    await t.store.start();
+    flushSync();
+
+    t.store.buy('THYAO', 1);
+    flushSync();
+
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'THYAO')).toBe(true);
+  });
+
+  it('fiyat verisi eskiyken (fxStale) BIST alımı yasak, kripto yine serbest', async () => {
+    const t = setup();
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
+    await t.store.start(); // ilk pollFx stale zarfı okur → fxStale=true
+    flushSync();
+
+    t.store.buy('THYAO', 1);
+    expect(t.store.lastError).toMatch(/FİYAT VERİSİ ESKİ/);
+
+    t.store.buy('BTC', 1);
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'BTC')).toBe(true);
+  });
+
+  it('hafta içi seans dışı satış da yasak (SAT aynı korumaya tabi)', async () => {
+    vi.useFakeTimers();
+    let clock = FIXED_NOW; // Pazartesi 12:00, açık — pozisyon açmak için
+    const t = setup({ now: () => clock });
+    await t.store.start();
+    flushSync();
+    t.store.buy('THYAO', 1);
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+
+    clock = new Date('2026-07-15T22:00:00Z').getTime(); // ≈ Perşembe 01:00 İstanbul, seans dışı
+    await vi.advanceTimersByTimeAsync(1000); // nowMsTick reaktif tazelensin
+    flushSync();
+
+    t.store.sell('THYAO', 1);
+    flushSync();
+
+    expect(t.store.lastError).toMatch(/PİYASA KAPALI/);
   });
 });
 

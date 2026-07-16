@@ -118,6 +118,34 @@ export function netWorthUsd(state: GameState, oracle: UsdPriceOracle): Money {
   return usd(total);
 }
 
+export interface NetWorthParts {
+  /** Nakit + fiyatlanabilen her holding'in toplamı (USD, ham sayı — ara toplam). */
+  totalUsd: number;
+  /** true ise TÜM holding'ler fiyatlanabildi (totalUsd == netWorthUsd ile birebir). */
+  complete: boolean;
+}
+
+/**
+ * netWorthUsd'nin "çökmeyen" hâli: bir holding'in fiyatı yoksa (oracle throw) o holding
+ * ATLANIR, döngü durmaz — nakit + fiyatlanan diğer pozisyonlar toplanmaya devam eder.
+ * `complete=false` eksik veri olduğunu işaretler; çağıran taraf (store) buna göre
+ * kâr/vs-USD göstergelerini gizleyebilir. Her holding kendi try/catch'inde değerlendirilir
+ * — döngünün etrafına tek bir try/catch koymak ilk eksik fiyatta tüm toplamı durdurur ki
+ * bu da bu fonksiyonun düzeltmek için var olduğu bug'ın kendisidir.
+ */
+export function netWorthPartsUsd(state: GameState, oracle: UsdPriceOracle): NetWorthParts {
+  let total = state.usdBalance.amount;
+  let complete = true;
+  for (const h of state.holdings) {
+    try {
+      total += multiply(oracle.assetUsd(h.assetId), h.units).amount;
+    } catch {
+      complete = false;
+    }
+  }
+  return { totalUsd: total, complete };
+}
+
 export function profitRate(state: GameState, oracle: UsdPriceOracle): number {
   return netWorthUsd(state, oracle).amount / STARTING_USD;
 }
@@ -133,6 +161,7 @@ export function openDeposit(
   usdTry: number,
   usdAmount: number,
   nowMs: number,
+  annualRate: number = DEPOSIT_ANNUAL_RATE,
 ): GameState {
   if (state.deposit !== null) throw new Error('Deposit already active');
   if (usdAmount <= 0) throw new Error('Amount must be positive');
@@ -143,7 +172,7 @@ export function openDeposit(
     usdAtOpen: usd(usdAmount),
     usdTryAtOpen: usdTry,
     openedAtMs: nowMs,
-    annualRate: DEPOSIT_ANNUAL_RATE,
+    annualRate,
   };
   return { ...state, usdBalance: subtract(state.usdBalance, usd(usdAmount)), deposit };
 }

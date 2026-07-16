@@ -1,0 +1,15 @@
+-- 0004_service_role_saves_select: service_role bu tabloyu PostgREST uzerinden okuyamiyordu.
+--
+-- service_role zaten BYPASSRLS (RLS politikalarini atlar) ama bu, Postgres'in ayri bir
+-- katmani olan taban GRANT kontrolunun yerine gecmez — ikisi bagimsiz mekanizma. 0001'de
+-- "once hepsini kapat, sonra gerekeni ac" sadece anon/authenticated icin dusunulmustu;
+-- service_role hic ele alinmamisti cunku o tarihte hicbir sunucu kodu service_role ile
+-- saves'e PostgREST uzerinden dokunmuyordu (api/account/delete GoTrue admin API kullanir,
+-- auth.users'i siler; cascade FK Postgres icinde, PostgREST grant katmanindan bagimsiz calisir).
+--
+-- Faz 0 Task 4 E2E'si (signout-persistence.spec.ts) cikistan sonra "request gitti" degil
+-- "veri gercekten kalici mi"yi service-role admin client ile dogrudan okuyarak kanitliyor —
+-- bu da ilk kez bu grant katmanina ihtiyac duydu. service_role zaten en yuksek guven
+-- seviyesindeki anahtar (BYPASSRLS + GoTrue admin API tam erisimi); SELECT grant'i bu guveni
+-- genisletmiyor, sadece PostgREST'in ayri grant kontrolunu var olan guvenle hizaliyor.
+grant select on table public.saves to service_role;

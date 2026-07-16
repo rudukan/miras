@@ -6,6 +6,7 @@ import {
   advanceTime,
   nextEventDay,
   netWorthUsd,
+  netWorthPartsUsd,
   profitRate,
   grewDollars,
   openDeposit,
@@ -179,6 +180,38 @@ describe('skor (USD)', () => {
   });
 });
 
+describe('netWorthPartsUsd (kısmi toplam — eksik fiyat tüm döngüyü durdurmaz)', () => {
+  it('tüm holding fiyatları biliniyorsa complete=true, totalUsd = netWorthUsd ile birebir', () => {
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'THYAO', 100);
+    s = buyAsset(s, ORACLE, 'BTC', 0.1);
+    const parts = netWorthPartsUsd(s, ORACLE);
+    expect(parts.complete).toBe(true);
+    expect(parts.totalUsd).toBeCloseTo(netWorthUsd(s, ORACLE).amount, 2);
+  });
+
+  it('2 holding, biri fiyatsız: fiyatsız olan ATLANIR (döngü durmaz), diğeri + nakit toplanır, complete=false', () => {
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'THYAO', 100); // fiyatlanabilir kalacak
+    s = buyAsset(s, ORACLE, 'BTC', 0.1); // fiyatı kaybolacak
+    const partialOracle = stubOracle({ THYAO: 7.5 }); // BTC eksik
+    const cashAfterBuys = s.usdBalance.amount;
+
+    const parts = netWorthPartsUsd(s, partialOracle);
+
+    expect(parts.complete).toBe(false);
+    // BTC atlanmış olmalı ama THYAO + nakit toplanmaya devam etmiş olmalı (ilk throw'da durmadı).
+    expect(parts.totalUsd).toBeCloseTo(cashAfterBuys + 100 * 7.5, 2);
+  });
+
+  it('holding yok (yalnız nakit): complete=true, totalUsd = nakit', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    const parts = netWorthPartsUsd(s, ORACLE);
+    expect(parts.complete).toBe(true);
+    expect(parts.totalUsd).toBeCloseTo(STARTING_USD, 2);
+  });
+});
+
 describe("mevduat reducer'ları", () => {
   const DAY_MS = 86_400_000;
   const base = createGameState('vasiyet', 1, 'p1', 0); // usdBalance $1M, deposit null
@@ -212,6 +245,16 @@ describe("mevduat reducer'ları", () => {
     const closed = breakDeposit(opened, 40, TERM_DAYS * DAY_MS);
     expect(closed.usdBalance.amount).toBeGreaterThan(1_000_000); // faiz eklendi
     expect(closed.deposit).toBeNull();
+  });
+
+  it('openDeposit: senaryo-özgü oran enjektesiyle annualRate seam açılır', () => {
+    const s = openDeposit(base, 40, 10_000, 1000, 0.42);
+    expect(s.deposit?.annualRate).toBe(0.42);
+  });
+
+  it('openDeposit: parametresiz çağrı DEPOSIT_ANNUAL_RATE taşır (davranış değişikliği yok)', () => {
+    const s = openDeposit(base, 40, 10_000, 1000);
+    expect(s.deposit?.annualRate).toBe(DEPOSIT_ANNUAL_RATE);
   });
 });
 
