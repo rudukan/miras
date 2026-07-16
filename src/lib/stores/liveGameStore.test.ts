@@ -196,6 +196,51 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(nowSpy.mock.calls.length).toBe(callsAfterStop); // tick de poll gibi durdu
   });
 
+  it('8c) poll self-scheduling: yavaş yanıt üst üste binmez, çözülünce pollMs sonra bir sonraki çağrı gelir (audit P1)', async () => {
+    vi.useFakeTimers();
+    let yahooCalls = 0;
+    // TS narrows a bare `let` only reassigned inside a nested closure to `never` at the outer
+    // call site — bir tutucu nesne (property erişimi) bu CFA tuhaflığını atlar.
+    const slowYahoo: { resolve: (() => void) | null } = { resolve: null };
+    const fetchFn = vi.fn((url: string) => {
+      if (url.startsWith('/api/crypto')) {
+        return Promise.resolve(resp({ value: { prices: { BTC: 60000, ETH: 3000 } }, asOf: 1, stale: false }));
+      }
+      yahooCalls++;
+      if (yahooCalls === 1) {
+        // start()'taki ilk pollFx — hemen çözülür.
+        return Promise.resolve(
+          resp({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 1, stale: false }),
+        );
+      }
+      // İkinci (interval-tetiklemeli) çağrı — bilerek asılı bırakılır.
+      return new Promise<Response>((resolve) => {
+        slowYahoo.resolve = () =>
+          resolve(resp({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 2, stale: false }));
+      });
+    }) as unknown as typeof fetch;
+    const makeFeed = (): BinanceFeed => ({ stop: vi.fn() });
+
+    const store = createLiveGameStore({ fetchFn, makeFeed, now: () => FIXED_NOW, throttleMs: 0, pollMs: 5000 });
+    await store.start();
+    expect(yahooCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(5000); // pollMs geçti → 2. çağrı (asılı) başlar
+    expect(yahooCalls).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(10000); // 2×pollMs daha — 2. çağrı hâlâ çözülmedi, bindirme YOK
+    expect(yahooCalls).toBe(2);
+
+    slowYahoo.resolve?.();
+    await vi.advanceTimersByTimeAsync(0); // asılı promise çözülsün, finally scheduleNextPoll çalışsın
+    expect(yahooCalls).toBe(2); // henüz pollMs geçmedi — 3. çağrı hemen gelmez
+
+    await vi.advanceTimersByTimeAsync(5000); // reschedule'dan sonra pollMs → 3. çağrı
+    expect(yahooCalls).toBe(3);
+
+    store.stop();
+  });
+
   it('9) netWorth throw-guard: holding fiyatı kaybolursa null (çökmez)', async () => {
     vi.useFakeTimers();
     const t = setup();

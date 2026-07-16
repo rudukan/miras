@@ -384,7 +384,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   // --- canlı veri yaşam döngüsü ---
   let feed: BinanceFeed | null = null;
-  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let tickTimer: ReturnType<typeof setInterval> | null = null;
   let throttleTimer: ReturnType<typeof setTimeout> | null = null;
   let pending: Record<string, number> = {};
@@ -512,20 +512,33 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     opts.onPersistHistory?.(history);
   }
 
+  // Self-scheduling poll: bir sonraki çekim ancak öncekisi bitince planlanır — yavaş upstream
+  // yanıtı üst üste binen pollFx çağrıları biriktirmez (audit P1).
+  function scheduleNextPoll(): void {
+    pollTimer = setTimeout(() => void runPoll(), pollMs);
+  }
+  async function runPoll(): Promise<void> {
+    try {
+      await pollFx();
+    } finally {
+      if (started) scheduleNextPoll();
+    }
+  }
+
   async function start(): Promise<void> {
     if (started) return;
     started = true;
     feed = makeFeed({ symbols: [...CRYPTO_SYMBOLS], fxPairs: ['USDTTRY'], onPrice, onStatus, onFxRate });
-    pollTimer = setInterval(() => void pollFx(), pollMs);
     tickTimer = setInterval(() => {
       nowMsTick = now();
     }, 1000);
     await pollFx(); // ilk çekim
+    if (started) scheduleNextPoll();
   }
   function stop(): void {
     started = false;
     if (pollTimer !== null) {
-      clearInterval(pollTimer);
+      clearTimeout(pollTimer);
       pollTimer = null;
     }
     if (tickTimer !== null) {
