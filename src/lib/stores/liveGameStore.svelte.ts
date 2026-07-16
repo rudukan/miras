@@ -166,6 +166,11 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   const initial = opts.initial ?? null;
 
   // --- reaktif durum ---
+  // "Duvar saati" cache'i: start()'ta 1s'de bir now() ile tazelenir (setInterval yalnız state
+  // besliyor, DOM'a dokunmaz — mevcut poll kalıbıyla aynı). depositUsd/propertiesUsd bunu okur
+  // ki aksiyon olmasa da mevduat/kira tahakkuku ekranda akıyor görünsün (audit P1). Aksiyon-zamanı
+  // hesaplamalar (apply/openDeposit vb.) enjekte edilebilir now()'ı kullanmaya devam eder.
+  let nowMsTick = $state(now());
   let game = $state<GameState>(initial?.game ?? createGameState('canli', seed, playerId, now()));
   let fxCache = $state<FxValue>(FALLBACK_FX); // tüm fiyatlar TRY
   let cryptoUsd = $state<Record<string, number>>({}); // USD (TRY çevrimi source'da)
@@ -226,13 +231,13 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   // netWorth: holding fiyatı yoksa reducer throw eder → try/catch ile null'a düşürülür (UI "—").
   // Mevduat USD değeri (mark-to-market): anapara + birikmiş net faiz / canlı kur.
   const depositUsd = $derived(
-    game.deposit === null ? 0 : currentValueTry(game.deposit, now()).amount / sealedUsdTry(),
+    game.deposit === null ? 0 : currentValueTry(game.deposit, nowMsTick).amount / sealedUsdTry(),
   );
   // Emlak USD değeri: bedel (TL sabit) + kasadaki birikmiş kira, mühürlü kurdan.
   const propertiesUsd = $derived.by<number>(() => {
     let total = 0;
     for (const p of game.properties) {
-      total += (p.priceTryAtBuy.amount + accruedRentTry(p, now()).amount) / sealedUsdTry();
+      total += (p.priceTryAtBuy.amount + accruedRentTry(p, nowMsTick).amount) / sealedUsdTry();
     }
     return total;
   });
@@ -380,6 +385,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   // --- canlı veri yaşam döngüsü ---
   let feed: BinanceFeed | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let tickTimer: ReturnType<typeof setInterval> | null = null;
   let throttleTimer: ReturnType<typeof setTimeout> | null = null;
   let pending: Record<string, number> = {};
   let started = false;
@@ -511,6 +517,9 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     started = true;
     feed = makeFeed({ symbols: [...CRYPTO_SYMBOLS], fxPairs: ['USDTTRY'], onPrice, onStatus, onFxRate });
     pollTimer = setInterval(() => void pollFx(), pollMs);
+    tickTimer = setInterval(() => {
+      nowMsTick = now();
+    }, 1000);
     await pollFx(); // ilk çekim
   }
   function stop(): void {
@@ -518,6 +527,10 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     if (pollTimer !== null) {
       clearInterval(pollTimer);
       pollTimer = null;
+    }
+    if (tickTimer !== null) {
+      clearInterval(tickTimer);
+      tickTimer = null;
     }
     if (throttleTimer !== null) {
       clearTimeout(throttleTimer);

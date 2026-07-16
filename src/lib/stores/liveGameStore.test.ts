@@ -180,6 +180,22 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect((t.fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterStart);
   });
 
+  it('8b) reaktif saat: start() sonrası 1sn\'de bir now() ile nowMsTick tazelenir; stop() ile durur (audit P1)', async () => {
+    vi.useFakeTimers();
+    const nowSpy = vi.fn(() => FIXED_NOW);
+    const t = setup({ now: nowSpy });
+    await t.store.start();
+    const callsAfterStart = nowSpy.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(3000); // 3 tick (1sn aralık) — pollMs 5000'e ulaşmaz
+    expect(nowSpy.mock.calls.length).toBeGreaterThanOrEqual(callsAfterStart + 3);
+
+    t.store.stop();
+    const callsAfterStop = nowSpy.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(nowSpy.mock.calls.length).toBe(callsAfterStop); // tick de poll gibi durdu
+  });
+
   it('9) netWorth throw-guard: holding fiyatı kaybolursa null (çökmez)', async () => {
     vi.useFakeTimers();
     const t = setup();
