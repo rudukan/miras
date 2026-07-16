@@ -79,3 +79,57 @@ describe('GET /api/crypto', () => {
     }
   });
 });
+
+/** Global fetch'i sarıp toplam çağrı sayısını izleyen yardımcı — TTL cache hit/miss'i
+ *  gerçek fetch adediyle doğrulamak için (call-count assertion'ları). */
+function countingFetch(inner: typeof fetch): { fetch: typeof fetch; count: () => number } {
+  let calls = 0;
+  const wrapped = ((...args: Parameters<typeof fetch>) => {
+    calls++;
+    return inner(...args);
+  }) as typeof fetch;
+  return { fetch: wrapped, count: () => calls };
+}
+
+describe('GET /api/crypto — keyed cache (audit P1, Task 8: parametreli istekler artık bypass etmiyor)', () => {
+  it('?coins=ETH,SOL TTL içinde tekrar istenirse VE sırası değişirse (SOL,ETH) upstream fetch tetiklemez', async () => {
+    const real = globalThis.fetch;
+    const { fetch: f, count } = countingFetch(routedFetch());
+    globalThis.fetch = f;
+    try {
+      await GET({ url: new URL('http://localhost/api/crypto?coins=ETH,SOL') } as any); // ısıt
+      const afterFirst = count();
+      expect(afterFirst).toBeGreaterThan(0); // gerçek upstream fetch tetiklendi
+
+      await GET({ url: new URL('http://localhost/api/crypto?coins=ETH,SOL') } as any); // aynı sıra
+      expect(count()).toBe(afterFirst); // TTL içinde -> upstream tekrar çağrılmadı
+
+      const res = await GET({ url: new URL('http://localhost/api/crypto?coins=SOL,ETH') } as any); // ters sıra
+      expect(count()).toBe(afterFirst); // dedupe+sort normalize -> AYNI cache key
+      const body = await res.json();
+      expect(body.stale).toBe(false);
+      expect(body.value.prices.ETH).toBe(3300.1); // ısınmış cache'ten geldi
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  it('parametresiz istek default-set key\'ini kullanır; 2. çağrıda upstream tekrar çağrılmaz', async () => {
+    const real = globalThis.fetch;
+    const { fetch: f, count } = countingFetch(routedFetch());
+    globalThis.fetch = f;
+    try {
+      const res1 = await GET({ url: new URL('http://localhost/api/crypto') } as any);
+      const afterFirst = count();
+      expect(afterFirst).toBeGreaterThan(0);
+      const body1 = await res1.json();
+      expect(body1.stale).toBe(false);
+      expect(body1.value.prices.BTC).toBe(95000.5); // DEFAULT_COINS içeriyor
+
+      await GET({ url: new URL('http://localhost/api/crypto') } as any);
+      expect(count()).toBe(afterFirst); // TTL içinde -> upstream tekrar çağrılmadı
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});
