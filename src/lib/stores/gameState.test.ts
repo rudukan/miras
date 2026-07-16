@@ -246,6 +246,16 @@ describe("mevduat reducer'ları", () => {
     expect(closed.usdBalance.amount).toBeGreaterThan(1_000_000); // faiz eklendi
     expect(closed.deposit).toBeNull();
   });
+
+  it('openDeposit: senaryo-özgü oran enjektesiyle annualRate seam açılır', () => {
+    const s = openDeposit(base, 40, 10_000, 1000, 0.42);
+    expect(s.deposit?.annualRate).toBe(0.42);
+  });
+
+  it('openDeposit: parametresiz çağrı DEPOSIT_ANNUAL_RATE taşır (davranış değişikliği yok)', () => {
+    const s = openDeposit(base, 40, 10_000, 1000);
+    expect(s.deposit?.annualRate).toBe(DEPOSIT_ANNUAL_RATE);
+  });
 });
 
 describe("emlak reducer'ları (kira kasası)", () => {

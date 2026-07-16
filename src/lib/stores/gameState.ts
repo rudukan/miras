@@ -161,6 +161,7 @@ export function openDeposit(
   usdTry: number,
   usdAmount: number,
   nowMs: number,
+  annualRate: number = DEPOSIT_ANNUAL_RATE,
 ): GameState {
   if (state.deposit !== null) throw new Error('Deposit already active');
   if (usdAmount <= 0) throw new Error('Amount must be positive');
@@ -171,7 +172,7 @@ export function openDeposit(
     usdAtOpen: usd(usdAmount),
     usdTryAtOpen: usdTry,
     openedAtMs: nowMs,
-    annualRate: DEPOSIT_ANNUAL_RATE,
+    annualRate,
   };
   return { ...state, usdBalance: subtract(state.usdBalance, usd(usdAmount)), deposit };
 }
