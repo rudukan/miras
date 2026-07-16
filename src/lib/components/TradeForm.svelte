@@ -33,6 +33,9 @@
 	const assetLabel = $derived(
 		assetId ? (CATALOG[assetId]?.label ?? bistName(assetId)) : null,
 	);
+	// Kapalı piyasa / stale fiyat guard'ı — store'un TEK kaynağı (apply() içindeki guard'la aynı
+	// mantık). null = serbest; aksi halde AL/SAT devre dışı + altında amber uyarı (audit P1).
+	const blockReason = $derived(assetId ? store.tradeBlockReason(assetId) : null);
 
 	// Kaynak: yazılan biçimlendirilmiş metin (binlik virgüllü). Sayısal değerler bundan türer —
 	// büyük tutarlar (ör. 62,161,390) yazarken basamak sayısı okunur kalsın diye.
@@ -154,20 +157,30 @@
 		<button
 			type="button"
 			onclick={handleBuy}
+			disabled={blockReason !== null}
 			class="flex-1 py-1.5 bg-term-bg border border-term-green text-term-green font-bold
-			       hover:bg-term-panelLight glow-border-green transition-colors"
+			       hover:bg-term-panelLight glow-border-green transition-colors
+			       disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-term-bg"
 		>
 			AL
 		</button>
 		<button
 			type="button"
 			onclick={handleSell}
+			disabled={blockReason !== null}
 			class="flex-1 py-1.5 bg-term-bg border border-term-red text-term-red font-bold
-			       hover:bg-term-panelLight transition-colors"
+			       hover:bg-term-panelLight transition-colors
+			       disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-term-bg"
 		>
 			SAT
 		</button>
 	</div>
+
+	{#if blockReason !== null}
+		<div class="border border-term-amber bg-term-bg px-3 py-2 text-term-amber text-[11px] leading-snug mt-2">
+			<span class="font-bold mr-1">UYARI:</span>{blockReason}
+		</div>
+	{/if}
 
 	{#if store.lastError !== null}
 		<div class="border border-term-red bg-term-bg px-3 py-2 text-term-red text-[11px] leading-snug mt-2">

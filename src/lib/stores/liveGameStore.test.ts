@@ -321,7 +321,10 @@ describe('createLiveGameStore (USD-taban)', () => {
   });
 
   it('12b) on-demand: addUs + fiyat gelince oto-takas buy çalışır (addBist ile mirror)', async () => {
-    const t = setup();
+    // FIXED_NOW BIST için seans içi ama NYSE için değil (05:00 EDT) — AAPL alımı guard'a
+    // takılmasın diye burada NYSE seans saatine denk gelen ayrı bir an enjekte edilir.
+    const NYSE_OPEN_NOW = new Date('2026-06-01T16:00:00Z').getTime(); // 12:00 EDT, Pazartesi
+    const t = setup({ now: () => NYSE_OPEN_NOW });
     await t.store.start();
     flushSync();
     expect(t.store.prices.some((p) => p.id === 'AAPL')).toBe(false);
@@ -677,6 +680,81 @@ describe('createLiveGameStore (USD-taban)', () => {
       });
       expect(t2.store.usdTry).toBe(38);
     });
+  });
+});
+
+describe('trade guard: kapalı/stale piyasada işlem yasağı (audit P1)', () => {
+  it('kapalı piyasada (Cumartesi) BIST alımı yasak — holdings değişmez', async () => {
+    const closedAt = new Date('2026-07-18T09:00:00Z').getTime(); // Cumartesi 12:00 İstanbul
+    const t = setup({ now: () => closedAt });
+    await t.store.start();
+    flushSync();
+    const before = t.store.game;
+
+    t.store.buy('THYAO', 1);
+    flushSync();
+
+    expect(t.store.lastError).toMatch(/PİYASA KAPALI/);
+    expect(t.store.game).toBe(before);
+  });
+
+  it('kapalı piyasada bile kripto alımı serbest (7/24 muaf)', async () => {
+    const closedAt = new Date('2026-07-18T09:00:00Z').getTime(); // aynı Cumartesi
+    const t = setup({ now: () => closedAt });
+    await t.store.start();
+    flushSync();
+
+    t.store.buy('BTC', 1);
+    flushSync();
+
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'BTC')).toBe(true);
+  });
+
+  it('açık piyasada (hafta içi seans saati) BIST alımı serbest', async () => {
+    const t = setup(); // FIXED_NOW = Pazartesi 12:00 İstanbul, BIST açık
+    await t.store.start();
+    flushSync();
+
+    t.store.buy('THYAO', 1);
+    flushSync();
+
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'THYAO')).toBe(true);
+  });
+
+  it('fiyat verisi eskiyken (fxStale) BIST alımı yasak, kripto yine serbest', async () => {
+    const t = setup();
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
+    await t.store.start(); // ilk pollFx stale zarfı okur → fxStale=true
+    flushSync();
+
+    t.store.buy('THYAO', 1);
+    expect(t.store.lastError).toMatch(/FİYAT VERİSİ ESKİ/);
+
+    t.store.buy('BTC', 1);
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'BTC')).toBe(true);
+  });
+
+  it('hafta içi seans dışı satış da yasak (SAT aynı korumaya tabi)', async () => {
+    vi.useFakeTimers();
+    let clock = FIXED_NOW; // Pazartesi 12:00, açık — pozisyon açmak için
+    const t = setup({ now: () => clock });
+    await t.store.start();
+    flushSync();
+    t.store.buy('THYAO', 1);
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+
+    clock = new Date('2026-07-15T22:00:00Z').getTime(); // ≈ Perşembe 01:00 İstanbul, seans dışı
+    await vi.advanceTimersByTimeAsync(1000); // nowMsTick reaktif tazelensin
+    flushSync();
+
+    t.store.sell('THYAO', 1);
+    flushSync();
+
+    expect(t.store.lastError).toMatch(/PİYASA KAPALI/);
   });
 });
 

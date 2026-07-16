@@ -96,6 +96,9 @@ export interface LiveGameStore {
   readonly properties: OwnedProperty[];
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
+  /** Bir varlıkta şu an işlem (al/sat) serbest mi? null = serbest; aksi halde kullanıcıya
+   *  gösterilecek Türkçe blok nedeni. Guard (apply içi) ve UI (TradeForm) TEK bu kaynağı okur. */
+  tradeBlockReason(assetId: string): string | null;
   openDeposit(usdAmount: number): void;
   breakDeposit(): void;
   buyProperty(propertyId: string): void;
@@ -335,8 +338,34 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       lastError = e instanceof Error ? e.message : String(e);
     }
   }
-  const buy = (assetId: string, units: number) => apply(() => buyAsset(game, oracle, assetId, units));
-  const sell = (assetId: string, units: number) => apply(() => sellAsset(game, oracle, assetId, units));
+  /** İşlem guard'ı (audit P1) — kapalı piyasada / stale fiyatta 15dk gecikmeli son fiyattan
+   *  arbitraj deliğini kapatır. Kategori çözümü `rows`/`prices` derived'ının aynı örüntüsü
+   *  (CATALOG üyeliği → yoksa activeUs'te mi → değilse 'bist'). Kripto her zaman muaf (7/24).
+   *  `nowMsTick` (reaktif saat) okunur ki seans açılınca UI'daki $derived kendiliğinden güncellensin. */
+  function tradeBlockReason(assetId: string): string | null {
+    const category: AssetCategory =
+      CATALOG[assetId]?.category ?? (activeUs.includes(assetId) ? 'us' : 'bist');
+    if (category === 'crypto') return null;
+    if (!isMarketOpen(category, new Date(nowMsTick))) {
+      return 'PİYASA KAPALI — bu varlık yalnız seans saatlerinde işlem görür';
+    }
+    if (fxStale) {
+      return 'FİYAT VERİSİ ESKİ — bağlantı dönene dek işlem kapalı';
+    }
+    return null;
+  }
+  const buy = (assetId: string, units: number) =>
+    apply(() => {
+      const blocked = tradeBlockReason(assetId);
+      if (blocked) throw new Error(blocked);
+      return buyAsset(game, oracle, assetId, units);
+    });
+  const sell = (assetId: string, units: number) =>
+    apply(() => {
+      const blocked = tradeBlockReason(assetId);
+      if (blocked) throw new Error(blocked);
+      return sellAsset(game, oracle, assetId, units);
+    });
   const openDepositAction = (usdAmount: number) =>
     apply(() => openDeposit(game, sealedUsdTry(), usdAmount, now()));
   const breakDepositAction = () => apply(() => breakDeposit(game, sealedUsdTry(), now()));
@@ -591,6 +620,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     },
     buy,
     sell,
+    tradeBlockReason,
     openDeposit: openDepositAction,
     breakDeposit: breakDepositAction,
     buyProperty: buyPropertyAction,
