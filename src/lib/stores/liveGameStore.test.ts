@@ -241,7 +241,7 @@ describe('createLiveGameStore (USD-taban)', () => {
     store.stop();
   });
 
-  it('9) netWorth throw-guard: holding fiyatı kaybolursa null (çökmez)', async () => {
+  it('9) netWorth kısmi toplam: holding fiyatı kaybolursa nakit + bilinen pozisyonlar toplanır (null OLMAZ), profit null', async () => {
     vi.useFakeTimers();
     const t = setup();
     await t.store.start();
@@ -252,7 +252,11 @@ describe('createLiveGameStore (USD-taban)', () => {
     t.setYahoo({ value: { usdTry: 40, prices: { ASELS: 200, XAUGRAM: 5000, EUR: 45 } }, asOf: 222, stale: false });
     await vi.advanceTimersByTimeAsync(5000);
     flushSync();
-    expect(t.store.netWorthUsd).toBeNull();
+    // THYAO fiyatı kayboldu ama holding tek başınaydı — kalan tek bilinen bileşen nakit.
+    // netWorth null'a ÇÖKMEZ, kısmi toplama (yalnız nakit) düşer.
+    expect(t.store.netWorthUsd).not.toBeNull();
+    expect(t.store.netWorthUsd?.amount).toBeCloseTo(1_000_000 - 750, 2);
+    // Eksik veri yüzünden kâr göstergesi yanıltıcı bir % göstermesin diye null kalır.
     expect(t.store.profitRate).toBeNull();
   });
 
@@ -514,7 +518,7 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(t.store.history).toHaveLength(1);
   });
 
-  it('23) günlük snapshot: fiyat eksikse (netWorth null) ATLA — history büyümez', async () => {
+  it('23) günlük snapshot: fiyat eksikse (netWorthDataComplete=false) ATLA — history büyümez', async () => {
     vi.useFakeTimers();
     const t = setup();
     await t.store.start();
@@ -526,7 +530,9 @@ describe('createLiveGameStore (USD-taban)', () => {
     await vi.advanceTimersByTimeAsync(5000);
     flushSync();
 
-    expect(t.store.netWorthUsd).toBeNull();
+    // netWorth artık null OLMAZ (kısmi toplam) — ama eksik veri yüzünden recordSnapshot yine
+    // yazmaz (netWorthDataComplete=false guard'ı asıl kapı).
+    expect(t.store.netWorthUsd).not.toBeNull();
     expect(t.store.history).toHaveLength(1); // büyümedi
   });
 

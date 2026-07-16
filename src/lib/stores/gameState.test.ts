@@ -6,6 +6,7 @@ import {
   advanceTime,
   nextEventDay,
   netWorthUsd,
+  netWorthPartsUsd,
   profitRate,
   grewDollars,
   openDeposit,
@@ -176,6 +177,38 @@ describe('skor (USD)', () => {
       return netWorthUsd(s, ORACLE).amount;
     }
     expect(run()).toBe(run());
+  });
+});
+
+describe('netWorthPartsUsd (kısmi toplam — eksik fiyat tüm döngüyü durdurmaz)', () => {
+  it('tüm holding fiyatları biliniyorsa complete=true, totalUsd = netWorthUsd ile birebir', () => {
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'THYAO', 100);
+    s = buyAsset(s, ORACLE, 'BTC', 0.1);
+    const parts = netWorthPartsUsd(s, ORACLE);
+    expect(parts.complete).toBe(true);
+    expect(parts.totalUsd).toBeCloseTo(netWorthUsd(s, ORACLE).amount, 2);
+  });
+
+  it('2 holding, biri fiyatsız: fiyatsız olan ATLANIR (döngü durmaz), diğeri + nakit toplanır, complete=false', () => {
+    let s = createGameState('vasiyet', 12345, 'p', 0);
+    s = buyAsset(s, ORACLE, 'THYAO', 100); // fiyatlanabilir kalacak
+    s = buyAsset(s, ORACLE, 'BTC', 0.1); // fiyatı kaybolacak
+    const partialOracle = stubOracle({ THYAO: 7.5 }); // BTC eksik
+    const cashAfterBuys = s.usdBalance.amount;
+
+    const parts = netWorthPartsUsd(s, partialOracle);
+
+    expect(parts.complete).toBe(false);
+    // BTC atlanmış olmalı ama THYAO + nakit toplanmaya devam etmiş olmalı (ilk throw'da durmadı).
+    expect(parts.totalUsd).toBeCloseTo(cashAfterBuys + 100 * 7.5, 2);
+  });
+
+  it('holding yok (yalnız nakit): complete=true, totalUsd = nakit', () => {
+    const s = createGameState('vasiyet', 12345, 'p', 0);
+    const parts = netWorthPartsUsd(s, ORACLE);
+    expect(parts.complete).toBe(true);
+    expect(parts.totalUsd).toBeCloseTo(STARTING_USD, 2);
   });
 });
 

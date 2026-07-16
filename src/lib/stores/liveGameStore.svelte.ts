@@ -5,7 +5,7 @@ import {
   createGameState,
   buyAsset,
   sellAsset,
-  netWorthUsd as netWorthUsdFn,
+  netWorthPartsUsd,
   openDeposit,
   breakDeposit,
   buyProperty,
@@ -228,7 +228,10 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   };
 
   // --- türev değerler ($derived; render bunlardan, setInterval yalnız cache'i besler) ---
-  // netWorth: holding fiyatı yoksa reducer throw eder → try/catch ile null'a düşürülür (UI "—").
+  // netWorth: nakit + fiyatlanabilen HER holding (netWorthPartsUsd) — bir holding'in fiyatı
+  // eksikse yalnız o holding atlanır, toplam nakite çökmez (audit P1). Eksik veri varsa
+  // netWorthDataComplete=false olur; kâr göstergeleri (profit/vsUsdHold) o zaman null kalır,
+  // ama netWorth kendisi hep bilinen kısmi toplamı gösterir (asla null değil).
   // Mevduat USD değeri (mark-to-market): anapara + birikmiş net faiz / canlı kur.
   const depositUsd = $derived(
     game.deposit === null ? 0 : currentValueTry(game.deposit, nowMsTick).amount / sealedUsdTry(),
@@ -241,27 +244,13 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     }
     return total;
   });
-  const netWorth = $derived.by<Money | null>(() => {
-    try {
-      return usd(netWorthUsdFn(game, oracle).amount + depositUsd + propertiesUsd);
-    } catch {
-      return game.deposit !== null || game.properties.length > 0
-        ? usd(depositUsd + propertiesUsd)
-        : null;
-    }
-  });
-  // Mevduat açıkken bir holding fiyatı eksikse netWorth depositUsd'a düşer (null DEĞİL) —
+  const nwParts = $derived(netWorthPartsUsd(game, oracle));
+  const netWorth = $derived<Money>(usd(nwParts.totalUsd + depositUsd + propertiesUsd));
+  // Bir holding fiyatı eksikse netWorth kısmi toplama düşer (asla null değil) — ama
   // recordSnapshot bu eksik durumu ayrıca bilmeli, yoksa degrade değer history'yi ezer.
-  const netWorthDataComplete = $derived.by<boolean>(() => {
-    try {
-      netWorthUsdFn(game, oracle);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-  const profit = $derived(netWorth === null ? null : netWorth.amount / STARTING_USD);
-  const vsUsdHold = $derived(netWorth === null ? null : usd(netWorth.amount - STARTING_USD));
+  const netWorthDataComplete = $derived<boolean>(nwParts.complete);
+  const profit = $derived(netWorthDataComplete ? netWorth.amount / STARTING_USD : null);
+  const vsUsdHold = $derived(netWorthDataComplete ? usd(netWorth.amount - STARTING_USD) : null);
 
   const positions = $derived.by<PositionRow[]>(() =>
     game.holdings.map((h) => {
@@ -491,10 +480,11 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     }
   }
 
-  // Fiyat eksikse ATLA — çöp veri yazılmaz (mevduat açıkken netWorth null DEĞİL, depositUsd'a
-  // düşer; bu yüzden netWorthDataComplete ayrıca kontrol edilir).
+  // Fiyat eksikse ATLA — çöp veri yazılmaz. netWorth artık hep Money (kısmi toplam, asla null
+  // değil — netWorthPartsUsd), bu yüzden asıl kapı burada netWorthDataComplete: eksik fiyat
+  // varsa kısmi netWorth'ü snapshot'a yazmayız (vsUsdHold da complete değilse null kalır).
   function recordSnapshot(): void {
-    if (netWorth === null || vsUsdHold === null || !netWorthDataComplete) return;
+    if (vsUsdHold === null || !netWorthDataComplete) return;
     const snap: DailySnapshot = {
       dateKey: istanbulParts(new Date(now())).key,
       netWorthUsd: netWorth,
