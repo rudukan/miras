@@ -70,6 +70,20 @@ describe('currency conversion', () => {
 		expect(result.amount).toBeCloseTo(1000, 1);
 	});
 
+	it('TRY → USD with %0.1 commission: çevir sonra komisyon düş', () => {
+		const result = toUSD(tryM(35_300), RATE, 0.001);
+		expect(result.currency).toBe('USD');
+		expect(result.amount).toBe(999);
+	});
+
+	it('TRY → USD commission monotonluğu: komisyon arttıkça sonuç azalır', () => {
+		const result0 = toUSD(tryM(35_300), RATE, 0);
+		const result1 = toUSD(tryM(35_300), RATE, 0.001);
+		const result2 = toUSD(tryM(35_300), RATE, 0.002);
+		expect(result0.amount).toBeGreaterThan(result1.amount);
+		expect(result1.amount).toBeGreaterThan(result2.amount);
+	});
+
 	it('same currency passthrough (TRY stays TRY)', () => {
 		expect(toTRY(tryM(1000), RATE).currency).toBe('TRY');
 		expect(toUSD(usd(1000), RATE).currency).toBe('USD');
