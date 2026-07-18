@@ -22,7 +22,7 @@
 	import { daysElapsed, dailyBreakdown } from '$lib/domain/snapshot/dailySnapshot';
 	import { buildClosingCardModel } from '$lib/components/closingCard';
 	import type { ShareResult } from '$lib/share/share';
-	import { sendTelemetry, pingDailyVisit } from '$lib/api/telemetry';
+	import { sendTelemetry, pingDailyVisit, pingFirstTrade } from '$lib/api/telemetry';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import NetWorthMirror from '$lib/components/NetWorthMirror.svelte';
@@ -84,6 +84,11 @@
 			},
 			onPersistHistory: (history) => {
 				if (browser && lastPersistAllowed) saveHistory(localStorage, { v: 1, history });
+			},
+			onFirstTrade: () => {
+				// playerId SAYFADAN okunur, store'un iç playerId'sinden DEĞİL — kayıtlı oyunda
+				// store'un playerId'si 'restored' olur (share handler'larıyla aynı kalıp, :214).
+				if (browser && playerId) pingFirstTrade(localStorage, playerId);
 			},
 		});
 	}
