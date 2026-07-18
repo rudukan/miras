@@ -877,4 +877,17 @@ describe('onFirstTrade (Faz 1 funnel aktivasyonu)', () => {
     flushSync();
     expect(onFirstTrade).not.toHaveBeenCalled();
   });
+
+  it("onOk (telemetri) throw ederse mutasyonu/lastError'ı bozmaz", async () => {
+    const onFirstTrade = vi.fn(() => {
+      throw new Error('telemetry boom');
+    });
+    const t = setup({ onFirstTrade });
+    await t.store.start();
+    flushSync();
+    t.store.buy('THYAO', 100);
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.positions.find((p) => p.assetId === 'THYAO')?.units).toBe(100);
+  });
 });
