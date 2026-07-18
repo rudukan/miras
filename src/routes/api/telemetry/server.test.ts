@@ -2,13 +2,27 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { POST } from './+server';
 import type { RequestEvent } from './$types';
 
-function postReq(body: unknown): RequestEvent {
+function fakeSupabase(insertError: { message: string } | null = null) {
+  const insert = vi.fn(() => Promise.resolve({ error: insertError }));
+  return { insert, client: { from: () => ({ insert }) } };
+}
+
+function postReq(
+  body: unknown,
+  opts: { origin?: string | null; supabase?: unknown } = {},
+): RequestEvent {
+  const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
+  const origin = opts.origin === undefined ? 'http://localhost' : opts.origin;
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (origin !== null) headers.origin = origin;
   return {
     request: new Request('http://localhost/api/telemetry', {
       method: 'POST',
-      body: JSON.stringify(body),
-      headers: { 'content-type': 'application/json' },
+      body: rawBody,
+      headers,
     }),
+    url: new URL('http://localhost/api/telemetry'),
+    locals: { supabase: opts.supabase ?? fakeSupabase().client },
   } as unknown as RequestEvent;
 }
 
@@ -50,10 +64,7 @@ describe('POST /api/telemetry', () => {
   });
 
   it('bozuk JSON → 400', async () => {
-    const req = {
-      request: new Request('http://localhost/api/telemetry', { method: 'POST', body: '{bozuk' }),
-    } as unknown as RequestEvent;
-    const res = await POST(req);
+    const res = await POST(postReq('{bozuk'));
     expect(res.status).toBe(400);
   });
 
@@ -116,5 +127,33 @@ describe('POST /api/telemetry', () => {
     } finally {
       globalThis.fetch = real;
     }
+  });
+});
+
+describe('CSRF guard + DB insert (migration 0006)', () => {
+  it('origin uyuşmaz → 403', async () => {
+    const res = await POST(postReq(VALID, { origin: 'https://evil.example' }));
+    expect(res.status).toBe(403);
+  });
+
+  it('origin header yoksa (null) → 403', async () => {
+    const res = await POST(postReq(VALID, { origin: null }));
+    expect(res.status).toBe(403);
+  });
+
+  it('geçerli payload → locals.supabase.insert player_id/event/ts ile çağrılır (received_at/id YOK)', async () => {
+    const { insert, client } = fakeSupabase();
+    const res = await POST(postReq(VALID, { supabase: client }));
+    expect(res.status).toBe(204);
+    expect(insert).toHaveBeenCalledWith({ player_id: 'p1', event: 'visit', ts: VALID.tsISO });
+  });
+
+  it('insert hatası yutulur — endpoint yine 204 döner', async () => {
+    const { client } = fakeSupabase({ message: 'db down' });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await POST(postReq(VALID, { supabase: client }));
+    expect(res.status).toBe(204);
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
   });
 });
