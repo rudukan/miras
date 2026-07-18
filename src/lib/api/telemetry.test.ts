@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { sendTelemetry, pingDailyVisit } from './telemetry';
+import { sendTelemetry, pingDailyVisit, pingFirstTrade } from './telemetry';
 
 function makeStorage(): Storage {
   const map = new Map<string, string>();
@@ -95,6 +95,39 @@ describe('pingDailyVisit', () => {
       pingDailyVisit(storage, 'p1', '2026-06-10');
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(storage.getItem('miras.lastVisitPing')).toBe('2026-06-10');
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});
+
+describe('pingFirstTrade', () => {
+  it('ilk çağrıda gönderir ve bayrağı kaydeder', () => {
+    const storage = makeStorage();
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true } as Response));
+    const real = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      pingFirstTrade(storage, 'p1');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      const body = JSON.parse(init.body as string);
+      expect(body.event).toBe('first_trade');
+      expect(storage.getItem('miras.firstTradeSent')).toBe('1');
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  it('ikinci çağrıda göndermez (kalıcı, günlük değil)', () => {
+    const storage = makeStorage();
+    storage.setItem('miras.firstTradeSent', '1');
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true } as Response));
+    const real = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      pingFirstTrade(storage, 'p1');
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       globalThis.fetch = real;
     }

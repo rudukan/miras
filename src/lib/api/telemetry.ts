@@ -26,3 +26,13 @@ export function pingDailyVisit(storage: Storage, playerId: string, todayKey: str
   sendTelemetry(playerId, 'visit');
   storage.setItem(LAST_VISIT_KEY, todayKey);
 }
+
+const FIRST_TRADE_KEY = 'miras.firstTradeSent';
+
+/** İlk aktivasyon pingi (buy/sell/openDeposit'ten biri) — kalıcı bayrak, pingDailyVisit'in
+ *  aksine günlük değil: aktivasyon oyuncu başına bir kez sayılır. */
+export function pingFirstTrade(storage: Storage, playerId: string): void {
+  if (storage.getItem(FIRST_TRADE_KEY) === '1') return;
+  sendTelemetry(playerId, 'first_trade');
+  storage.setItem(FIRST_TRADE_KEY, '1');
+}
