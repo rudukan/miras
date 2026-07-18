@@ -7,14 +7,16 @@
 	interface Props {
 		game: GameState;
 		usdTry: number;
+		liveUsdTry: number;
 		positions: PositionRow[];
 		onSelect?: (assetId: string) => void;
 		highlightAssetId?: string | null;
 	}
 
-	let { game, usdTry, positions, onSelect, highlightAssetId }: Props = $props();
+	let { game, usdTry, liveUsdTry, positions, onSelect, highlightAssetId }: Props = $props();
 
 	const usdRate = $derived(usdTry.toFixed(2));
+	const liveRate = $derived(liveUsdTry.toFixed(2));
 </script>
 
 <div class="bg-term-panel border border-term-border p-3 font-mono text-xs space-y-3">
@@ -32,8 +34,8 @@
 			</span>
 		</div>
 		<div class="flex justify-between items-center pt-0.5">
-			<span class="text-term-text opacity-50 text-[10px]">USD/TRY</span>
-			<span class="text-term-blue text-[10px]">₺{usdRate}</span>
+			<span class="text-term-text opacity-50 text-[10px]">mühürlü ₺{usdRate}</span>
+			<span class="text-term-blue text-[10px]">piyasa ₺{liveRate}</span>
 		</div>
 	</div>
 
