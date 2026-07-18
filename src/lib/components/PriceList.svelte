@@ -5,6 +5,7 @@
 	import { searchUsStocks, registerDiscoveredUsStock } from '$lib/catalog/usStocks';
 	import { createUsLiveSearch } from './usLiveSearch.svelte';
 	import PriceRow from './PriceRow.svelte';
+	import DataInfoModal from './ui/DataInfoModal.svelte';
 
 	interface Props {
 		prices: PriceRowData[];
@@ -19,6 +20,7 @@
 
 	let q = $state('');
 	let tab = $state('all');
+	let infoOpen = $state(false);
 
 	// 300ms debounce + race-condition koruması composable'da kapsüllendi.
 	const live = createUsLiveSearch(() => q);
@@ -89,8 +91,16 @@
 <div class="bg-term-panel border border-term-border font-mono text-xs flex flex-col h-full">
 	<!-- Başlık + arama -->
 	<div class="px-3 pt-3 pb-2 border-b border-term-border">
-		<div class="text-term-blue tracking-widest uppercase text-[10px] font-bold mb-2">
-			PİYASA FİYATLARI
+		<div class="flex items-center justify-between mb-2">
+			<div class="text-term-blue tracking-widest uppercase text-[10px] font-bold">
+				PİYASA FİYATLARI
+			</div>
+			<button
+				type="button"
+				onclick={() => (infoOpen = true)}
+				class="text-term-text opacity-50 hover:opacity-100 text-[10px] border border-term-border rounded-full w-4 h-4 flex items-center justify-center shrink-0"
+				aria-label="Veri hakkında"
+			>i</button>
 		</div>
 		<input
 			type="text"
@@ -188,3 +198,7 @@
 		{/if}
 	</div>
 </div>
+
+{#if infoOpen}
+	<DataInfoModal onClose={() => (infoOpen = false)} />
+{/if}
