@@ -209,6 +209,7 @@ Faz 0'ın "güven/doğruluk" temasının kullanıcıya bakan yüzü. **İddialar
 
 - **Lokal (E2E stack):** `auto_expose_new_tables` KAPALI (`config.toml:24` unset — yeni cloud default). Yani lokalde **revoke'suz** bir tablo bile anon/authenticated'a **boş** default ACL ile doğar — beklenen sonuç budur ve `grant insert`in **zorunlu** (savunma değil) olduğunu kanıtlar. `revoke all`'u lokalde no-op ama legacy auto-expose'a karşı savunma olarak tut. (Doğrulamak için: migration'ı uygula, `select relacl from pg_class where relname='telemetry_events'` → anon/authenticated yalnız kolon-`a` (INSERT) taşımalı.)
 - **Prod:** gerçek default'u ancak **push-sonrası** `relacl` belirler (prod projesi 2026-07-08'de yaratıldı; 0001'in anon/authenticated revoke'u o dönem auto-expose'un AÇIK olabileceğini düşündürüyor — lokal ≠ prod olabilir). Push: **yalnız migration dosyası, elle geniş komut YOK** (0005 dersi); push sonrası `relacl` doğrula: anon/authenticated yalnız kolon-`a`, **service_role ACL'de hiç görünmez.**
+- **Not (phantom 0004):** `0004_service_role_saves_select` prod migration history'sinde KAYITLI DEĞİL (ad-hoc uygulandı; prod'da 0001/0002/0003/0005 var, MCP ile doğrulandı 2026-07-17). Faz 1 migration'ı `supabase db push`'landığında **0004 + 0006 birlikte** gider — 0004 idempotent `grant select` (zararsız), ama beklenmedik gelmesin.
 
 ---
 

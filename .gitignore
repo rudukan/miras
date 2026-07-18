@@ -11,3 +11,7 @@ Thumbs.db
 *.log
 .superpowers/
 test-results/
+
+# Codex (danışman/kod-inceleme tooling'i — lokal, repo'ya girmez)
+.codex/
+AGENTS.md

@@ -34,7 +34,9 @@ Bu doküman, "Miras Oyunu" projesinin tasarım kararlarını, teknik mimarisini,
 
 ### Önemli Teknik Bileşenler (B-H: legacy'de tamamlanmış, SvelteKit'e henüz portlanmamış kanonik tasarım)
 
-#### A. Tarihsel Veri Seti (Jan 2024 - Jan 2025)
+#### A. Tarihsel Veri Seti (Jan 2024 - Jan 2025) — ⚠️ LEGACY (v3.1.0, SvelteKit'e PORTLANMADI)
+> **Uyarı:** Bu bölüm legacy'yi tarif eder, kodda karşılığı YOK. SvelteKit'te veri `src/lib/data/macro2025.ts` = 2025 TAHMİNİ ("TÜMÜ knowledge-cutoff tahmini", quant doğrulayacak); gürültü GÜN granülünde (`fx/noise.ts` — "random walk yok", akümülatif değil); "±%4.5 intra-day" yalnız `legacy/app.js`'te. "2024 gerçek veri" / "0.5s dalgalanma" / "±%4.5" iddialarını BURADAN ALMA (Faz 1 spec İddia 4'ü tam bu yüzden çıkardı).
+
 Türkiye'nin 2024 yılına ait 52 haftalık gerçek verileri (USD/TRY kuru, Merkez Bankası politika faiz kararları, KFE konut endeksi ve hisse fiyatları) doğrusal interpolasyon (linear interpolation) ile JS içerisine entegre edilmiştir.
 * **USD/TRY Kur Eğrisi:** ₺29.90 seviyesinden başlayıp ₺35.30 seviyesine kadar kademeli devalüasyonu simüle eder.
 * **BIST Equities:** 9 adet hisse senedinin (**THYAO, EREGL, ASELS, GUBRF, KCHOL, TUPRS, SASA, YKBNK, BIMAS**) 2024 yılındaki gerçek fiyat hareketleri temel alınmış, 0.5s aralıklarla canlı tahta hissi uyandıracak küçük yapay dalgalanmalar (+/- 4.5%) eklenmiştir.
@@ -193,10 +195,8 @@ Aylık özet `CHANGELOG.md`'de (üzerine yazılmaz, rutin "s"te dokunulmaz). **B
 
 ### D. Yeni Chat'te Başlangıç Rehberi
 1. Faz 0 bitti, worktree/ledger yok. Sıradaki iş **Faz 1 planlaması** — bu **güçlü model** (Opus/Fable) gerektirir (yeni plan yazımı, "Orta/Büyük" triyaj sınıfı). Açılış cümlesi: *"Faz 1'i planlayalım — memory.md 6.B'deki kapsamı (funnel telemetri, drift temizliği, GO/NO-GO deneyi) baz al."*
-2. **Açık karar maddesi:** kurucuya migration 0004'ün prod push durumunu hatırlat (bkz. 6.B) — unutulmuş olabilir.
+2. **Migration 0004/0005: ÇÖZÜLDÜ** (bkz. 6.B; `082a3e1`+`b5deecc`). Prod migration history 2026-07-17'de MCP ile doğrulandı: 0001/0002/0003/0005 uygulanmış, 0004 phantom (zararsız). Açık madde YOK.
 3. **CI kontrolü:** `gh run list --branch main --limit 1` ile son push'un CI sonucuna bak, sürpriz kırmızı varsa önce onu çöz.
-4. **Güvenlik durumu:** pre-launch P0/P1 tümü kapalı (14. oturum); Faz 0'ın 4 audit bulgusu da şimdi kapandı. Değişmedi: migration 0004 push kararı (bkz. 6.B).
+4. **Güvenlik durumu:** pre-launch P0/P1 tümü kapalı (14. oturum); Faz 0'ın 4 audit bulgusu kapandı; migration 0004/0005 de kapandı (bkz. 6.B).
 5. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 6. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
-6. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
-7. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
