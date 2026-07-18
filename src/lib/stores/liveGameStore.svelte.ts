@@ -67,6 +67,9 @@ export interface LiveGameStoreOptions {
   initialHistory?: DailySnapshot[];
   /** Her snapshot upsert'inden sonra çağrılır — history persistence buradan yapılır. */
   onPersistHistory?: (history: DailySnapshot[]) => void;
+  /** İlk aktivasyon (buy/sell/openDeposit) başarıyla tamamlanınca çağrılır — funnel telemetrisi
+   *  (Faz 1 GO/NO-GO deneyi) buradan tetiklenir; idempotent bayrak çağıranın sorumluluğundadır. */
+  onFirstTrade?: () => void;
   // --- test/SSR enjeksiyonu ---
   fetchFn?: typeof fetch;
   makeFeed?: (opts: BinanceFeedOptions) => BinanceFeed;
@@ -329,13 +332,22 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   }
 
   // --- yazma aksiyonları (guard → reducer → immutable reassign + updatedAt damga → hata yüzeyle) ---
-  function apply(fn: () => GameState): void {
+  // onOk (Faz 1): yalnız başarılı fn() sonrası, try'ın DIŞINDA çağrılır. İçeride olsaydı
+  // storage.setItem (Safari private mode/kota) throw ettiğinde apply'ın catch'i yakalar ve
+  // game/persist() zaten atanmış olmasına rağmen lastError'a sahte bir hata yazardı.
+  function apply(fn: () => GameState, onOk?: () => void): void {
     try {
       game = { ...fn(), updatedAt: now() };
       lastError = null;
       persist();
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
+      return;
+    }
+    try {
+      onOk?.();
+    } catch {
+      /* telemetri best-effort — oyunu bozmaz */
     }
   }
   /** İşlem guard'ı (audit P1) — kapalı piyasada / stale fiyatta 15dk gecikmeli son fiyattan
@@ -359,15 +371,15 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       const blocked = tradeBlockReason(assetId);
       if (blocked) throw new Error(blocked);
       return buyAsset(game, oracle, assetId, units);
-    });
+    }, opts.onFirstTrade);
   const sell = (assetId: string, units: number) =>
     apply(() => {
       const blocked = tradeBlockReason(assetId);
       if (blocked) throw new Error(blocked);
       return sellAsset(game, oracle, assetId, units);
-    });
+    }, opts.onFirstTrade);
   const openDepositAction = (usdAmount: number) =>
-    apply(() => openDeposit(game, sealedUsdTry(), usdAmount, now()));
+    apply(() => openDeposit(game, sealedUsdTry(), usdAmount, now()), opts.onFirstTrade);
   const breakDepositAction = () => apply(() => breakDeposit(game, sealedUsdTry(), now()));
   const buyPropertyAction = (propertyId: string) =>
     apply(() => buyProperty(game, sealedUsdTry(), propertyId, now()));

@@ -814,3 +814,67 @@ describe('emlak (kira kasası) store entegrasyonu', () => {
     expect(saved[saved.length - 1].game.properties).toHaveLength(0);
   });
 });
+
+describe('onFirstTrade (Faz 1 funnel aktivasyonu)', () => {
+  it('ilk başarılı buy sonrası bir kez çağrılır', async () => {
+    const onFirstTrade = vi.fn();
+    const t = setup({ onFirstTrade });
+    await t.store.start();
+    flushSync();
+    t.store.buy('THYAO', 100);
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+    expect(onFirstTrade).toHaveBeenCalledTimes(1);
+  });
+
+  it('yetersiz bakiyeli (başarısız) buy çağırmaz', async () => {
+    const onFirstTrade = vi.fn();
+    const t = setup({ onFirstTrade });
+    await t.store.start();
+    flushSync();
+    t.store.buy('THYAO', 1_000_000); // 100M×$7.5 >> $1M bakiye
+    flushSync();
+    expect(t.store.lastError).not.toBeNull();
+    expect(onFirstTrade).not.toHaveBeenCalled();
+  });
+
+  it('piyasa kapalıyken bloklu buy çağırmaz', async () => {
+    // BIST hafta içi 10:00-18:00 (Istanbul) açık — 22:00 kapanış sonrası.
+    const CLOSED_NOW = new Date('2026-06-01T22:00:00+03:00').getTime();
+    const onFirstTrade = vi.fn();
+    const t = setup({ onFirstTrade, now: () => CLOSED_NOW });
+    await t.store.start();
+    flushSync();
+    t.store.buy('THYAO', 1);
+    flushSync();
+    expect(t.store.lastError).toContain('PİYASA KAPALI');
+    expect(onFirstTrade).not.toHaveBeenCalled();
+  });
+
+  it('sell ve openDeposit de tetikler (idempotent sayaç pingFirstTrade tarafında, burada her çağrı sayılır)', async () => {
+    const onFirstTrade = vi.fn();
+    const t = setup({ onFirstTrade });
+    await t.store.start();
+    flushSync();
+    t.store.openDeposit(1000);
+    flushSync();
+    t.store.buy('THYAO', 1);
+    flushSync();
+    t.store.sell('THYAO', 1);
+    flushSync();
+    expect(onFirstTrade).toHaveBeenCalledTimes(3);
+  });
+
+  it('buyProperty/breakDeposit gibi diğer aksiyonlar çağırmaz', async () => {
+    const onFirstTrade = vi.fn();
+    const t = setup({ onFirstTrade });
+    await t.store.start();
+    flushSync();
+    t.store.openDeposit(1000);
+    flushSync();
+    onFirstTrade.mockClear();
+    t.store.breakDeposit();
+    flushSync();
+    expect(onFirstTrade).not.toHaveBeenCalled();
+  });
+});
