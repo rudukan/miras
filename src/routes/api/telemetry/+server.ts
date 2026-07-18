@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
 
-export type TelemetryEvent = 'visit' | 'share_click' | 'share_done';
+export type TelemetryEvent = 'visit' | 'share_click' | 'share_done' | 'first_trade';
 
 interface TelemetryPayload {
   playerId: string;
@@ -8,7 +8,7 @@ interface TelemetryPayload {
   tsISO: string;
 }
 
-const VALID_EVENTS = new Set<TelemetryEvent>(['visit', 'share_click', 'share_done']);
+const VALID_EVENTS = new Set<TelemetryEvent>(['visit', 'share_click', 'share_done', 'first_trade']);
 
 /** playerId whitelist: crypto.randomUUID() + 'restored'/'local-player' fallback'lerini karşılar;
  *  Discord mention (@), markdown (`), newline ve aşırı uzunluğu reddeder (güvenlik denetimi B1). */

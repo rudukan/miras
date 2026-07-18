@@ -1,4 +1,4 @@
-export type TelemetryEvent = 'visit' | 'share_click' | 'share_done';
+export type TelemetryEvent = 'visit' | 'share_click' | 'share_done' | 'first_trade';
 
 const TELEMETRY_URL = '/api/telemetry';
 const LAST_VISIT_KEY = 'miras.lastVisitPing';

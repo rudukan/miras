@@ -30,6 +30,10 @@ describe('POST /api/telemetry', () => {
     expect((await POST(postReq({ ...VALID, event: 'share_done' }))).status).toBe(204);
   });
 
+  it('geçerli payload (first_trade) → 204', async () => {
+    expect((await POST(postReq({ ...VALID, event: 'first_trade' }))).status).toBe(204);
+  });
+
   it('şema dışı event → 400', async () => {
     const res = await POST(postReq({ ...VALID, event: 'bogus' }));
     expect(res.status).toBe(400);
