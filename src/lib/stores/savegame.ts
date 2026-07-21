@@ -1,6 +1,7 @@
 import type { GameState } from './gameState';
 import { usd, tryM } from '../domain/money';
 import type { DailySnapshot } from '../domain/snapshot/dailySnapshot';
+import type { PendingOrder } from '../domain/orders/orders';
 
 const SAVE_KEY = 'miras.save.v1';
 const HISTORY_KEY = 'miras.history.v1';
@@ -29,6 +30,9 @@ export interface SaveEnvelopeV1 {
   sealedFx?: SealedFx;
   /** Opsiyonel — eski kayıtlarda yok (undefined → store boş dizi varsayar, sabit varsayılan YOK). */
   activeUs?: string[];
+  /** Opsiyonel — eski kayıtlarda yok (undefined → store boş dizi varsayar). Task 3: kapalı
+   *  piyasada/bayat veride verilen, açılışı izleyen ilk taze fiyatta gerçekleşecek emirler. */
+  pendingOrders?: PendingOrder[];
 }
 
 export function saveGame(storage: Storage, envelope: SaveEnvelopeV1): void {
@@ -95,6 +99,11 @@ function reviveEnvelope(raw: SaveEnvelopeV1): SaveEnvelopeV1 {
         usdPaid: usd(p.usdPaid.amount),
       })),
     },
+    // amountUsd-kind emirlerin Money alanı JSON.parse sonrası düz obje — usd() ile yeniden sarılır.
+    // units-kind emirlerde Money yok, aynen döner. Alan hiç yoksa (eski kayıt) undefined kalır.
+    pendingOrders: raw.pendingOrders?.map((o) =>
+      o.kind === 'amountUsd' ? { ...o, amountUsd: usd(o.amountUsd.amount) } : o,
+    ),
   };
 }
 

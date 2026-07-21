@@ -15,8 +15,9 @@ import {
 } from './gameState';
 import type { LivePriceSource } from '../domain/fx/liveFx';
 import type { UsdPriceOracle } from '../domain/fx/usdOracle';
-import { isMarketOpen } from '../domain/calendar/calendar';
+import { isMarketOpen, sessionOpenMs } from '../domain/calendar/calendar';
 import type { AssetCategory } from '../domain/scenario/types';
+import { resolveUnits, type PendingOrder } from '../domain/orders/orders';
 import { CATALOG, CRYPTO_SYMBOLS, CRYPTO_SET, CORE_ASSETS, BIST_SYMBOLS } from '../catalog/liveAssets';
 import { bistName } from '../catalog/bist100';
 import { usStockName } from '../catalog/usStocks';
@@ -97,11 +98,23 @@ export interface LiveGameStore {
   readonly history: DailySnapshot[];
   readonly deposit: ActiveDeposit | null;
   readonly properties: OwnedProperty[];
+  /** Piyasa kapalıyken/veri bayatken kuyruğa alınan, açılışı izleyen ilk taze fiyatta gerçekleşecek
+   *  emirler (Task 3). */
+  readonly pendingOrders: PendingOrder[];
+  /** Son settle turunun dolum/iptal bildirimi — okunduktan sonra clearOrderNotice() ile kapatılır. */
+  readonly orderNotice: string | null;
   buy(assetId: string, units: number): void;
   sell(assetId: string, units: number): void;
-  /** Bir varlıkta şu an işlem (al/sat) serbest mi? null = serbest; aksi halde kullanıcıya
-   *  gösterilecek Türkçe blok nedeni. Guard (apply içi) ve UI (TradeForm) TEK bu kaynağı okur. */
-  tradeBlockReason(assetId: string): string | null;
+  /** Tutar bazlı alım (yalnız buy) — anlıkta adet o an fiyattan, kuyrukta dolum anındaki
+   *  (açılış) fiyattan hesaplanır (bayat fiyatla boyutlanmaz). */
+  buyAmountUsd(assetId: string, amountUsd: Money): void;
+  /** Bir varlıkta şu an işlem anlık mı gerçekleşir yoksa kuyruğa mı girer? 'queued' bir hata
+   *  DEĞİL, yönlendirmedir. Guard (buy/sell/buyAmountUsd içi) ve UI (TradeForm) TEK bu kaynağı okur. */
+  tradeMode(assetId: string): 'instant' | 'queued';
+  /** Kuyruktaki bir emri kullanıcı isteğiyle iptal eder (settle beklemeden). */
+  cancelOrder(orderId: string): void;
+  /** Son settle bildirimini (orderNotice) kapatır. */
+  clearOrderNotice(): void;
   openDeposit(usdAmount: number): void;
   breakDeposit(): void;
   buyProperty(propertyId: string): void;
@@ -132,13 +145,24 @@ function computeInitialActiveBist(initial: SaveEnvelopeV1 | null): string[] {
   const fromHoldings = (initial?.game.holdings ?? [])
     .map((h) => h.assetId)
     .filter((id) => isBistLikeId(id) && !savedUs.has(id));
-  return Array.from(new Set([...BIST_SYMBOLS, ...fromSave, ...fromHoldings]));
+  // Task 3: bekleyen bir BIST emrinin sembolü de holding gibi poll edilmeli — yoksa settle'ı
+  // bekleyen sembolün fiyatı hiç çekilmez ve emir asla dolamaz.
+  const fromPending = (initial?.pendingOrders ?? [])
+    .map((o) => o.assetId)
+    .filter((id) => isBistLikeId(id) && !savedUs.has(id));
+  return Array.from(new Set([...BIST_SYMBOLS, ...fromSave, ...fromHoldings, ...fromPending]));
 }
 
-/** activeUs restore: yalnız kayıtlı set — yeni özellik, eski/bozuk kayıt riski yok
- *  (bir US holding'i hep kendi activeUs'uyla birlikte kaydedilmiş olacak). */
+/** activeUs restore: kayıtlı set + (Task 3) bekleyen US emirlerinin sembolleri — yeni özellik,
+ *  eski/bozuk kayıt riski yok (bir US holding/emri hep kendi activeUs'uyla birlikte kaydedilmiş
+ *  olacak; fromPending yalnız CATALOG'da bist-olmayan işaretli sembolleri kapsar, savedUs zaten
+ *  fromSave'e giriyor). */
 function computeInitialActiveUs(initial: SaveEnvelopeV1 | null): string[] {
-  return initial?.activeUs ?? [];
+  const fromSave = initial?.activeUs ?? [];
+  const fromPending = (initial?.pendingOrders ?? [])
+    .map((o) => o.assetId)
+    .filter((id) => !isBistLikeId(id));
+  return Array.from(new Set([...fromSave, ...fromPending]));
 }
 
 /** Holding etiketi: CATALOG → BIST100 → US_STOCKS sırayla dener (positions'ta hangi
@@ -151,6 +175,11 @@ function holdingLabel(id: string): string {
   if (bist !== id) return bist;
   return usStockName(id);
 }
+
+/** Bekleyen emir id sayacı — MODÜL-yerel (instance-level DEĞİL, Task 3 brief'i gereği): aynı
+ *  JS modülü içinde birden fazla store örneği (SSR/test) aynı now() damgasını paylaşsa bile id
+ *  çakışmaz. `crypto.randomUUID` KULLANILMAZ — test determinizmi (öngörülebilir id'ler). */
+let orderSeq = 0;
 
 /**
  * Canlı çekirdek reaktif store'u — **factory** (sınıf/modül-global rune YOK; her çağrı
@@ -197,6 +226,11 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   // Günlük mühürlü operatif kur: İstanbul gün-anahtarı değişince bir kez yakalanır.
   // Net servet/işlem bunu kullanır → gün-içi canlı kur gürültüsü net serveti oynatmaz.
   let sealedFx = $state<SealedFx | null>(initial?.sealedFx ?? null);
+  // Bekleyen emir kuyruğu (Task 3) — piyasa kapalı/veri bayatken buy/sell burada birikir,
+  // settlePendingOrders() ilk taze tick'te dener.
+  let pendingOrders = $state<PendingOrder[]>(initial?.pendingOrders ?? []);
+  // Son settle turunun dolum/iptal bildirimi — kullanıcı okuyup clearOrderNotice() ile kapatır.
+  let orderNotice = $state<string | null>(null);
 
   // WS canlı + tick var → WS; aksi halde Yahoo (fxCache); o da yoksa FALLBACK_FX.usdTry.
   const effectiveUsdTry = (): number =>
@@ -328,7 +362,14 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
 
   // --- persistence ---
   function persist(): void {
-    opts.onPersist?.({ v: 1, game, activeBist, activeUs, sealedFx: sealedFx ?? undefined });
+    opts.onPersist?.({
+      v: 1,
+      game,
+      activeBist,
+      activeUs,
+      sealedFx: sealedFx ?? undefined,
+      pendingOrders,
+    });
   }
 
   // --- yazma aksiyonları (guard → reducer → immutable reassign + updatedAt damga → hata yüzeyle) ---
@@ -350,34 +391,134 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       /* telemetri best-effort — oyunu bozmaz */
     }
   }
-  /** İşlem guard'ı (audit P1) — kapalı piyasada / stale fiyatta 15dk gecikmeli son fiyattan
-   *  arbitraj deliğini kapatır. Kategori çözümü `rows`/`prices` derived'ının aynı örüntüsü
-   *  (CATALOG üyeliği → yoksa activeUs'te mi → değilse 'bist'). Kripto her zaman muaf (7/24).
-   *  `nowMsTick` (reaktif saat) okunur ki seans açılınca UI'daki $derived kendiliğinden güncellensin. */
-  function tradeBlockReason(assetId: string): string | null {
+  /** Bir varlığın fiyatı şu an TAZE mi (anlık işleme uygun) — tradeMode'un TEK kaynağı. Kategori
+   *  çözümü eski tradeBlockReason'ın AYNI örüntüsü (CATALOG üyeliği → yoksa activeUs'te mi →
+   *  değilse 'bist'). crypto: WS feed canlı mı (tek kural — REST snapshot fallback'i "taze"
+   *  saymaz; feed koptuysa kuyruğa düşer, 7/24 muafiyeti feed bağlantısına indirgenir). bist/us:
+   *  seans açık + fx taze + BUGÜNKÜ seansın açılışından beri damgalanmış fiyat (15dk tuzağı:
+   *  dünün son fiyatıyla "piyasa açık" görünüp arbitraj açmaz). diğerleri (altın/gümüş/EUR):
+   *  yalnız fx taze. `nowMsTick` (reaktif saat) okunur ki seans açılınca $derived kendiliğinden
+   *  güncellensin. */
+  function isAssetFresh(assetId: string): boolean {
     const category: AssetCategory =
       CATALOG[assetId]?.category ?? (activeUs.includes(assetId) ? 'us' : 'bist');
-    if (category === 'crypto') return null;
-    if (!isMarketOpen(category, new Date(nowMsTick))) {
-      return 'PİYASA KAPALI — bu varlık yalnız seans saatlerinde işlem görür';
-    }
-    if (fxStale) {
-      return 'FİYAT VERİSİ ESKİ — bağlantı dönene dek işlem kapalı';
-    }
-    return null;
+    if (category === 'crypto') return feedStatus === 'live';
+    if (category !== 'bist' && category !== 'us') return !fxStale;
+    const at = new Date(nowMsTick);
+    return (
+      isMarketOpen(category, at) &&
+      !fxStale &&
+      fxCache.priceAt?.[assetId] !== undefined &&
+      fxCache.priceAt[assetId] >= sessionOpenMs(category, at)
+    );
   }
-  const buy = (assetId: string, units: number) =>
+  /** İşlem şu an anlık mı gerçekleşir yoksa kuyruğa mı girer — buy/sell/buyAmountUsd TEK bunu
+   *  okur (audit P1 → Task 3: eski davranış REDDİ, yeni davranış YÖNLENDİRMEsi — 'queued' hata
+   *  değildir). */
+  function tradeMode(assetId: string): 'instant' | 'queued' {
+    return isAssetFresh(assetId) ? 'instant' : 'queued';
+  }
+  function nextOrderId(): string {
+    return `${now()}-${orderSeq++}`;
+  }
+  /** Kuyruğa TEK emir ekler — units<=0 / amountUsd<=0 anlık yoldaki buyAsset/sellAsset'in
+   *  'Units must be positive' invariant'ıyla PARİTE için burada da reddedilir (aksi halde emir
+   *  sessizce kuyrukta bekler ve settle'da her seferinde iptal olurdu — kullanıcıya anında
+   *  geri bildirim vermek daha doğru). onFirstTrade YOK — yalnız gerçek dolum sayılır. */
+  function enqueueOrder(order: PendingOrder): void {
+    const positive = order.kind === 'units' ? order.units > 0 : order.amountUsd.amount > 0;
+    if (!positive) {
+      lastError = 'Units must be positive';
+      return;
+    }
+    pendingOrders = [...pendingOrders, order];
+    lastError = null;
+    persist();
+  }
+  const buy = (assetId: string, units: number) => {
+    if (tradeMode(assetId) === 'queued') {
+      enqueueOrder({ id: nextOrderId(), assetId, side: 'buy', kind: 'units', units, placedAt: now() });
+      return;
+    }
+    apply(() => buyAsset(game, oracle, assetId, units), opts.onFirstTrade);
+  };
+  const sell = (assetId: string, units: number) => {
+    if (tradeMode(assetId) === 'queued') {
+      enqueueOrder({ id: nextOrderId(), assetId, side: 'sell', kind: 'units', units, placedAt: now() });
+      return;
+    }
+    apply(() => sellAsset(game, oracle, assetId, units), opts.onFirstTrade);
+  };
+  const buyAmountUsdAction = (assetId: string, amountUsd: Money) => {
+    if (tradeMode(assetId) === 'queued') {
+      enqueueOrder({ id: nextOrderId(), assetId, side: 'buy', kind: 'amountUsd', amountUsd, placedAt: now() });
+      return;
+    }
     apply(() => {
-      const blocked = tradeBlockReason(assetId);
-      if (blocked) throw new Error(blocked);
+      const price = assetUsdPrice(assetId);
+      if (price === undefined) throw new Error(`No live price: ${assetId}`);
+      // Yalnız resolveUnits'e geçmek için geçici sipariş — id/placedAt hiç okunmaz (kind==='amountUsd'
+      // dalı yalnız amountUsd.amount'a bakar), bu yüzden kuyruk sayacını tüketmeye gerek yok.
+      const draft: PendingOrder = { id: '', assetId, side: 'buy', kind: 'amountUsd', amountUsd, placedAt: now() };
+      const units = resolveUnits(draft, price);
       return buyAsset(game, oracle, assetId, units);
     }, opts.onFirstTrade);
-  const sell = (assetId: string, units: number) =>
-    apply(() => {
-      const blocked = tradeBlockReason(assetId);
-      if (blocked) throw new Error(blocked);
-      return sellAsset(game, oracle, assetId, units);
-    }, opts.onFirstTrade);
+  };
+  function cancelOrderAction(orderId: string): void {
+    const next = pendingOrders.filter((o) => o.id !== orderId);
+    if (next.length === pendingOrders.length) return; // bilinmeyen id — no-op
+    pendingOrders = next;
+    persist();
+  }
+  function clearOrderNoticeAction(): void {
+    orderNotice = null;
+  }
+  function orderSideLabel(side: 'buy' | 'sell'): string {
+    return side === 'buy' ? 'alım' : 'satım';
+  }
+  /** Bekleyen emirleri tazelik kazanan varlıklar için gerçekleştirir (audit P1 → Task 3).
+   *  `apply()` KULLANMAZ: guard döngüsü kendi taze/atla mantığını yürütür ve her emir kendi
+   *  try/catch'inde izole edilir (bir emrin iptali diğerlerini etkilemez/döngüyü durdurmaz).
+   *  Çağrı noktaları (2): pollFx() sonu (ensureSeal() sonrası) ve WS throttle tick'i
+   *  (flushPending() sonu) — yeni bir timer AÇILMAZ. */
+  function settlePendingOrders(): void {
+    if (pendingOrders.length === 0) return;
+    const remaining: PendingOrder[] = [];
+    for (const order of pendingOrders) {
+      if (!isAssetFresh(order.assetId)) {
+        remaining.push(order); // hâlâ kapalı/bayat — sonraki tick'te tekrar denenir
+        continue;
+      }
+      const price = assetUsdPrice(order.assetId);
+      if (price === undefined) {
+        remaining.push(order); // fiyat anlık kayıp — sonraki tick'te tekrar denenir
+        continue;
+      }
+      const units = resolveUnits(order, price);
+      const label = orderSideLabel(order.side);
+      try {
+        const next =
+          order.side === 'buy'
+            ? buyAsset(game, oracle, order.assetId, units)
+            : sellAsset(game, oracle, order.assetId, units);
+        game = { ...next, updatedAt: now() };
+        orderNotice = `${order.assetId} ${label} emri dolduruldu — ${units} adet`;
+        try {
+          opts.onFirstTrade?.();
+        } catch {
+          /* telemetri best-effort — oyunu bozmaz (apply() ile aynı kural) */
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        orderNotice = `${order.assetId} ${label} emri iptal edildi — ${msg}`;
+      }
+      // Fill veya iptal — iki durumda da emir kuyruktan çıkar (remaining'e eklenmez).
+    }
+    if (remaining.length !== pendingOrders.length) {
+      pendingOrders = remaining;
+      persist();
+    }
+  }
   const openDepositAction = (usdAmount: number) =>
     apply(() => openDeposit(game, sealedUsdTry(), usdAmount, now()), opts.onFirstTrade);
   const breakDepositAction = () => apply(() => breakDeposit(game, sealedUsdTry(), now()));
@@ -430,6 +571,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       liveUsdTry = pendingUsdTry;
       pendingUsdTry = undefined;
     }
+    settlePendingOrders(); // Task 3: WS tick sonrası (kripto/usdTry) taze fiyatla kuyruğu dene
   }
   function onPrice(coin: string, u: number): void {
     pending[coin] = u;
@@ -497,6 +639,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       /* fallback başarısız — sessiz; fxStale/dataStale zaten "veri eski" yüzeyliyor */
     }
     ensureSeal();
+    settlePendingOrders(); // Task 3: taze poll sonrası kuyruğu dene — recordSnapshot bunu yansıtsın
     recordSnapshot();
   }
 
@@ -630,9 +773,18 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     get properties() {
       return game.properties;
     },
+    get pendingOrders() {
+      return pendingOrders;
+    },
+    get orderNotice() {
+      return orderNotice;
+    },
     buy,
     sell,
-    tradeBlockReason,
+    buyAmountUsd: buyAmountUsdAction,
+    tradeMode,
+    cancelOrder: cancelOrderAction,
+    clearOrderNotice: clearOrderNoticeAction,
     openDeposit: openDepositAction,
     breakDeposit: breakDepositAction,
     buyProperty: buyPropertyAction,

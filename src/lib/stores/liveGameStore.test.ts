@@ -4,6 +4,8 @@ import { createLiveGameStore } from './liveGameStore.svelte';
 import type { Cached, FxValue, CryptoValue } from '../api/types';
 import type { BinanceFeedOptions, BinanceFeed } from '../api/binance';
 import type { SaveEnvelopeV1 } from './savegame';
+import { usd } from '../domain/money';
+import { sessionOpenMs } from '../domain/calendar/calendar';
 
 // 2026-06-01 12:00 Europe/Istanbul = Pazartesi, BIST açık saat
 const FIXED_NOW = new Date('2026-06-01T12:00:00+03:00').getTime();
@@ -14,7 +16,14 @@ function resp(body: unknown): Response {
 
 function setup(overrides: Record<string, unknown> = {}) {
   let yahoo: Cached<FxValue> = {
-    value: { usdTry: 40, prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45 } },
+    value: {
+      usdTry: 40,
+      prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45 },
+      // Task 3 (kapalı piyasada işlem): settle'ın taze-fiyat kanıtı — bugünün (FIXED_NOW) seans
+      // açılışından beri damgalanmış sayılır, bu yüzden varsayılan fixture'daki BIST alım/satımları
+      // hâlâ ANLIK gerçekleşir (priceAt eklenmeden önceki davranışla aynı).
+      priceAt: { THYAO: FIXED_NOW, ASELS: FIXED_NOW },
+    },
     asOf: 111,
     stale: false,
   };
@@ -154,10 +163,13 @@ describe('createLiveGameStore (USD-taban)', () => {
   it('7) guard: fiyat yok / yetersiz USD / holding yok → lastError, game değişmez', async () => {
     const t = setup();
     await t.store.start();
+    // Task 3: kripto tazeliği artık feedStatus'a bağlı (tradeMode) — DOGE'un GERÇEKTEN fiyatsız
+    // olduğunu (kuyruğa değil hataya düştüğünü) test etmek için WS'i canlı say.
+    t.feed.onStatus?.('live');
     flushSync();
     const before = t.store.game;
 
-    t.store.buy('DOGE', 1); // katalogda yok → canlı fiyat yok
+    t.store.buy('DOGE', 1); // crypto snapshot mock'unda yok → canlı fiyat yok
     expect(t.store.lastError).not.toBeNull();
 
     t.store.buy('THYAO', 100_000_000); // 1e8 × $7.5 = $750M > $1M
@@ -300,7 +312,15 @@ describe('createLiveGameStore (USD-taban)', () => {
     flushSync();
     expect(t.store.prices.some((p) => p.id === 'GARAN')).toBe(false);
 
-    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300, ASELS: 200, GARAN: 120, XAUGRAM: 5000, EUR: 45 } }, asOf: 222, stale: false });
+    t.setYahoo({
+      value: {
+        usdTry: 40,
+        prices: { THYAO: 300, ASELS: 200, GARAN: 120, XAUGRAM: 5000, EUR: 45 },
+        priceAt: { THYAO: FIXED_NOW, ASELS: FIXED_NOW, GARAN: FIXED_NOW },
+      },
+      asOf: 222,
+      stale: false,
+    });
     t.store.addBist('garan');
     await new Promise((r) => setTimeout(r, 0));
     flushSync();
@@ -330,7 +350,11 @@ describe('createLiveGameStore (USD-taban)', () => {
     expect(t.store.prices.some((p) => p.id === 'AAPL')).toBe(false);
 
     t.setYahoo({
-      value: { usdTry: 40, prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45, AAPL: 7600 } },
+      value: {
+        usdTry: 40,
+        prices: { THYAO: 300, ASELS: 200, XAUGRAM: 5000, EUR: 45, AAPL: 7600 },
+        priceAt: { THYAO: NYSE_OPEN_NOW, ASELS: NYSE_OPEN_NOW, AAPL: NYSE_OPEN_NOW },
+      },
       asOf: 222,
       stale: false,
     });
@@ -683,25 +707,49 @@ describe('createLiveGameStore (USD-taban)', () => {
   });
 });
 
-describe('trade guard: kapalı/stale piyasada işlem yasağı (audit P1)', () => {
-  it('kapalı piyasada (Cumartesi) BIST alımı yasak — holdings değişmez', async () => {
+describe('tradeMode: kapalı/stale piyasada kuyruğa alma (Task 3 — eski adı "trade guard" audit P1)', () => {
+  it('kapalı piyasada (Cumartesi) BIST alımı kuyruğa girer — holdings değişmez, onFirstTrade çağrılmaz', async () => {
     const closedAt = new Date('2026-07-18T09:00:00Z').getTime(); // Cumartesi 12:00 İstanbul
-    const t = setup({ now: () => closedAt });
+    const onFirstTrade = vi.fn();
+    const t = setup({ now: () => closedAt, onFirstTrade });
     await t.store.start();
     flushSync();
     const before = t.store.game;
 
-    t.store.buy('THYAO', 1);
+    t.store.buy('THYAO', 5);
     flushSync();
 
-    expect(t.store.lastError).toMatch(/PİYASA KAPALI/);
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.pendingOrders).toHaveLength(1);
+    expect(t.store.pendingOrders[0]).toMatchObject({
+      assetId: 'THYAO',
+      side: 'buy',
+      kind: 'units',
+      units: 5,
+    });
     expect(t.store.game).toBe(before);
+    expect(onFirstTrade).not.toHaveBeenCalled();
   });
 
-  it('kapalı piyasada bile kripto alımı serbest (7/24 muaf)', async () => {
+  it('feed canlı değilken (feedStatus≠live) kripto buy bile kuyruğa girer (tek kural)', async () => {
+    const t = setup();
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
+    await t.store.start(); // feedStatus hiç 'live' olmadı (varsayılan 'stale')
+    flushSync();
+
+    t.store.buy('BTC', 1);
+    flushSync();
+
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.pendingOrders).toHaveLength(1);
+    expect(t.store.game.holdings.some((h) => h.assetId === 'BTC')).toBe(false);
+  });
+
+  it('kapalı piyasada bile kripto alımı serbest (WS canlıyken, 7/24 muaf)', async () => {
     const closedAt = new Date('2026-07-18T09:00:00Z').getTime(); // aynı Cumartesi
     const t = setup({ now: () => closedAt });
     await t.store.start();
+    t.feed.onStatus?.('live'); // kripto bacağı feedStatus'a göre serbest kalsın
     flushSync();
 
     t.store.buy('BTC', 1);
@@ -723,21 +771,25 @@ describe('trade guard: kapalı/stale piyasada işlem yasağı (audit P1)', () =>
     expect(t.store.game.holdings.some((h) => h.assetId === 'THYAO')).toBe(true);
   });
 
-  it('fiyat verisi eskiyken (fxStale) BIST alımı yasak, kripto yine serbest', async () => {
+  it('fiyat verisi eskiyken (fxStale) BIST alımı kuyruğa girer, kripto (canlı feed) yine serbest', async () => {
     const t = setup();
     t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
     await t.store.start(); // ilk pollFx stale zarfı okur → fxStale=true
+    t.feed.onStatus?.('live'); // kripto bacağı fxStale'den muaf, kendi kuralı (feedStatus) canlı
     flushSync();
 
     t.store.buy('THYAO', 1);
-    expect(t.store.lastError).toMatch(/FİYAT VERİSİ ESKİ/);
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.pendingOrders).toHaveLength(1);
 
     t.store.buy('BTC', 1);
+    flushSync();
     expect(t.store.lastError).toBeNull();
     expect(t.store.game.holdings.some((h) => h.assetId === 'BTC')).toBe(true);
   });
 
-  it('hafta içi seans dışı satış da yasak (SAT aynı korumaya tabi)', async () => {
+  it('hafta içi seans dışı satış da kuyruğa girer (SAT aynı kurala tabi)', async () => {
     vi.useFakeTimers();
     let clock = FIXED_NOW; // Pazartesi 12:00, açık — pozisyon açmak için
     const t = setup({ now: () => clock });
@@ -746,6 +798,7 @@ describe('trade guard: kapalı/stale piyasada işlem yasağı (audit P1)', () =>
     t.store.buy('THYAO', 1);
     flushSync();
     expect(t.store.lastError).toBeNull();
+    expect(t.store.game.holdings.some((h) => h.assetId === 'THYAO')).toBe(true);
 
     clock = new Date('2026-07-15T22:00:00Z').getTime(); // ≈ Perşembe 01:00 İstanbul, seans dışı
     await vi.advanceTimersByTimeAsync(1000); // nowMsTick reaktif tazelensin
@@ -754,7 +807,207 @@ describe('trade guard: kapalı/stale piyasada işlem yasağı (audit P1)', () =>
     t.store.sell('THYAO', 1);
     flushSync();
 
-    expect(t.store.lastError).toMatch(/PİYASA KAPALI/);
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.pendingOrders.some((o) => o.assetId === 'THYAO' && o.side === 'sell')).toBe(true);
+  });
+});
+
+describe('bekleyen emir kuyruğu: settle, buyAmountUsd, cancel, notice, restore (Task 3)', () => {
+  it('taze tick gelince kuyruktaki emir dolar: holding oluşur, order silinir, onFirstTrade TAM 1 kez', async () => {
+    vi.useFakeTimers();
+    const onFirstTrade = vi.fn();
+    const t = setup({ onFirstTrade, pollMs: 5000 });
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
+    await t.store.start(); // ilk poll: fxStale=true → THYAO taze değil
+    flushSync();
+
+    t.store.buy('THYAO', 5);
+    flushSync();
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.pendingOrders).toHaveLength(1);
+    expect(t.store.game.holdings).toHaveLength(0);
+    expect(onFirstTrade).not.toHaveBeenCalled();
+
+    // Taze tick: priceAt bugünün (FIXED_NOW) seans açılışından sonra damgalanmış.
+    t.setYahoo({
+      value: { usdTry: 40, prices: { THYAO: 300 }, priceAt: { THYAO: FIXED_NOW } },
+      asOf: 222,
+      stale: false,
+    });
+    await vi.advanceTimersByTimeAsync(5000); // sıradaki poll → pollFx → settlePendingOrders
+    flushSync();
+
+    expect(t.store.pendingOrders).toHaveLength(0);
+    expect(t.store.game.holdings.some((h) => h.assetId === 'THYAO' && h.units === 5)).toBe(true);
+    expect(onFirstTrade).toHaveBeenCalledTimes(1);
+    expect(t.store.orderNotice).not.toBeNull();
+  });
+
+  it('15dk tuzağı: piyasa açık ama priceAt dünkü/açılış-öncesi damgaysa settle DOLDURMAZ', async () => {
+    vi.useFakeTimers();
+    const onFirstTrade = vi.fn();
+    const t = setup({ onFirstTrade, pollMs: 5000 });
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
+    await t.store.start();
+    flushSync();
+
+    t.store.buy('THYAO', 5);
+    flushSync();
+    expect(t.store.pendingOrders).toHaveLength(1);
+
+    const staleStamp = sessionOpenMs('bist', new Date(FIXED_NOW)) - 60_000; // açılıştan 1dk ÖNCE
+    t.setYahoo({
+      value: { usdTry: 40, prices: { THYAO: 300 }, priceAt: { THYAO: staleStamp } },
+      asOf: 222,
+      stale: false, // stale bayrağı false ama priceAt bugünkü açılıştan ÖNCE — settle yine de atlamalı
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+
+    expect(t.store.pendingOrders).toHaveLength(1); // hâlâ kuyrukta — dolmadı
+    expect(t.store.game.holdings).toHaveLength(0);
+    expect(onFirstTrade).not.toHaveBeenCalled();
+  });
+
+  it('buyAmountUsd: kuyrukta amountUsd-kind yazar; dolumda adet açılış fiyatından hesaplanır', async () => {
+    vi.useFakeTimers();
+    const t = setup({ pollMs: 5000 });
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
+    await t.store.start();
+    flushSync();
+
+    t.store.buyAmountUsd('THYAO', usd(500));
+    flushSync();
+    expect(t.store.pendingOrders).toHaveLength(1);
+    expect(t.store.pendingOrders[0]).toMatchObject({ assetId: 'THYAO', side: 'buy', kind: 'amountUsd' });
+
+    t.setYahoo({
+      // THYAO 300 TRY / 40 kur = $7.5 açılış fiyatı → 500 / 7.5 = 66.6666 adet (floor/1e4)
+      value: { usdTry: 40, prices: { THYAO: 300 }, priceAt: { THYAO: FIXED_NOW } },
+      asOf: 222,
+      stale: false,
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+
+    expect(t.store.pendingOrders).toHaveLength(0);
+    const pos = t.store.game.holdings.find((h) => h.assetId === 'THYAO');
+    expect(pos?.units).toBeCloseTo(66.6666, 4);
+  });
+
+  it('dolum anında bakiye yetersiz → order silinir, orderNotice iptal mesajı içerir, holdings değişmez', async () => {
+    vi.useFakeTimers();
+    const onFirstTrade = vi.fn();
+    const t = setup({ onFirstTrade, pollMs: 5000 });
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
+    await t.store.start();
+    flushSync();
+
+    t.store.buy('THYAO', 100_000_000); // 1e8 × $7.5 = $750M >> $1M bakiye
+    flushSync();
+    expect(t.store.pendingOrders).toHaveLength(1);
+
+    t.setYahoo({
+      value: { usdTry: 40, prices: { THYAO: 300 }, priceAt: { THYAO: FIXED_NOW } },
+      asOf: 222,
+      stale: false,
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+
+    expect(t.store.pendingOrders).toHaveLength(0); // iptal edilip kuyruktan çıktı
+    expect(t.store.game.holdings).toHaveLength(0);
+    expect(t.store.orderNotice).toMatch(/iptal/i);
+    expect(onFirstTrade).not.toHaveBeenCalled();
+  });
+
+  it('cancelOrder: kuyruktan siler ve persist eder', async () => {
+    const onPersist = vi.fn();
+    const closedAt = new Date('2026-07-18T09:00:00Z').getTime(); // Cumartesi, BIST kapalı
+    const t = setup({ onPersist, now: () => closedAt });
+    await t.store.start();
+    flushSync();
+
+    t.store.buy('THYAO', 5);
+    flushSync();
+    expect(t.store.pendingOrders).toHaveLength(1);
+    const orderId = t.store.pendingOrders[0].id;
+
+    t.store.cancelOrder(orderId);
+    flushSync();
+
+    expect(t.store.pendingOrders).toHaveLength(0);
+    expect(onPersist).toHaveBeenLastCalledWith(expect.objectContaining({ pendingOrders: [] }));
+  });
+
+  it('cancelOrder: bilinmeyen id no-op (kuyruk/persist tetiklenmez)', async () => {
+    const onPersist = vi.fn();
+    const closedAt = new Date('2026-07-18T09:00:00Z').getTime();
+    const t = setup({ onPersist, now: () => closedAt });
+    await t.store.start();
+    flushSync();
+    t.store.buy('THYAO', 5);
+    flushSync();
+    const callsBefore = onPersist.mock.calls.length;
+
+    t.store.cancelOrder('bilinmeyen-id');
+    flushSync();
+
+    expect(t.store.pendingOrders).toHaveLength(1);
+    expect(onPersist.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('clearOrderNotice: son settle bildirimini null’lar', async () => {
+    vi.useFakeTimers();
+    const t = setup({ pollMs: 5000 });
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300 } }, asOf: 0, stale: true });
+    await t.store.start();
+    flushSync();
+    t.store.buy('THYAO', 100_000_000); // yetersiz bakiye → settle'da iptal olacak
+    flushSync();
+
+    t.setYahoo({
+      value: { usdTry: 40, prices: { THYAO: 300 }, priceAt: { THYAO: FIXED_NOW } },
+      asOf: 222,
+      stale: false,
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+    expect(t.store.orderNotice).not.toBeNull();
+
+    t.store.clearOrderNotice();
+    flushSync();
+
+    expect(t.store.orderNotice).toBeNull();
+  });
+
+  it('restore: bekleyen BIST emrinin sembolü activeBist’e, US emrininki activeUs’a girer', async () => {
+    const initialGame = {
+      playerId: 'p1',
+      scenarioId: 'canli' as const,
+      seed: 1,
+      clock: { day: 5, totalDays: 90, speed: 'realtime' as const, paused: false },
+      usdBalance: { amount: 1_000_000, currency: 'USD' as const },
+      holdings: [],
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    const t = setup({
+      initial: {
+        v: 1,
+        game: initialGame,
+        activeBist: ['GARAN'],
+        activeUs: ['AAPL'],
+        pendingOrders: [
+          { id: 'a', assetId: 'GARAN', side: 'buy', kind: 'units', units: 10, placedAt: 1 },
+          { id: 'b', assetId: 'AAPL', side: 'buy', kind: 'units', units: 1, placedAt: 1 },
+        ],
+      },
+    });
+
+    expect(t.store.prices.some((p) => p.id === 'GARAN' && p.category === 'bist')).toBe(true);
+    expect(t.store.prices.some((p) => p.id === 'AAPL' && p.category === 'us')).toBe(true);
+    expect(t.store.pendingOrders).toHaveLength(2);
   });
 });
 
@@ -838,7 +1091,7 @@ describe('onFirstTrade (Faz 1 funnel aktivasyonu)', () => {
     expect(onFirstTrade).not.toHaveBeenCalled();
   });
 
-  it('piyasa kapalıyken bloklu buy çağırmaz', async () => {
+  it('piyasa kapalıyken kuyruğa giren buy onFirstTrade çağırmaz (yalnız gerçek dolum sayılır)', async () => {
     // BIST hafta içi 10:00-18:00 (Istanbul) açık — 22:00 kapanış sonrası.
     const CLOSED_NOW = new Date('2026-06-01T22:00:00+03:00').getTime();
     const onFirstTrade = vi.fn();
@@ -847,7 +1100,8 @@ describe('onFirstTrade (Faz 1 funnel aktivasyonu)', () => {
     flushSync();
     t.store.buy('THYAO', 1);
     flushSync();
-    expect(t.store.lastError).toContain('PİYASA KAPALI');
+    expect(t.store.lastError).toBeNull();
+    expect(t.store.pendingOrders).toHaveLength(1);
     expect(onFirstTrade).not.toHaveBeenCalled();
   });
 

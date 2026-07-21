@@ -21,6 +21,7 @@ import {
 import { createGameState } from './gameState';
 import { usd, tryM } from '../domain/money';
 import type { DailySnapshot } from '../domain/snapshot/dailySnapshot';
+import type { PendingOrder } from '../domain/orders/orders';
 
 function makeStorage(): Storage {
   const map = new Map<string, string>();
@@ -287,6 +288,46 @@ describe('savegame', () => {
       saveGame(storage, { v: 1, game, activeBist: [] });
 
       expect(loadGame(storage)?.sealedFx).toBeUndefined();
+    });
+  });
+
+  describe('pendingOrders persistence (Task 3)', () => {
+    it('round-trip: pendingOrders kaydedilir; amountUsd usd() ile yeniden sarılır', () => {
+      const storage = makeStorage();
+      const game = createGameState('canli', 1, 'p1', 1000);
+      const pendingOrders: PendingOrder[] = [
+        { id: '1000-0', assetId: 'THYAO', side: 'buy', kind: 'units', units: 5, placedAt: 1000 },
+        {
+          id: '1000-1',
+          assetId: 'THYAO',
+          side: 'buy',
+          kind: 'amountUsd',
+          amountUsd: { amount: 500.999, currency: 'USD' }, // JSON.parse sonrası düz obje simülasyonu
+          placedAt: 1000,
+        },
+      ];
+      const envelope: SaveEnvelopeV1 = { v: 1, game, activeBist: [], pendingOrders };
+
+      saveGame(storage, envelope);
+      const loaded = loadGame(storage);
+
+      expect(loaded?.pendingOrders).toHaveLength(2);
+      expect(loaded?.pendingOrders?.[0]).toEqual(pendingOrders[0]); // units-kind: Money yok, aynen döner
+      const revived = loaded?.pendingOrders?.[1];
+      expect(revived?.kind).toBe('amountUsd');
+      if (revived?.kind === 'amountUsd') {
+        // usd() round2 uygular — ham JSON objesi (500.999) değil, yeniden sarılmış (501) döner.
+        expect(revived.amountUsd).toEqual({ amount: 501, currency: 'USD' });
+      }
+    });
+
+    it('pendingOrders olmayan eski kayıt → undefined (kırılmaz)', () => {
+      const storage = makeStorage();
+      const game = createGameState('canli', 1, 'p1', 1000);
+
+      saveGame(storage, { v: 1, game, activeBist: [] });
+
+      expect(loadGame(storage)?.pendingOrders).toBeUndefined();
     });
   });
 
