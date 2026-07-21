@@ -921,6 +921,43 @@ describe('bekleyen emir kuyruğu: settle, buyAmountUsd, cancel, notice, restore 
     expect(onFirstTrade).not.toHaveBeenCalled();
   });
 
+  it('fix round 1: settle sırasında price<=0 izole iptal olur — önceki turda dolan emir çift gerçekleşmez', async () => {
+    vi.useFakeTimers();
+    const t = setup({ pollMs: 5000 });
+    t.setYahoo({ value: { usdTry: 40, prices: { THYAO: 300, ASELS: 200 } }, asOf: 0, stale: true });
+    await t.store.start();
+    flushSync();
+
+    // ASELS ÖNCE kuyruğa girer (settle döngüsünde ondan önce işlenir), THYAO SONRA — settle
+    // turunda ASELS başarıyla dolduktan SONRA THYAO'nun price<=0 throw'u tetiklensin diye.
+    t.store.buy('ASELS', 5);
+    t.store.buy('THYAO', 5);
+    flushSync();
+    expect(t.store.pendingOrders).toHaveLength(2);
+
+    t.setYahoo({
+      // THYAO fiyatı 0 (halt/feed glitch simülasyonu) — resolveUnits(order, 0) throw eder.
+      value: { usdTry: 40, prices: { THYAO: 0, ASELS: 200 }, priceAt: { THYAO: FIXED_NOW, ASELS: FIXED_NOW } },
+      asOf: 222,
+      stale: false,
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+
+    // Throw artık try İÇİNDE — döngü kesilmez, HER İKİ emir de kuyruktan çıkar ve TEK persist olur.
+    expect(t.store.pendingOrders).toHaveLength(0);
+    expect(t.store.game.holdings.some((h) => h.assetId === 'ASELS' && h.units === 5)).toBe(true);
+    expect(t.store.game.holdings.some((h) => h.assetId === 'THYAO')).toBe(false);
+    expect(t.store.orderNotice).toMatch(/iptal/i); // son işlenen (THYAO) iptal bildirimi
+
+    // Çift gerçekleşme regresyon guard'ı: pendingOrders zaten boşaldığı için sonraki tick'te
+    // ASELS TEKRAR settle edilemez — units 5'te sabit kalmalı (10 OLMAMALI).
+    await vi.advanceTimersByTimeAsync(5000);
+    flushSync();
+    const aselsHolding = t.store.game.holdings.find((h) => h.assetId === 'ASELS');
+    expect(aselsHolding?.units).toBe(5);
+  });
+
   it('cancelOrder: kuyruktan siler ve persist eder', async () => {
     const onPersist = vi.fn();
     const closedAt = new Date('2026-07-18T09:00:00Z').getTime(); // Cumartesi, BIST kapalı
@@ -996,7 +1033,15 @@ describe('bekleyen emir kuyruğu: settle, buyAmountUsd, cancel, notice, restore 
       initial: {
         v: 1,
         game: initialGame,
-        activeBist: ['GARAN'],
+        // activeBist BİLEREK ['GARAN'] İÇERMEZ — GARAN'ın activeBist'e girişi TAMAMEN
+        // pendingOrders→fromPending birleşimine bağlı olsun (fix round 1, Bulgu 2: eski
+        // fixture activeBist:['GARAN'] zaten taşıyordu, fromPending silinse de test yeşil
+        // kalırdı — ayırt edici değildi). activeUs BİLEREK ['AAPL'] TAŞIR: savedUs sinyali
+        // olmadan computeInitialActiveBist'in fromPending'i AAPL'i de (CATALOG'da olmayan her
+        // sembol varsayılan BIST sayıldığından) activeBist'e sızdırır — deneyle doğrulandı
+        // (bkz. rapor "Fix round 1" notu). Gerçek sistemde de bu hep böyledir: bir US emri hep
+        // kendi activeUs kaydıyla BİRLİKTE persist edilmiştir (addUs → persist), bu yüzden
+        // activeUs'un burada dolu olması hem güvenli hem gerçekçi.
         activeUs: ['AAPL'],
         pendingOrders: [
           { id: 'a', assetId: 'GARAN', side: 'buy', kind: 'units', units: 10, placedAt: 1 },
@@ -1007,6 +1052,9 @@ describe('bekleyen emir kuyruğu: settle, buyAmountUsd, cancel, notice, restore 
 
     expect(t.store.prices.some((p) => p.id === 'GARAN' && p.category === 'bist')).toBe(true);
     expect(t.store.prices.some((p) => p.id === 'AAPL' && p.category === 'us')).toBe(true);
+    // Sızıntı guard'ı (test 20c'nin ruhu): AAPL activeUs'ta zaten varken fromPending onu
+    // İKİNCİ KEZ (yanlışlıkla) activeBist'e de eklemesin — tek satır, tek kategori.
+    expect(t.store.prices.filter((p) => p.id === 'AAPL')).toHaveLength(1);
     expect(t.store.pendingOrders).toHaveLength(2);
   });
 });

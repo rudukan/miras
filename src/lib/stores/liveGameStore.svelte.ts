@@ -146,7 +146,12 @@ function computeInitialActiveBist(initial: SaveEnvelopeV1 | null): string[] {
     .map((h) => h.assetId)
     .filter((id) => isBistLikeId(id) && !savedUs.has(id));
   // Task 3: bekleyen bir BIST emrinin sembolü de holding gibi poll edilmeli — yoksa settle'ı
-  // bekleyen sembolün fiyatı hiç çekilmez ve emir asla dolamaz.
+  // bekleyen sembolün fiyatı hiç çekilmez ve emir asla dolamaz. fromHoldings ile AYNI sızıntı
+  // riski taşır (bkz. yukarıdaki fonksiyon yorumu) — bu yüzden AYNI `!savedUs.has(id)` korumasını
+  // kullanır: `activeUs` boşsa/eksikse (fix round 1'de deneyle doğrulandı) bir US on-demand
+  // sembolü de burada BIST'miş gibi sızabilir. Gerçek sistemde zarar yok — bir US emri hep
+  // kendi activeUs kaydıyla BİRLİKTE persist edilir (addUs → persist), yani savedUs pratikte
+  // hep doludur; risk yalnız elle bozulmuş/eski bir kayıtta teoriktir.
   const fromPending = (initial?.pendingOrders ?? [])
     .map((o) => o.assetId)
     .filter((id) => isBistLikeId(id) && !savedUs.has(id));
@@ -155,8 +160,13 @@ function computeInitialActiveBist(initial: SaveEnvelopeV1 | null): string[] {
 
 /** activeUs restore: kayıtlı set + (Task 3) bekleyen US emirlerinin sembolleri — yeni özellik,
  *  eski/bozuk kayıt riski yok (bir US holding/emri hep kendi activeUs'uyla birlikte kaydedilmiş
- *  olacak; fromPending yalnız CATALOG'da bist-olmayan işaretli sembolleri kapsar, savedUs zaten
- *  fromSave'e giriyor). */
+ *  olacak). DÜRÜST NOT (fix round 1'de deneyle doğrulandı): `fromPending` burada yalnız
+ *  CATALOG'da bist-olmayan kategori işaretli sembolleri kapsar — CATALOG'da hiç 'us' kategorisi
+ *  YOK (yalnız on-demand sembol), bu yüzden bu satır bugün için on-demand bir US sembolünü
+ *  `activeUs` KENDİSİ ZATEN taşımıyorsa TEK BAŞINA kurtaramaz (fromSave zaten kapsıyorsa
+ *  no-op'tur). CATALOG'a ileride statik bir 'us' girişi eklenirse otomatik devreye girer —
+ *  bugün için ileriye dönük/zararsız, fromHoldings/fromPending'in BIST tarafındaki gibi bir
+ *  sızıntı riski TAŞIMAZ (yalnız ekleme yapar, hiçbir zaman yanlış kategoriye yönlendirmez). */
 function computeInitialActiveUs(initial: SaveEnvelopeV1 | null): string[] {
   const fromSave = initial?.activeUs ?? [];
   const fromPending = (initial?.pendingOrders ?? [])
@@ -479,6 +489,11 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   /** Bekleyen emirleri tazelik kazanan varlıklar için gerçekleştirir (audit P1 → Task 3).
    *  `apply()` KULLANMAZ: guard döngüsü kendi taze/atla mantığını yürütür ve her emir kendi
    *  try/catch'inde izole edilir (bir emrin iptali diğerlerini etkilemez/döngüyü durdurmaz).
+   *  `resolveUnits` de try İÇİNDE çağrılır (fix round 1): `price<=0` gibi düşük olasılıklı ama
+   *  mimari olarak mümkün bir durum try DIŞINDA olsaydı döngüyü uncaught throw ile keserdi —
+   *  bu durumda önceki turda dolan bir emrin kuyruktan çıkışı hiç persist edilmez ve o emir bir
+   *  sonraki tick'te İKİNCİ KEZ gerçekleşebilirdi (double execution). Artık her başarısızlık
+   *  modu (fiyat geçersiz, buyAsset/sellAsset reddi) AYNI catch'e düşer — özel dal gerekmez.
    *  Çağrı noktaları (2): pollFx() sonu (ensureSeal() sonrası) ve WS throttle tick'i
    *  (flushPending() sonu) — yeni bir timer AÇILMAZ. */
   function settlePendingOrders(): void {
@@ -494,9 +509,9 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
         remaining.push(order); // fiyat anlık kayıp — sonraki tick'te tekrar denenir
         continue;
       }
-      const units = resolveUnits(order, price);
       const label = orderSideLabel(order.side);
       try {
+        const units = resolveUnits(order, price); // price<=0 dahil — aynı catch'e düşer
         const next =
           order.side === 'buy'
             ? buyAsset(game, oracle, order.assetId, units)
