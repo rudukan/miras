@@ -780,6 +780,12 @@
 							positions={store.positions}
 							onSelect={handleSelectAsset}
 							highlightAssetId={hoveredAssetId}
+							pendingOrders={store.pendingOrders}
+							orderNotice={store.orderNotice}
+							nowMs={nowMs}
+							onCancelOrder={(id) => store?.cancelOrder(id)}
+							onClearNotice={() => store?.clearOrderNotice()}
+							prices={store.prices}
 						/>
 
 						<DepositCard {store} nowMs={nowMs} />

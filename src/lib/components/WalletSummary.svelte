@@ -1,8 +1,10 @@
 <script lang="ts">
 	import type { GameState } from '$lib/stores/gameState';
-	import type { PositionRow } from '$lib/stores/liveGameStore.svelte';
+	import type { PositionRow, PriceRow } from '$lib/stores/liveGameStore.svelte';
+	import type { PendingOrder } from '$lib/domain/orders/orders';
+	import { nextMarketOpen } from '$lib/domain/calendar/calendar';
 	import { usd, formatMoney } from '$lib/domain/money';
-	import { displayUsd, signedUsd, pnlClass, dailyChangeBadge, positionPnl } from './format';
+	import { displayUsd, signedUsd, pnlClass, dailyChangeBadge, positionPnl, formatOpenEta } from './format';
 
 	interface Props {
 		game: GameState;
@@ -11,12 +13,50 @@
 		positions: PositionRow[];
 		onSelect?: (assetId: string) => void;
 		highlightAssetId?: string | null;
+		/** Kuyruktaki emirler (Task 3) — boşsa "BEKLEYEN EMİRLER" bölümü gösterilmez. */
+		pendingOrders?: PendingOrder[];
+		/** Son settle turunun dolum/iptal bildirimi. */
+		orderNotice?: string | null;
+		/** Reaktif "şimdi" damgası — ETA hesapları ve settle bildirimi bunu okur. */
+		nowMs?: number;
+		onCancelOrder?: (orderId: string) => void;
+		onClearNotice?: () => void;
+		/** Bekleyen emrin kategorisini çözmek için — Task 3'ün TEK doğru kaynağı (store.prices). */
+		prices?: PriceRow[];
 	}
 
-	let { game, usdTry, liveUsdTry, positions, onSelect, highlightAssetId }: Props = $props();
+	let {
+		game,
+		usdTry,
+		liveUsdTry,
+		positions,
+		onSelect,
+		highlightAssetId,
+		pendingOrders = [],
+		orderNotice = null,
+		nowMs = Date.now(),
+		onCancelOrder,
+		onClearNotice,
+		prices = [],
+	}: Props = $props();
 
 	const usdRate = $derived(usdTry.toFixed(2));
 	const liveRate = $derived(liveUsdTry.toFixed(2));
+
+	/** Bekleyen bir emrin kategorisi — `prices`'tan çözülür (Task 3: pendingOrders'ın assetId'si
+	 *  her zaman prices'ta bulunur; activeBist/activeUs/CORE_ASSETS zaten oradan gelir). */
+	function orderCategory(assetId: string): PriceRow['category'] | undefined {
+		return prices.find((p) => p.id === assetId)?.category;
+	}
+
+	/** ETA etiketi — yalnız bist/us için `nextMarketOpen` anlamlıdır (diğerlerinde hep açık,
+	 *  `at`'ı aynen döner → anlamsız "az sonra" üretmesin diye burada hiç çağrılmaz). */
+	function orderEta(assetId: string): string {
+		const category = orderCategory(assetId);
+		if (category !== 'bist' && category !== 'us') return 'veri gelince';
+		const openMs = nextMarketOpen(category, new Date(nowMs)).getTime();
+		return formatOpenEta(openMs, nowMs);
+	}
 </script>
 
 <div class="bg-term-panel border border-term-border p-3 font-mono text-xs space-y-3">
@@ -79,4 +119,51 @@
 			</div>
 		{/if}
 	</div>
+
+	<!-- Bekleyen emirler (Task 3: piyasa kapalı/veri bayatken kuyruğa alınanlar) -->
+	{#if pendingOrders.length > 0}
+		<div>
+			<div class="text-term-text opacity-50 text-[10px] uppercase tracking-wider mb-1.5">
+				Bekleyen Emirler
+			</div>
+			<div>
+				{#each pendingOrders as o (o.id)}
+					<div class="flex justify-between items-start gap-2 border-b border-term-border border-opacity-30 py-1 first:pt-0 last:border-0 last:pb-0">
+						<div class="flex flex-col">
+							<span class="text-term-text">
+								<span class={o.side === 'buy' ? 'text-term-green' : 'text-term-red'}>{o.side === 'buy' ? 'AL' : 'SAT'}</span>
+								<span class="font-bold">{o.assetId}</span>
+							</span>
+							<span class="text-term-text opacity-50 text-[10px]">
+								{o.kind === 'units' ? `${o.units} adet` : displayUsd(o.amountUsd)} · {orderEta(o.assetId)}
+							</span>
+						</div>
+						<button
+							type="button"
+							onclick={() => onCancelOrder?.(o.id)}
+							class="shrink-0 px-1.5 py-0.5 bg-term-bg border border-term-red text-term-red text-[10px]
+							       hover:bg-term-panelLight transition-colors"
+						>
+							İPTAL
+						</button>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
+	<!-- Son settle bildirimi (dolum/iptal) -->
+	{#if orderNotice !== null}
+		<div class="border border-term-amber bg-term-bg px-2.5 py-1.5 text-term-amber text-[11px] leading-snug flex items-start justify-between gap-2">
+			<span>{orderNotice}</span>
+			<button
+				type="button"
+				onclick={() => onClearNotice?.()}
+				class="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+				aria-label="Bildirimi kapat"
+			>
+				×
+			</button>
+		</div>
+	{/if}
 </div>

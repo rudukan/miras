@@ -1,5 +1,6 @@
 import type { Money } from '../domain/money';
 import { usd, tryM, formatMoney } from '../domain/money';
+import { istanbulParts } from '../domain/calendar/calendar';
 
 /**
  * Saf gösterim yardımcıları — runes yok, jsdom yok, node'da test edilebilir.
@@ -51,12 +52,12 @@ export function signedPercent(rate: number | null): string {
 /**
  * Market durumu rozeti.
  * open: true → { text:'AÇIK', cls:'text-term-green' }
- * open: false → { text:'KAPALI', cls:'text-term-amber' }
+ * open: false → { text:'KAPANIŞ', cls:'text-term-amber' }
  */
 export function marketBadge(open: boolean): { text: string; cls: string } {
 	return open
 		? { text: 'AÇIK', cls: 'text-term-green' }
-		: { text: 'KAPALI', cls: 'text-term-amber' };
+		: { text: 'KAPANIŞ', cls: 'text-term-amber' };
 }
 
 /**
@@ -193,6 +194,24 @@ export function tradeToastMessage(
 }
 
 /**
+ * Kuyruğa alınan emrin bildirim mesajı — piyasa kapalı/veri bayatken verilen AL/SAT sonrası
+ * gösterilir. `units`-kind emirlerde adet biliniyor (>0) ve gösterilir; `amountUsd`-kind
+ * emirlerde adet henüz bilinmez (çağıran 0 geçer) ve bunun yerine tutar gösterilir.
+ * `side` yalnız API simetrisi için tutulur — mesaj metni yöne göre değişmez (kuyruk her iki
+ * yönde de aynı bekleme anlamına gelir).
+ */
+export function queueToastMessage(
+	side: 'buy' | 'sell',
+	assetId: string,
+	units: number,
+	amountUsd: number,
+): string {
+	void side;
+	const detail = units > 0 ? `${units} ${assetId}` : `${displayUsd(usd(amountUsd))} ${assetId}`;
+	return `⏳ EMİR KUYRUKTA — AÇILIŞTA GERÇEKLEŞİR: ${detail}`;
+}
+
+/**
  * Yazarken girilen ham metni (binlik virgülü + ondalık nokta) sayıya çevirir.
  * Eksi işareti yok sayılır (miktar alanları hep pozitif). Geçersiz/boş → 0.
  */
@@ -254,4 +273,18 @@ export function groupByCategory<T extends { category: string }>(
 /** Grafik fiyat etiketi — serinin HAM birimiyle (crypto=USD, yahoo=TRY; bkz. seriesCurrency). */
 export function seriesPriceLabel(price: number, currency: 'USD' | 'TRY'): string {
 	return currency === 'USD' ? formatMoney(usd(price)) : formatMoney(tryM(price));
+}
+
+/**
+ * Bekleyen emrin açılış ETA etiketi. `openMs <= nowMs` → 'az sonra' (açılış anı geldi/geçti,
+ * settle turu henüz işlemedi — ör. bir sonraki tick'i bekliyor). Aksi halde Europe/Istanbul
+ * yerelinde 'DD.MM HH:MM' biçimi (oyuncunun ev saati — BIST/US ayrımı yapmadan tek biçim).
+ */
+export function formatOpenEta(openMs: number, nowMs: number): string {
+	if (openMs <= nowMs) return 'az sonra';
+	const p = istanbulParts(new Date(openMs));
+	const [, month, day] = p.key.split('-');
+	const hh = String(p.hour).padStart(2, '0');
+	const mm = String(p.minute).padStart(2, '0');
+	return `${day}.${month} ${hh}:${mm}`;
 }

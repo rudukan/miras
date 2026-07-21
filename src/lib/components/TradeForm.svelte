@@ -8,6 +8,7 @@
 		maxUnitsAffordable,
 		heldUnits,
 		tradeToastMessage,
+		queueToastMessage,
 		parseTypedAmount,
 		formatTypedAmount,
 		countNonCommaBefore,
@@ -33,9 +34,9 @@
 	const assetLabel = $derived(
 		assetId ? (CATALOG[assetId]?.label ?? bistName(assetId)) : null,
 	);
-	// Kapalı piyasa / stale fiyat guard'ı — store'un TEK kaynağı (apply() içindeki guard'la aynı
-	// mantık). null = serbest; aksi halde AL/SAT devre dışı + altında amber uyarı (audit P1).
-	const blockReason = $derived(assetId ? store.tradeBlockReason(assetId) : null);
+	// İşlem yönlendirmesi — store'un TEK kaynağı. 'queued' bir hata DEĞİL, yönlendirmedir: AL/SAT
+	// devre dışı bırakılmaz, kuyruğa alınır (audit P1 → Task 3/4: eski red davranışı terk edildi).
+	const mode = $derived(assetId ? store.tradeMode(assetId) : 'instant');
 
 	// Kaynak: yazılan biçimlendirilmiş metin (binlik virgüllü). Sayısal değerler bundan türer —
 	// büyük tutarlar (ör. 62,161,390) yazarken basamak sayısı okunur kalsın diye.
@@ -43,6 +44,9 @@
 	let dollarRaw = $state('');
 	const units = $derived(parseTypedAmount(unitsRaw));
 	const dollarAmount = $derived(parseTypedAmount(dollarRaw));
+	// Kullanıcı en son hangi alana yazdı — kuyruklu alışta (mode='queued') bu, emrin units-kind mi
+	// yoksa amountUsd-kind mi kaydedileceğini belirler (bkz. handleBuy).
+	let lastEdited = $state<'units' | 'dollars'>('units');
 
 	// Varlık değişince formu sıfırla (pop-up farklı varlık açtığında eski değer kalmasın).
 	$effect(() => {
@@ -82,10 +86,12 @@
 		});
 	}
 	function handleUnitsInput(e: Event) {
+		lastEdited = 'units';
 		reformatInput(e, (f) => (unitsRaw = f));
 		syncDollarFromUnits();
 	}
 	function handleDollarInput(e: Event) {
+		lastEdited = 'dollars';
 		reformatInput(e, (f) => (dollarRaw = f));
 		syncUnitsFromDollar();
 	}
@@ -95,10 +101,24 @@
 		const id = assetId;
 		const u = units;
 		const amt = dollarAmount;
-		store.buy(id, u);
+		// Kuyruklu + dolar alanına yazılmışsa tutar bazlı emir (gerçekleşme anındaki fiyattan
+		// adede çevrilir) — diğer tüm durumlarda (anlık, ya da kuyruklu ama adet alanına yazılmış)
+		// adet bazlı. Toast'a hangi temsilin gösterileceğini `useAmountUsd` belirler.
+		const useAmountUsd = mode === 'queued' && lastEdited === 'dollars' && amt > 0;
+		if (useAmountUsd) {
+			store.buyAmountUsd(id, usd(amt));
+		} else {
+			store.buy(id, u);
+		}
 		unitsRaw = '';
 		dollarRaw = '';
-		if (store.lastError === null) onTradeSuccess?.(tradeToastMessage('buy', id, u, amt));
+		if (store.lastError === null) {
+			const message =
+				mode === 'queued'
+					? queueToastMessage('buy', id, useAmountUsd ? 0 : u, amt)
+					: tradeToastMessage('buy', id, u, amt);
+			onTradeSuccess?.(message);
+		}
 	}
 	function handleSell() {
 		if (!assetId || units <= 0) return;
@@ -108,7 +128,11 @@
 		store.sell(id, u);
 		unitsRaw = '';
 		dollarRaw = '';
-		if (store.lastError === null) onTradeSuccess?.(tradeToastMessage('sell', id, u, amt));
+		if (store.lastError === null) {
+			const message =
+				mode === 'queued' ? queueToastMessage('sell', id, u, amt) : tradeToastMessage('sell', id, u, amt);
+			onTradeSuccess?.(message);
+		}
 	}
 </script>
 
@@ -157,28 +181,25 @@
 		<button
 			type="button"
 			onclick={handleBuy}
-			disabled={blockReason !== null}
 			class="flex-1 py-1.5 bg-term-bg border border-term-green text-term-green font-bold
-			       hover:bg-term-panelLight glow-border-green transition-colors
-			       disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-term-bg"
+			       hover:bg-term-panelLight glow-border-green transition-colors"
 		>
 			AL
 		</button>
 		<button
 			type="button"
 			onclick={handleSell}
-			disabled={blockReason !== null}
 			class="flex-1 py-1.5 bg-term-bg border border-term-red text-term-red font-bold
-			       hover:bg-term-panelLight transition-colors
-			       disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-term-bg"
+			       hover:bg-term-panelLight transition-colors"
 		>
 			SAT
 		</button>
 	</div>
 
-	{#if blockReason !== null}
+	{#if mode === 'queued'}
 		<div class="border border-term-amber bg-term-bg px-3 py-2 text-term-amber text-[11px] leading-snug mt-2">
-			<span class="font-bold mr-1">UYARI:</span>{blockReason}
+			PİYASA KAPALI / VERİ BEKLENİYOR — emir kuyruğa alınır, açılışı izleyen ilk taze fiyatta
+			gerçekleşir; bakiye yetmezse iptal olur.
 		</div>
 	{/if}
 

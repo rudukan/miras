@@ -45,6 +45,7 @@
 		<p><span class="text-term-green font-bold">Altın/gümüş:</span> ons cinsinden vadeli fiyattan grama ve TL'ye çevrilir — anlık spot fiyat değil, türetilmiş bir değerdir.</p>
 		<p><span class="text-term-green font-bold">Döviz:</span> piyasa parite verisinden gelir.</p>
 		<p><span class="text-term-green font-bold">Günlük kur:</span> işlemlerde kullanılan operatif kur her gün bir kez mühürlenir; kur gün içinde mühürden belirgin sapınca (%0.75'ten fazla) aynı gün yeniden mühürlenir. Anlık piyasa kuru Binance'teki USDT/TRY (dolar karşılığı stablecoin) işlem fiyatından gelir — TL'nin resmi USD paritesi değil, ona yakın bir piyasa göstergesidir; cüzdan panelinde mühürlü kurla birlikte ayrıca gösterilir.</p>
+		<p><span class="text-term-green font-bold">Kapalı piyasa:</span> Seans kapalıyken gösterilen fiyat son KAPANIŞ fiyatıdır. Kapalıyken verilen emirler, açılışı izleyen ilk taze fiyatta otomatik gerçekleşir; açılışta bakiye yetmezse emir iptal edilir.</p>
 		<p class="text-term-amber">Bu oyun bir simülasyondur. Hiçbir bilgi yatırım tavsiyesi değildir.</p>
 	</div>
 </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd, tradeToastMessage, parseTypedAmount, formatTypedAmount, countNonCommaBefore, caretAfterNonComma, seriesPriceLabel } from './format';
+import { displayTry, displayUsd, pnlClass, signedPercent, marketBadge, signedUsd, dailyChangeBadge, relativeTime, positionPnl, maxUnitsAffordable, heldUnits, groupByCategory, CATEGORY_LABELS, shortDate, countdownLabel, investedUsd, tradeToastMessage, parseTypedAmount, formatTypedAmount, countNonCommaBefore, caretAfterNonComma, seriesPriceLabel, queueToastMessage, formatOpenEta } from './format';
 import { usd, tryM } from '../domain/money';
 
 // ── displayTry ────────────────────────────────────────────────────────────────
@@ -79,9 +79,9 @@ describe('marketBadge', () => {
 		expect(b.text).toBe('AÇIK');
 		expect(b.cls).toBe('text-term-green');
 	});
-	it('open=false → KAPALI + term-amber', () => {
+	it('open=false → KAPANIŞ + term-amber', () => {
 		const b = marketBadge(false);
-		expect(b.text).toBe('KAPALI');
+		expect(b.text).toBe('KAPANIŞ');
 		expect(b.cls).toBe('text-term-amber');
 	});
 });
@@ -303,6 +303,37 @@ describe('tradeToastMessage', () => {
 		expect(tradeToastMessage('sell', 'BTC', 0.5, 32000)).toBe(
 			'✓ BTC SATILDI — 0.5000 adet · $32,000.00',
 		);
+	});
+});
+
+// ── queueToastMessage ────────────────────────────────────────────────────────
+describe('queueToastMessage', () => {
+	it('units-kind emir: adet bilgisi gösterilir (tutar yoksayılır)', () => {
+		expect(queueToastMessage('buy', 'THYAO', 5, 1440)).toBe(
+			'⏳ EMİR KUYRUKTA — AÇILIŞTA GERÇEKLEŞİR: 5 THYAO',
+		);
+	});
+	it('amountUsd-kind emir: adet 0 ise tutar gösterilir', () => {
+		expect(queueToastMessage('buy', 'THYAO', 0, 500)).toBe(
+			'⏳ EMİR KUYRUKTA — AÇILIŞTA GERÇEKLEŞİR: $500.00 THYAO',
+		);
+	});
+	it('satış her zaman units-kind — adet gösterilir', () => {
+		expect(queueToastMessage('sell', 'BTC', 0.5, 0)).toBe(
+			'⏳ EMİR KUYRUKTA — AÇILIŞTA GERÇEKLEŞİR: 0.5 BTC',
+		);
+	});
+});
+
+// ── formatOpenEta ─────────────────────────────────────────────────────────────
+describe('formatOpenEta', () => {
+	it('openMs geçmişte/şu an → az sonra', () => {
+		expect(formatOpenEta(1000, 2000)).toBe('az sonra');
+		expect(formatOpenEta(1000, 1000)).toBe('az sonra');
+	});
+	it('gelecekteki açılış → "DD.MM HH:MM" (Europe/Istanbul yereli)', () => {
+		const openMs = new Date('2026-07-20T10:00:00+03:00').getTime();
+		expect(formatOpenEta(openMs, openMs - 60_000)).toBe('20.07 10:00');
 	});
 });
 
