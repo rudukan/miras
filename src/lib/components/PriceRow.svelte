@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PriceRow } from '$lib/stores/liveGameStore.svelte';
 	import { usd } from '$lib/domain/money';
-	import { displayTry, displayUsd, dailyChangeBadge } from './format';
+	import { displayTry, displayUsd, dailyChangeBadge, marketBadge } from './format';
 
 	interface Props {
 		row: PriceRow;
@@ -61,7 +61,7 @@
 					<span class="text-[10px] {chg.cls} font-bold">{chg.text}</span>
 				{/if}
 				{#if !row.marketOpen}
-					<span class="text-[10px] text-term-amber">KAPALI</span>
+					<span class="text-[10px] {marketBadge(row.marketOpen).cls}">{marketBadge(row.marketOpen).text}</span>
 				{/if}
 				<span class="text-term-green font-bold">{displayTry(row.priceTry)}</span>
 			</div>
