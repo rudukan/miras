@@ -1057,6 +1057,46 @@ describe('bekleyen emir kuyruğu: settle, buyAmountUsd, cancel, notice, restore 
     expect(t.store.prices.filter((p) => p.id === 'AAPL')).toHaveLength(1);
     expect(t.store.pendingOrders).toHaveLength(2);
   });
+
+  it('restore: feed düşükken kuyruğa giren kripto emri activeUs’a SIZMAZ, US proxy’sinden istenmez (fix round 2)', async () => {
+    const initialGame = {
+      playerId: 'p1',
+      scenarioId: 'canli' as const,
+      seed: 1,
+      clock: { day: 5, totalDays: 90, speed: 'realtime' as const, paused: false },
+      usdBalance: { amount: 1_000_000, currency: 'USD' as const },
+      holdings: [],
+      deposit: null, // start()→recordSnapshot() depositUsd'yi okur — bu test start() çağırıyor,
+      properties: [], // diğer restore testlerinden farklı olarak, bu yüzden alanlar gerekli.
+      createdAt: 1000,
+      updatedAt: 2000,
+    };
+    // Gerçekçi reachable path: feedStatus≠'live' iken buy('BTC') kuyruğa girer (crypto/commodity
+    // tradeMode'un tazelik kapısından muaf DEĞİL) → persist() bu pendingOrders'ı activeUs HİÇ
+    // taşımadan kaydeder (addUs kripto için asla çağrılmaz). Reload'da bu envelope restore edilir.
+    const t = setup({
+      initial: {
+        v: 1,
+        game: initialGame,
+        pendingOrders: [
+          { id: 'a', assetId: 'BTC', side: 'buy', kind: 'units', units: 1, placedAt: 1 },
+        ],
+      },
+    });
+
+    // Eski (bugged) `!isBistLikeId(id)` filtresi BTC'yi (CATALOG'da var, kategorisi 'bist'
+    // değil) activeUs'e yanlışlıkla eklerdi — bu satır ile yakalanır.
+    expect(t.store.prices.filter((p) => p.id === 'BTC' && p.category === 'us')).toHaveLength(0);
+
+    await t.store.start();
+    flushSync();
+
+    // Reachable path'in asıl kanıtı: pollFx hiçbir zaman Yahoo US-hisse proxy'sinden 'BTC'
+    // istemedi (yanlış kategori sorgusu — sızıntı gerçek bir istekte de yansırdı).
+    const calls = (t.fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls as [string][];
+    const usBtcCalls = calls.filter(([url]) => url.includes('us=BTC'));
+    expect(usBtcCalls).toHaveLength(0);
+  });
 });
 
 describe('emlak (kira kasası) store entegrasyonu', () => {

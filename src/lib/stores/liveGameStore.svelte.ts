@@ -160,18 +160,28 @@ function computeInitialActiveBist(initial: SaveEnvelopeV1 | null): string[] {
 
 /** activeUs restore: kayıtlı set + (Task 3) bekleyen US emirlerinin sembolleri — yeni özellik,
  *  eski/bozuk kayıt riski yok (bir US holding/emri hep kendi activeUs'uyla birlikte kaydedilmiş
- *  olacak). DÜRÜST NOT (fix round 1'de deneyle doğrulandı): `fromPending` burada yalnız
- *  CATALOG'da bist-olmayan kategori işaretli sembolleri kapsar — CATALOG'da hiç 'us' kategorisi
- *  YOK (yalnız on-demand sembol), bu yüzden bu satır bugün için on-demand bir US sembolünü
- *  `activeUs` KENDİSİ ZATEN taşımıyorsa TEK BAŞINA kurtaramaz (fromSave zaten kapsıyorsa
- *  no-op'tur). CATALOG'a ileride statik bir 'us' girişi eklenirse otomatik devreye girer —
- *  bugün için ileriye dönük/zararsız, fromHoldings/fromPending'in BIST tarafındaki gibi bir
- *  sızıntı riski TAŞIMAZ (yalnız ekleme yapar, hiçbir zaman yanlış kategoriye yönlendirmez). */
+ *  olacak — addUs() her zaman activeUs'u ANINDA persist eder, o sembolde bir emir var olmadan
+ *  ÖNCE). DÜZELTME (fix round 2 — `!isBistLikeId(id)` YANLIŞTI): filtre `CATALOG[id]?.category
+ *  === 'us'` olmalı, `!isBistLikeId(id)` DEĞİL. `isBistLikeId(id) = meta===undefined ||
+ *  meta.category==='bist'`, yani `!isBistLikeId(id)` CATALOG'da OLAN ve kategorisi 'bist'
+ *  OLMAYAN her sembolde true'dur — bugün bu tam olarak kripto/emtia/döviz (BTC/ETH/.../XAUGRAM/
+ *  XAGGRAM/EUR) demektir. Feed düşükken/fxStale iken bunlardan biri kuyruğa girip persist
+ *  edilirse (crypto/commodity de tradeMode'un tazelik kapısına tabi, muaf değil), eski filtre bu
+ *  sembolü restore'da activeUs'e YANLIŞLIKLA sızdırır → pollFx US-hisse proxy'sinden bu sembolü
+ *  ister (yanlış kategori sorgusu) ve persist() bu bozuk activeUs'ü tekrar tekrar kaydeder
+ *  (kendiliğinden düzelmez). `CATALOG[id]?.category === 'us'` DOĞRU ve GÜVENLİ çünkü CATALOG
+ *  dışı (on-demand) hiçbir id'ye asla dokunmaz — `undefined?.category` her zaman `undefined`,
+ *  `'us'`e asla eşit olmaz — bu yüzden crypto/commodity/fx'i YANLIŞLIKLA hiç sızdıramaz. Bugün
+ *  CATALOG'da 'us' kategorili TEK bir giriş bile yok, yani bu satır şu an gerçek bir no-op'tur
+ *  (BTC/ETH/.../EUR dahil hiçbir CATALOG üyesi eşleşmez); CATALOG'a ileride statik bir 'us'
+ *  girişi eklenirse otomatik devreye girer. On-demand US ticker'ları (AAPL gibi) zaten yalnız
+ *  fromSave'den gelir (addUs → persist garantisi) — bu satırın onları kurtarması gerekmez/mümkün
+ *  de değildir (CATALOG'da hiç yer almazlar). */
 function computeInitialActiveUs(initial: SaveEnvelopeV1 | null): string[] {
   const fromSave = initial?.activeUs ?? [];
   const fromPending = (initial?.pendingOrders ?? [])
     .map((o) => o.assetId)
-    .filter((id) => !isBistLikeId(id));
+    .filter((id) => CATALOG[id]?.category === 'us');
   return Array.from(new Set([...fromSave, ...fromPending]));
 }
 
