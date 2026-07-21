@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { istanbulParts, isHoliday, isMarketOpen, nextMarketOpen, newYorkParts } from './calendar';
+import { istanbulParts, isHoliday, isMarketOpen, nextMarketOpen, newYorkParts, sessionOpenMs } from './calendar';
 
 describe('istanbulParts', () => {
   it('Europe/Istanbul yerel tarih anahtarı üretir (YYYY-MM-DD)', () => {
@@ -136,5 +136,55 @@ describe('nextMarketOpen', () => {
     const at = new Date('2026-01-01T12:00:00+03:00'); // Yılbaşı (Perşembe, tatil)
     const expected = new Date('2026-01-02T10:00:00+03:00'); // Cuma normal
     expect(nextMarketOpen('bist', at).getTime()).toBe(expected.getTime());
+  });
+});
+
+describe('nextMarketOpen — us (NYSE)', () => {
+  it('zaten açıkken o anı döndürür', () => {
+    const at = new Date('2026-01-12T10:00:00-05:00'); // Pzt, seans içi (EST)
+    expect(nextMarketOpen('us', at).getTime()).toBe(at.getTime());
+  });
+  it('açılış öncesi (aynı gün) -> aynı günün 09:30 açılışı', () => {
+    const at = new Date('2026-01-12T08:00:00-05:00'); // Pzt 08:00 EST
+    const expected = new Date('2026-01-12T09:30:00-05:00');
+    expect(nextMarketOpen('us', at).getTime()).toBe(expected.getTime());
+  });
+  it('hafta sonu (Pazar, EDT dönemi) -> Pazartesi 09:30 EDT açılışı', () => {
+    const at = new Date('2026-07-19T12:00:00-04:00'); // Pazar
+    const expected = new Date('2026-07-20T09:30:00-04:00'); // Pazartesi
+    expect(nextMarketOpen('us', at).getTime()).toBe(expected.getTime());
+  });
+  it('hafta sonu (Pazar, EST dönemi) -> Pazartesi 09:30 EST açılışı', () => {
+    const at = new Date('2026-01-11T12:00:00-05:00'); // Pazar
+    const expected = new Date('2026-01-12T09:30:00-05:00'); // Pazartesi
+    expect(nextMarketOpen('us', at).getTime()).toBe(expected.getTime());
+  });
+  it('NYSE resmî tatili atlanır (gözlemlenen 4 Temmuz -> 3 Temmuz Cuma tatil, hafta sonu da atlanıp 6 Temmuz Pzt açılış)', () => {
+    const at = new Date('2026-07-02T18:00:00-04:00'); // Perşembe, kapanış sonrası
+    const expected = new Date('2026-07-06T09:30:00-04:00'); // ertesi Pazartesi
+    expect(nextMarketOpen('us', at).getTime()).toBe(expected.getTime());
+  });
+  it('BIST/US dışı kategoride argümanı aynen döndürür (hep açık)', () => {
+    const at = new Date('2026-01-11T12:00:00-05:00');
+    expect(nextMarketOpen('fx', at).getTime()).toBe(at.getTime());
+  });
+});
+
+describe('sessionOpenMs', () => {
+  it('bist: gün içi bir andan seansın 10:00 açılış epoch ms değerine geri sayar', () => {
+    const at = new Date('2026-07-20T11:37:00+03:00');
+    expect(sessionOpenMs('bist', at)).toBe(Date.parse('2026-07-20T10:00:00+03:00'));
+  });
+  it('us: EDT (yaz) döneminde NY 09:30 açılış epoch ms değerine geri sayar', () => {
+    const at = new Date('2026-07-20T16:45:00Z'); // NY yerelinde 12:45 EDT
+    expect(sessionOpenMs('us', at)).toBe(Date.parse('2026-07-20T09:30:00-04:00'));
+  });
+  it('us: EST (kış) döneminde aynı günün 09:30 açılışına geri sayar', () => {
+    const at = new Date('2026-01-13T15:00:00-05:00');
+    expect(sessionOpenMs('us', at)).toBe(Date.parse('2026-01-13T09:30:00-05:00'));
+  });
+  it('us: açılış anının kendisinde fark sıfırdır', () => {
+    const at = new Date('2026-01-12T09:30:00-05:00'); // Pzt, tam açılış anı
+    expect(sessionOpenMs('us', at)).toBe(at.getTime());
   });
 });

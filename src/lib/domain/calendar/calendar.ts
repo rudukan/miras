@@ -93,15 +93,43 @@ export function isMarketOpen(category: AssetCategory, at: Date): boolean {
   return true;
 }
 
+/** Verilen anın içinde bulunduğu seansın BUGÜNKÜ açılış anını epoch ms olarak döndürür.
+ *  ÖN KOŞUL: `isMarketOpen(category, at) === true` (çağıran garanti eder; aksi hâlde sonuç anlamsız).
+ *  tz literal'i kullanmaz — `at`'tan dakika hassasiyetinde geri sayar, bu yüzden DST'den
+ *  bağımsız doğru çalışır (hem EDT hem EST'te sağlam). */
+export function sessionOpenMs(category: 'bist' | 'us', at: Date): number {
+  const p = category === 'us' ? newYorkParts(at) : istanbulParts(at);
+  const openMin = category === 'us' ? NYSE_OPEN_HOUR * 60 + NYSE_OPEN_MINUTE : BIST_OPEN_HOUR * 60;
+  const sinceOpenMin = p.hour * 60 + p.minute - openMin; // ön koşul gereği >= 0
+  return Math.floor(at.getTime() / 60000) * 60000 - sinceOpenMin * 60000;
+}
+
 const DAY_MS = 86_400_000;
 const MAX_LOOKAHEAD_DAYS = 14;
+const NYSE_OPEN_CANDIDATE_OFFSETS = ['-04:00', '-05:00']; // EDT, EST — DST iki yönde de denenir
 
 /** Verilen andan itibaren piyasanın açık olacağı bir sonraki anı döndürür.
- *  Şu an açıksa `at`'ı aynen döndürür. BIST dışı kategoriler hep açık → `at`.
- *  (Istanbul sabit UTC+3 olduğundan günün açılışı 10:00+03:00 olarak kurulur.) */
+ *  Şu an açıksa `at`'ı aynen döndürür. BIST/US dışı kategoriler hep açık → `at`.
+ *  BIST: Istanbul sabit UTC+3 olduğundan günün açılışı 10:00+03:00 olarak kurulur.
+ *  US: New York DST'ye göre kaydığından 09:30 için iki aday offset (-04:00 EDT / -05:00 EST)
+ *  denenir; `newYorkParts` ile geri okunduğunda gerçekten 09:30 NY yereline denk gelen aday
+ *  o günün DST durumunu doğru yansıtan adaydır. */
 export function nextMarketOpen(category: AssetCategory, at: Date): Date {
-  if (category !== 'bist') return at;
+  if (category !== 'bist' && category !== 'us') return at;
   if (isMarketOpen(category, at)) return at;
+  if (category === 'us') {
+    for (let i = 0; i <= MAX_LOOKAHEAD_DAYS; i++) {
+      const key = newYorkParts(new Date(at.getTime() + i * DAY_MS)).key;
+      for (const offset of NYSE_OPEN_CANDIDATE_OFFSETS) {
+        const cand = new Date(`${key}T09:30:00${offset}`);
+        const cp = newYorkParts(cand);
+        if (cp.hour !== NYSE_OPEN_HOUR || cp.minute !== NYSE_OPEN_MINUTE) continue; // yanlış DST adayı
+        if (cand.getTime() < at.getTime()) continue;    // açılışı geçmiş günü atla
+        if (isMarketOpen('us', cand)) return cand;       // hafta içi + NYSE tatili değil
+      }
+    }
+    return at; // güvenlik (14 gün içinde mutlaka açık seans var)
+  }
   for (let i = 0; i <= MAX_LOOKAHEAD_DAYS; i++) {
     const probeKey = istanbulParts(new Date(at.getTime() + i * DAY_MS)).key;
     const openAt = new Date(`${probeKey}T10:00:00+03:00`); // o günün açılış anı
