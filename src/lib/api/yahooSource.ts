@@ -28,19 +28,20 @@ export const YAHOO_FALLBACK: FxValue = {
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
-/** Yahoo chart API'sinden tek sembolün son fiyatı + günlük % değişimi.
- *  changePct = (fiyat − previousClose) / previousClose × 100 (yoksa undefined). */
+/** Yahoo chart API'sinden tek sembolün son fiyatı + günlük % değişimi + fiyat damgası.
+ *  changePct = (fiyat − previousClose) / previousClose × 100 (yoksa undefined).
+ *  marketTimeMs = regularMarketTime (seconds) × 1000 (yoksa undefined). */
 export async function fetchYahooQuote(
   symbol: string,
   fetchFn: typeof fetch,
-): Promise<{ price: number; changePct: number | undefined }> {
+): Promise<{ price: number; changePct: number | undefined; marketTimeMs?: number }> {
   const res = await fetchFn(
     `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1d&interval=1m`,
     { headers: { 'User-Agent': UA } },
   );
   if (!res.ok) throw new Error(`Yahoo ${symbol}: HTTP ${res.status}`);
   const j = (await res.json()) as {
-    chart?: { result?: Array<{ meta?: { regularMarketPrice?: unknown; previousClose?: unknown; chartPreviousClose?: unknown } }> };
+    chart?: { result?: Array<{ meta?: { regularMarketPrice?: unknown; previousClose?: unknown; chartPreviousClose?: unknown; regularMarketTime?: unknown } }> };
   };
   const meta = j?.chart?.result?.[0]?.meta;
   const price = meta?.regularMarketPrice;
@@ -50,7 +51,8 @@ export async function fetchYahooQuote(
     : typeof meta?.chartPreviousClose === 'number' ? meta.chartPreviousClose
     : undefined;
   const changePct = prev && prev !== 0 ? round2(((price - prev) / prev) * 100) : undefined;
-  return { price, changePct };
+  const marketTimeMs = typeof meta?.regularMarketTime === 'number' ? meta.regularMarketTime * 1000 : undefined;
+  return { price, changePct, marketTimeMs };
 }
 
 /** Yalnız fiyat (geriye uyumluluk; fetchYahooQuote'a delegeler). */
@@ -70,6 +72,7 @@ export async function fetchFxValue(
   const usdTry = usdQuote.price;
   const prices: Record<string, number> = {};
   const change: Record<string, number> = {};
+  const priceAt: Record<string, number> = {};
 
   // Sembol-bazında dayanıklı: on-demand'de geçersiz/delisted sembol diğerlerini düşürmesin.
   await Promise.all(
@@ -78,6 +81,7 @@ export async function fetchFxValue(
         const q = await fetchYahooQuote(`${sym}.IS`, fetchFn);
         prices[sym] = round2(q.price);
         if (q.changePct !== undefined) change[sym] = q.changePct;
+        if (q.marketTimeMs !== undefined) priceAt[sym] = q.marketTimeMs;
       } catch (err) {
         console.warn(`[yahooSource] BIST ${sym} atlandı:`, err instanceof Error ? err.message : err);
       }
@@ -92,6 +96,7 @@ export async function fetchFxValue(
         const q = await fetchYahooQuote(sym, fetchFn);
         prices[sym] = round2(q.price * usdTry);
         if (q.changePct !== undefined) change[sym] = q.changePct;
+        if (q.marketTimeMs !== undefined) priceAt[sym] = q.marketTimeMs;
       } catch (err) {
         console.warn(`[yahooSource] US ${sym} atlandı:`, err instanceof Error ? err.message : err);
       }
@@ -115,5 +120,5 @@ export async function fetchFxValue(
     console.warn('[yahooSource] EUR (EURTRY=X) atlandı:', err instanceof Error ? err.message : err);
   }
 
-  return { usdTry: round2(usdTry), prices, change };
+  return { usdTry: round2(usdTry), prices, change, priceAt };
 }

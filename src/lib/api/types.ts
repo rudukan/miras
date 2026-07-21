@@ -4,6 +4,7 @@ export interface FxValue {
   usdTry: number;
   prices: Record<string, number>; // TRY: BIST sembolleri + XAUGRAM + XAGGRAM + EUR
   change?: Record<string, number>; // günlük % değişim (önceki kapanışa göre); yoksa sembol atlanır
+  priceAt?: Record<string, number>; // yalnız bist/us; settle'ın taze-fiyat kanıtı (epoch ms)
 }
 
 /** Binance proxy değeri: tüm fiyatlar USD (USDT). TRY çevrimi store'da yapılır. */
