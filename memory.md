@@ -189,9 +189,9 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 8. CLAUDE.md'nin E2E senaryo sayısı (Test Disiplini) "13" → "15" olarak düzeltildi + yeni bekleyen-emir smoke'u listeye eklendi (eski sayı bu oturumdan ÖNCE de stale'di — bir önceki dilim 14. senaryoyu eklemiş ama CLAUDE.md güncellenmemişti; bu oturum düzeltti).
 
 ### B. Blokerler & Kalan İşler
-- **CI durumu bilinmiyor** — push az önce oldu, ilk kontrolde "in_progress"ti. Sürpriz olursa `gh run list --branch main --limit 1`.
+- ~~CI durumu bilinmiyor~~ → **YEŞİL** (2026-07-22 sabah kontrolü: `467d25c` run'ı success).
 - **Faz 1'in GATE'i hâlâ açılmadı** (22. oturumdan miras, bu oturum dokunmadı) — `docs/faz1-gonogo-runbook.md`, insan koordinasyonu gerektirir, SP2 planlaması hâlâ bunu bekliyor.
-- **Migration 0006 hâlâ yalnız LOKAL** (22. oturumdan miras, bu oturum dokunmadı) — prod'a push edilmedi, kullanıcı onayı şart.
+- ~~Migration 0006 hâlâ yalnız LOKAL~~ — **BAYATTI, 2026-07-22'de düzeltildi:** 0004+0006+0007 aslında 2026-07-19'da MCP `apply_migration` ile prod'a uygulanmış (schema_migrations kanıtı; PGRST205 telemetri hatası 05:32'de doğmuş, 07:00'de kapanmış). Uygulayan oturumun worktree'si (`claude/fervent-williams-f7bed9`) 0007 dosyasını + memory.md notunu commit'leyemeden kopmuş; worktree 3 gün sahipsiz kaldı, memory.md bu yüzden iki oturum yanlış bilgi taşıdı. 2026-07-22: 0007 repo'ya aynalandı, worktree temizlendi, telemetri canlı doğrulandı (7 visit / 6 oyuncu / 1 first_trade, 19-22 Tem). service_role hedef durumda: yalnız `saves` SELECT (0007 doğrulaması).
 - CHANGELOG.md'ye bu oturumun 8 commit'i henüz eklenmedi.
 
 ### C. Değişiklik Geçmişi
@@ -200,6 +200,6 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 ### D. Yeni Chat'te Başlangıç Rehberi
 1. **"Kapalı piyasada işlem" tamamen bitti ve main'de** — yeni bir talep gelmedikçe bu dilime dönmeye gerek yok. Detaylı task-by-task kayıt `.superpowers/sdd/progress.md`'deydi ama **worktree silindiğinde o dosya da gitti** (gitignore'lu, repo dışında hiçbir yerde kalmadı) — geçmiş yalnız bu bölümde (A.1-8) ve git log'da (`228a6a1`..`654f5f1`, `git log --oneline main~8..main`).
 2. Sıradaki iş seçenekleri kullanıcıya sorulmalı: (a) CI'ı kontrol et, (b) Faz 1 GATE deneyini koordine et (kullanıcının işi), (c) migration 0006'yı prod'a push et (onay şart), (d) başka bir şey.
-3. **Migration 0006 hâlâ yalnız LOKAL** — yukarıya bak.
+3. Migration'lar 0001-0007 lokal+prod **senkron** (2026-07-22 doğrulaması — "0006 yalnız lokal" bilgisi bayattı, B'ye bak). Telemetri prod'da veri topluyor; funnel sayıları MCP `execute_sql` ile çekilebilir.
 4. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
 5. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
