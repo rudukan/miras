@@ -8,6 +8,7 @@
 		tooltipTimeLabel,
 		type PricePoint,
 		type PeriodId,
+		type SeriesSource,
 	} from '$lib/domain/series/series';
 	import { seriesPriceLabel } from '../format';
 	import { renderChart, withAlpha } from './drawChart';
@@ -17,7 +18,7 @@
 		width?: number;
 		height?: number;
 		assetId: string;
-		source: 'crypto' | 'yahoo';
+		source: SeriesSource;
 		period: PeriodId;
 	}
 	let { points, width = 260, height = 90, assetId, source, period }: Props = $props();

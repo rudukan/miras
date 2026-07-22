@@ -5,6 +5,10 @@ export interface PricePoint {
 }
 
 export type PeriodId = '15D' | '1G' | '1H' | '1A' | '1Y';
+
+/** Seri kaynak sınıfı — upstream + sembol eşleme kuralını belirler:
+ *  'crypto' = Binance USDT · 'yahoo' = Yahoo (BIST .IS / özel semboller) · 'us' = Yahoo soneksiz (ABD, USD bazlı). */
+export type SeriesSource = 'crypto' | 'yahoo' | 'us';
 export interface Period {
 	readonly id: PeriodId;
 	readonly label: string;
@@ -138,11 +142,11 @@ export function nearestIndex(n: number, xRatio: number): number {
 // (TR_MONTHS_SHORT/format.ts emsali). EUR (EURTRY=X) burada YOK — o gerçekten TRY.
 const YAHOO_USD_ASSETS = new Set(['XAUGRAM', 'XAGGRAM']);
 
-/** Serinin HAM para birimi: Binance klines USD(T) bazlı; Yahoo çoğunlukla TRY bazlı,
- *  ama XAUGRAM/XAGGRAM (COMEX GC=F/SI=F) USD/ons bazlı — assetId ile ayırt edilir.
+/** Serinin HAM para birimi: Binance klines USD(T) ve ABD hisseleri (Yahoo soneksiz) USD bazlı;
+ *  Yahoo çoğunlukla TRY bazlı, ama XAUGRAM/XAGGRAM (COMEX GC=F/SI=F) USD/ons — assetId ile ayırt edilir.
  *  Tarihsel seri bugünkü kurla çevrilmez (yanlış tarih üretir) — etiketler bu birimle. */
-export function seriesCurrency(assetId: string, source: 'crypto' | 'yahoo'): 'USD' | 'TRY' {
-	if (source === 'crypto') return 'USD';
+export function seriesCurrency(assetId: string, source: SeriesSource): 'USD' | 'TRY' {
+	if (source === 'crypto' || source === 'us') return 'USD';
 	return YAHOO_USD_ASSETS.has(assetId) ? 'USD' : 'TRY';
 }
 

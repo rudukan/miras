@@ -17,6 +17,10 @@ describe('upstreamFor', () => {
 	it('diğer yahoo → BIST .IS', () => {
 		expect(upstreamFor('THYAO', 'yahoo')).toEqual({ kind: 'yahoo', symbol: 'THYAO.IS' });
 	});
+	it("ABD hissesi ('us') → soneksiz Yahoo sembolü (.IS eklenmez)", () => {
+		expect(upstreamFor('VRT', 'us')).toEqual({ kind: 'yahoo', symbol: 'VRT' });
+		expect(upstreamFor('AAPL', 'us')).toEqual({ kind: 'yahoo', symbol: 'AAPL' });
+	});
 });
 
 describe('fetchSeries — Yahoo', () => {

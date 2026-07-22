@@ -151,6 +151,10 @@ describe('seriesCurrency', () => {
 		expect(seriesCurrency('XAUGRAM', 'yahoo')).toBe('USD');
 		expect(seriesCurrency('XAGGRAM', 'yahoo')).toBe('USD');
 	});
+	it("us (ABD hissesi) → USD (Yahoo ABD serileri USD bazlı)", () => {
+		expect(seriesCurrency('VRT', 'us')).toBe('USD');
+		expect(seriesCurrency('AAPL', 'us')).toBe('USD');
+	});
 });
 
 describe('seriesChangePct', () => {

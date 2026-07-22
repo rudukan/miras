@@ -1,4 +1,4 @@
-import type { PricePoint, PeriodId } from '../domain/series/series';
+import type { PricePoint, PeriodId, SeriesSource } from '../domain/series/series';
 import { sliceLast } from '../domain/series/series';
 
 const UA =
@@ -17,9 +17,11 @@ const YAHOO_SPECIAL: Record<string, string> = { XAUGRAM: 'GC=F', XAGGRAM: 'SI=F'
 
 export function upstreamFor(
 	assetId: string,
-	source: 'crypto' | 'yahoo',
+	source: SeriesSource,
 ): { kind: 'crypto' | 'yahoo'; symbol: string } {
 	if (source === 'crypto') return { kind: 'crypto', symbol: `${assetId}USDT` };
+	// ABD hisseleri soneksiz (yahooSource.fetchFxValue'daki quote yoluyla aynı kural).
+	if (source === 'us') return { kind: 'yahoo', symbol: assetId };
 	if (YAHOO_SPECIAL[assetId]) return { kind: 'yahoo', symbol: YAHOO_SPECIAL[assetId] };
 	return { kind: 'yahoo', symbol: `${assetId}.IS` };
 }
@@ -72,7 +74,7 @@ function parseBinance(j: unknown): PricePoint[] {
 /** Tek varlığın seçili periyot serisini çeker (kaynak sınıfına göre upstream seçer). */
 export async function fetchSeries(
 	assetId: string,
-	source: 'crypto' | 'yahoo',
+	source: SeriesSource,
 	period: PeriodId,
 	fetchFn: typeof fetch,
 ): Promise<PricePoint[]> {

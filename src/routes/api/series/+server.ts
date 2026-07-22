@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { Cached } from '$lib/api/types';
-import type { PricePoint, PeriodId } from '$lib/domain/series/series';
+import type { PricePoint, PeriodId, SeriesSource } from '$lib/domain/series/series';
 import { PERIODS } from '$lib/domain/series/series';
 import { fetchSeries, SERIES_TTL_MS } from '$lib/api/seriesSource';
 import { createTtlCache } from '$lib/api/cachedFetch';
@@ -16,7 +16,7 @@ const EMPTY: PricePoint[] = [];
 const MAX_SERIES_CACHES = 200;
 const caches = createBoundedRegistry<() => Promise<Cached<PricePoint[]>>>(MAX_SERIES_CACHES);
 
-function cacheFor(symbol: string, source: 'crypto' | 'yahoo', period: PeriodId) {
+function cacheFor(symbol: string, source: SeriesSource, period: PeriodId) {
 	const key = `${source}:${symbol}:${period}`;
 	return caches.getOrCreate(key, () =>
 		createTtlCache<PricePoint[]>({
@@ -32,7 +32,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const source = url.searchParams.get('source');
 	const period = url.searchParams.get('period') as PeriodId | null;
 
-	if (!symbol || !VALID_SYMBOL_RE.test(symbol) || (source !== 'crypto' && source !== 'yahoo') || !period || !VALID_PERIODS.has(period)) {
+	if (!symbol || !VALID_SYMBOL_RE.test(symbol) || (source !== 'crypto' && source !== 'yahoo' && source !== 'us') || !period || !VALID_PERIODS.has(period)) {
 		return json({ error: 'geçersiz parametre' }, { status: 400 });
 	}
 	const headers = { 'cache-control': 'public, max-age=5' };

@@ -1,4 +1,4 @@
-import type { PricePoint, PeriodId } from '$lib/domain/series/series';
+import type { PricePoint, PeriodId, SeriesSource } from '$lib/domain/series/series';
 import { fetchPriceSeries } from '$lib/api/seriesClient';
 
 export interface SeriesLoader {
@@ -9,7 +9,7 @@ export interface SeriesLoader {
 /** id+source+period değişince talep üzerine seri çeker (iptal korumalı; hata → boş dizi).
  *  Component init sırasında çağrılmalı ($effect kuralı) — AssetPopover + ChartOverlay ortak. */
 export function createSeriesLoader(
-	params: () => { id: string; source: 'crypto' | 'yahoo'; period: PeriodId },
+	params: () => { id: string; source: SeriesSource; period: PeriodId },
 ): SeriesLoader {
 	let points = $state<PricePoint[]>([]);
 	let loading = $state(false);

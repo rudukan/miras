@@ -1,10 +1,10 @@
-import type { PricePoint, PeriodId } from '../domain/series/series';
+import type { PricePoint, PeriodId, SeriesSource } from '../domain/series/series';
 import type { Cached } from './types';
 
 /** Tarayıcı → /api/series ince istemci. Hata/boş → boş dizi (grafik "veri yok" gösterir). */
 export async function fetchPriceSeries(
 	assetId: string,
-	source: 'crypto' | 'yahoo',
+	source: SeriesSource,
 	period: PeriodId,
 	fetchFn: typeof fetch = fetch,
 ): Promise<PricePoint[]> {

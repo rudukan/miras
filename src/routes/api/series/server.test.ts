@@ -43,6 +43,21 @@ describe('GET /api/series', () => {
 		expect(body.stale).toBe(false);
 	});
 
+	it("us kaynağı kabul edilir ve soneksiz Yahoo çağrısı yapar (.IS yok)", async () => {
+		const spy = vi.fn(async () => ({
+			ok: true, status: 200,
+			json: async () => ({ chart: { result: [{ timestamp: [60], indicators: { quote: [{ close: [305.11] }] } }] } }),
+		}));
+		globalThis.fetch = spy as unknown as typeof fetch;
+		const res = await GET(makeEvent({ symbol: 'VRT', source: 'us', period: '1G' }));
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.value).toEqual([{ t: 60_000, price: 305.11 }]);
+		const [url] = spy.mock.calls[0] as unknown as [string];
+		expect(url).toContain('/finance/chart/VRT?');
+		expect(url).not.toContain('.IS');
+	});
+
 	it('aynı symbol+period ikinci çağrı cache (fetch bir kez)', async () => {
 		const spy = vi.fn(async () => ({
 			ok: true, status: 200,

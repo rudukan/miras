@@ -17,6 +17,7 @@ import type { LivePriceSource } from '../domain/fx/liveFx';
 import type { UsdPriceOracle } from '../domain/fx/usdOracle';
 import { isMarketOpen, sessionOpenMs } from '../domain/calendar/calendar';
 import type { AssetCategory } from '../domain/scenario/types';
+import type { SeriesSource } from '../domain/series/series';
 import { resolveUnits, type PendingOrder } from '../domain/orders/orders';
 import { CATALOG, CRYPTO_SYMBOLS, CRYPTO_SET, CORE_ASSETS, BIST_SYMBOLS } from '../catalog/liveAssets';
 import { bistName } from '../catalog/bist100';
@@ -40,7 +41,7 @@ export interface PriceRow {
   id: string;
   label: string;
   category: AssetCategory;
-  source: 'crypto' | 'yahoo';
+  source: SeriesSource; // grafik/seri yolu için kaynak sınıfı ('us' = Yahoo soneksiz)
   priceTry: number | undefined; // canlı fiyat yoksa undefined
   priceUsd: number | undefined; // USD karşılığı (kripto kayıpsız, diğer = TRY/kur)
   marketOpen: boolean;
@@ -368,7 +369,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
         id: sym,
         label: usStockName(sym),
         category: 'us',
-        source: 'yahoo',
+        source: 'us',
         priceTry: fxCache.prices[sym],
         priceUsd: assetUsdPrice(sym),
         marketOpen: usOpen,
