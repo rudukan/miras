@@ -195,7 +195,7 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 - CHANGELOG.md'ye bu oturumun 8 commit'i henüz eklenmedi.
 
 ### C. Değişiklik Geçmişi
-`CHANGELOG.md`'ye bu oturumun ("kapalı piyasada işlem") 8 commit'i henüz eklenmedi — bir sonraki oturum ya da ay kapanırken eklensin.
+~~Eklenmedi~~ → **2026-07-22'de kapandı:** 17-18 Temmuz (Faz 1 — o da eksikmiş), 19-21 Temmuz (kapalı piyasa) ve 22 Temmuz (0007 vakası + hijyen) girişleri CHANGELOG'a eklendi.
 
 ### D. Yeni Chat'te Başlangıç Rehberi
 1. **"Kapalı piyasada işlem" tamamen bitti ve main'de** — yeni bir talep gelmedikçe bu dilime dönmeye gerek yok. Detaylı task-by-task kayıt `.superpowers/sdd/progress.md`'deydi ama **worktree silindiğinde o dosya da gitti** (gitignore'lu, repo dışında hiçbir yerde kalmadı) — geçmiş yalnız bu bölümde (A.1-8) ve git log'da (`228a6a1`..`654f5f1`, `git log --oneline main~8..main`).
