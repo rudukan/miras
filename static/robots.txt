@@ -1,0 +1,6 @@
+# Domain alininca Sitemap URL'ini guncelle (SP3a)
+User-agent: *
+Disallow: /api/
+Disallow: /auth/
+
+Sitemap: https://miras-one.vercel.app/sitemap.xml
