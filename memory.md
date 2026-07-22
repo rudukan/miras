@@ -173,28 +173,29 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-22 — 24. oturum, **ABD BORSASI GRAFİK FİX — main'e push edildi** — Fable)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-22 — 25. oturum, **GRAFİK HOVER "YÜKLENİYOR" DÖNGÜSÜ FİX — main'e push edildi** — Sonnet→Fable)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (23. — kapalı piyasada işlem dilimi + 0007 vakası) için: `git show <bu commit'in bir öncesi>:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (24. — ABD hisse grafiği "veri yok" fix'i) için: `git show <bu commit'in bir öncesi>:memory.md`.
 
-### A. Bu Oturumda Tamamlananlar — ABD HİSSE GRAFİĞİ "VERİ YOK" BUG'I KAPANDI
+### A. Bu Oturumda Tamamlananlar — HOVER TOOLTIP'İNİ SİLEN REFETCH FIRTINASI KAPANDI (commit `1525c44`)
 
-1. Kullanıcı ekran görüntüsüyle bildirdi: ABD Borsası popover'ında grafik "veri yok" (VRT örneği, KAPANIŞ rozetli). Sınıf: Keşif/bug → Fable'da `systematic-debugging` ile.
-2. **Kök neden:** seri yolu ABD kavramını hiç bilmiyordu. Quote yolu (`yahooSource.fetchFxValue`) ABD sembollerini soneksiz çekiyordu (fiyatlar bu yüzden çalışıyordu), ama grafik zinciri popover→loader→`/api/series`→`upstreamFor` yalnız `source: 'crypto'|'yahoo'` taşıyordu — `category:'us'` bilgisi yolda kayboluyor, `upstreamFor` yahoo'ya düşen her sembole `.IS` ekleyip Yahoo'dan var olmayan `VRT.IS`'i istiyordu → hata → cache EMPTY fallback → "veri yok".
-3. **Düzeltme (tek kavram, 7 dosya):** domain'e `SeriesSource = 'crypto'|'yahoo'|'us'` tipi (`series.ts`); store ABD satırlarını `source:'us'` ile kuruyor (`liveGameStore` PriceRow); `/api/series` `us` kabul ediyor; `upstreamFor('X','us')` → soneksiz Yahoo sembolü (quote yoluyla aynı kural); `seriesCurrency` `us`→USD. Grafik USD bazlı, başlık TRY — gram altın emsaliyle tutarlı (seri ham birimde, tarihsel seri bugünkü kurla çevrilmez). BÜYÜT overlay'i aynı loader'ı kullandığından otomatik düzeldi.
-4. **TDD:** önce 3 kırmızı test (upstreamFor `.IS` eşleme, seriesCurrency TRY, route 400), sonra fix → **641/641 unit yeşil, `check` 0 hata, build OK.**
-5. **Tarayıcı doğrulaması gerçek veriyle:** VRT canlı aramadan eklendi, popover 1G'de ~390 dakikalık nokta çizdi (min/maks $297.60–$306.31, eksen 16:30→23:00 TSİ = NYSE seansı), 1A da doğru (22 Haz→21 Tem). Konsol temiz. Browser pane screenshot yine timeout (bilinen sorun, `[[worktree-oturum-notlari]]`) — DOM/ağ kanıtıyla doğrulandı.
-6. **E2E regresyon riski yok:** `market-mocks.ts` seri route'unu `/\/api\/series\?/` ile source-agnostik eşliyor; `source=us` istekleri de aynı fixture'a düşer.
+1. Kullanıcı bildirdi: grafik büyütülünce hover tooltip'i 1 sn görünüp kayboluyor, ortada sürekli "yükleniyor". Sınıf: Keşif/bug → `systematic-debugging` + TDD.
+2. **Kök neden:** `liveGameStore.prices` $derived'ı her tick'te TÜM PriceRow'ları taze obje üretiyor; `createSeriesLoader`'ın $effect'i `params()` üzerinden bu referansı okuyunca değerler aynıyken bile yeniden fetch tetikliyordu. Canlıda ölçüldü: overlay açılınca **63ms'de 60+ tekrarlı `/api/series` isteği** (reaktif fırtına; kullanıcının kendi dev server'ını bile çökertti). İkincil: "yükleniyor…" overlay'i `pointer-events-none`'sız — her loading flaşı canvas'ta `pointerleave` tetikleyip tooltip'i siliyordu.
+3. **Düzeltme:** `useSeries.svelte.ts`'te id/source/period ayrı primitive `$derived` (value-equality churn'ü eler) + iki overlay'e (`AssetPopover`, `ChartOverlay`) `pointer-events-none`.
+4. **Test altyapısı yeniliği:** repo'da rune'ları ($effect) Vitest'te test eden altyapı yoktu (varsayılan `environment: 'node'` Svelte'i SSR derliyor, $effect hiç koşmuyor). `happy-dom` devDependency + dosyaya özel `@vitest-environment happy-dom` yönergesi (`useSeries.svelte.test.ts`) — diğer testler node'da kalıyor. Rune testinde `flushSync` YETMİYOR, `await tick()` gerekiyor (efekt ilk koşumu microtask'ta).
+5. **Doğrulama:** RED→GREEN TDD; 642/642 unit, `check` 0 hata, build OK. Canlı: VRT overlay'de hover 10 sn sabitlendi — tooltip 10/10 örnekte aynı kaldı, "yükleniyor" hiç görünmedi, hover boyunca 0 yeni istek (açılışta 2: popover+overlay).
+6. **Şeffaflık:** kullanıcının "hâlâ bozuk" ekran görüntüsü fix'siz koddan çıktı (muhtemelen prod ya da yenilenmemiş sekme) — lokalde kanıtla çürütüldü, sonra push kararı alındı.
 
 ### B. Blokerler & Kalan İşler
-- **Faz 1'in GATE'i hâlâ açılmadı** (22. oturumdan miras) — `docs/faz1-gonogo-runbook.md`, insan koordinasyonu gerektirir; SP2 planlaması hâlâ bunu bekliyor.
-- Oyun derinliği planının ABD Borsası dilimindeki 3 açık soru hâlâ güçlü-model kararı bekliyor (auto-memory: `project_abd_borsasi_gece_piyasasi` — `includePrePost` vb.). Bu oturum o kapsama girmedi; yalnız mevcut grafiğin kırığını onardı.
+- **Faz 1'in GATE'i hâlâ açılmadı** (22. oturumdan miras) — `docs/faz1-gonogo-runbook.md`; SP2 planlaması bunu bekliyor.
+- ABD borsası derinlik planının 3 açık sorusu hâlâ güçlü-model kararı bekliyor (auto-memory: `project_abd_borsasi_gece_piyasasi`).
+- Kullanıcının lokal dev server'ı fırtına sırasında çökmüştü — yeniden başlatması gerekebilir (fix push'landığı için artık tekrarlamaz).
 
 ### C. Değişiklik Geçmişi
-Bu oturumun commit'leri (grafik fix + memory) CHANGELOG'un Temmuz bölümüne henüz eklenmedi — bir sonraki toplu güncellemede.
+24. + 25. oturum commit'leri (ABD grafik fix + hover fix + memory) CHANGELOG'un Temmuz bölümüne henüz eklenmedi — bir sonraki toplu güncellemede.
 
 ### D. Yeni Chat'te Başlangıç Rehberi
-1. ABD hisse grafikleri artık çalışıyor (`source=us` zinciri). Seri/grafik işine dönülürse anahtar dosyalar: `src/lib/domain/series/series.ts` (SeriesSource), `src/lib/api/seriesSource.ts` (upstreamFor), `src/routes/api/series/+server.ts`.
+1. Grafik zinciri artık iki fix'le sağlam: `source=us` yolu (24.) + loader referans-churn koruması (25.). Anahtar dosyalar: `src/lib/components/chart/useSeries.svelte.ts`, `src/lib/domain/series/series.ts`, `src/lib/api/seriesSource.ts`.
 2. Sıradaki iş seçenekleri kullanıcıya sorulmalı: (a) Faz 1 GATE deneyini koordine et (kullanıcının işi), (b) ABD borsası derinlik planının 3 açık sorusunu güçlü modelde karara bağla, (c) başka bir şey.
 3. Migration'lar 0001-0007 lokal+prod senkron; telemetri prod'da veri topluyor (funnel: MCP `execute_sql`).
 4. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
