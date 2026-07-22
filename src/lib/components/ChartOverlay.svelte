@@ -77,7 +77,7 @@
 			<PriceChart points={series.points} width={chartWidth} height={CHART_HEIGHT} assetId={row.id} source={row.source} {period} />
 		{/if}
 		{#if series.loading}
-			<div class="absolute inset-0 flex items-center justify-center text-term-text opacity-40 text-[10px]">
+			<div class="absolute inset-0 flex items-center justify-center text-term-text opacity-40 text-[10px] pointer-events-none">
 				yükleniyor…
 			</div>
 		{/if}

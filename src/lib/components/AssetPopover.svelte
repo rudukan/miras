@@ -63,7 +63,7 @@
 	<div class="relative">
 		<PriceChart points={series.points} width={variant === 'mobile' ? 320 : 274} height={90} assetId={row.id} source={row.source} {period} />
 		{#if series.loading}
-			<div class="absolute inset-0 flex items-center justify-center text-term-text opacity-40 text-[10px]">
+			<div class="absolute inset-0 flex items-center justify-center text-term-text opacity-40 text-[10px] pointer-events-none">
 				yükleniyor…
 			</div>
 		{/if}
