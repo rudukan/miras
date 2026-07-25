@@ -1,0 +1,182 @@
+import { json, error } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { isSameOrigin } from '$lib/server/csrf';
+import { createAdminClient } from '$lib/server/league/admin';
+import { stampPrices } from '$lib/server/league/prices';
+import { leagueWeekKey, leagueLockMoment } from '$lib/domain/league/week';
+
+const SYMBOL_RE = /^[A-Z0-9]{1,12}$/;
+const ORDER_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+const MAX_UNITS = 1e12;
+const MAX_AMOUNT_USD = 1e12;
+
+export interface TradeRequest {
+  assetId: string;
+  side: 'buy' | 'sell';
+  units: number | null;
+  amountUsd: number | null;
+  clientOrderId: string;
+}
+
+export type ParseResult =
+  | { ok: true; value: TradeRequest }
+  | { ok: false; reason: string };
+
+function positiveFinite(n: unknown, max: number): n is number {
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= max;
+}
+
+/** Girdi şema doğrulaması — endpoint'ten ayrı export edilir ki test edilebilsin. */
+export function parseTradeRequest(body: unknown): ParseResult {
+  if (body === null || typeof body !== 'object') return { ok: false, reason: 'Geçersiz istek' };
+  const b = body as Record<string, unknown>;
+
+  if (typeof b.assetId !== 'string' || !SYMBOL_RE.test(b.assetId))
+    return { ok: false, reason: 'Geçersiz sembol' };
+  if (b.side !== 'buy' && b.side !== 'sell') return { ok: false, reason: 'Geçersiz yön' };
+  if (typeof b.clientOrderId !== 'string' || !ORDER_ID_RE.test(b.clientOrderId))
+    return { ok: false, reason: 'Geçersiz emir kimliği' };
+
+  const hasUnits = b.units !== undefined && b.units !== null;
+  const hasAmount = b.amountUsd !== undefined && b.amountUsd !== null;
+  if (hasUnits === hasAmount) return { ok: false, reason: 'Adet ya da tutardan yalnız biri verilmeli' };
+  if (hasAmount && b.side !== 'buy') return { ok: false, reason: 'Tutar bazlı emir yalnız alışta geçerli' };
+  if (hasUnits && !positiveFinite(b.units, MAX_UNITS)) return { ok: false, reason: 'Geçersiz adet' };
+  if (hasAmount && !positiveFinite(b.amountUsd, MAX_AMOUNT_USD))
+    return { ok: false, reason: 'Geçersiz tutar' };
+
+  return {
+    ok: true,
+    value: {
+      assetId: b.assetId,
+      side: b.side,
+      units: hasUnits ? (b.units as number) : null,
+      amountUsd: hasAmount ? (b.amountUsd as number) : null,
+      clientOrderId: b.clientOrderId,
+    },
+  };
+}
+
+/** `trades` insert satırının tek düz şekli — iki dal (queued/filled) FARKLI anahtar
+ *  kümeleriyle ayrık union üretirse supabase-js'in generic `insert<T>()` çözümlemesi
+ *  T'yi tek bir union üyesinden sabitleyip tüm union'ı ona karşı denetliyor (`status`
+ *  literal'i uyuşmadığı için patlıyor) — bu tip bildirimi her iki dalı da AYNI şekle
+ *  genişletip o çıkarımı önler. Çalışma zamanı davranışı değişmez. */
+type TradeRow = {
+  league_id: string;
+  user_id: string;
+  client_order_id: string;
+  asset_id: string;
+  side: 'buy' | 'sell';
+  units: number | null;
+  amount_usd: number | null;
+  status: 'pending' | 'filled';
+  server_price_usd: number | null;
+  server_ts: string | null;
+};
+
+export const POST: RequestHandler = async ({ request, locals, url, fetch }) => {
+  if (!isSameOrigin(request.headers.get('origin'), url.origin)) error(403, 'Geçersiz kaynak');
+  const { user } = await locals.safeGetSession();
+  if (!user) error(401, 'Oturum gerekli');
+  if (user.is_anonymous === true) error(403, 'Lig işlemi için kayıtlı hesap gerekli');
+
+  const parsed = parseTradeRequest(await request.json().catch(() => null));
+  if (!parsed.ok) error(400, parsed.reason);
+  const req = parsed.value;
+
+  const at = new Date();
+  const weekKey = leagueWeekKey(at);
+  if (at.getTime() >= leagueLockMoment(weekKey).getTime())
+    error(409, 'Hafta kapandı — bu işlem skora girmez');
+
+  const admin = createAdminClient();
+
+  const { data: league } = await admin
+    .from('leagues')
+    .select('id, status')
+    .eq('week_key', weekKey)
+    .maybeSingle();
+  if (!league || league.status !== 'open') error(409, 'Lig haftası henüz açılmadı');
+
+  const { data: entry } = await admin
+    .from('league_entries')
+    .select('user_id')
+    .eq('league_id', league.id)
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!entry) error(403, 'Lige katılmadınız');
+
+  const stamped = (await stampPrices([req.assetId], fetch, at))[req.assetId];
+
+  // Fiyat yok ya da bayat/kapalı → emir kuyruğa girer (kapalı piyasa mekaniğinin sunucu ikizi).
+  const queued = stamped === undefined || !stamped.fresh;
+
+  const row: TradeRow = queued
+    ? {
+        league_id: league.id,
+        user_id: user.id,
+        client_order_id: req.clientOrderId,
+        asset_id: req.assetId,
+        side: req.side,
+        units: req.units,
+        amount_usd: req.amountUsd,
+        status: 'pending' as const,
+        server_price_usd: null,
+        server_ts: null,
+      }
+    : {
+        league_id: league.id,
+        user_id: user.id,
+        client_order_id: req.clientOrderId,
+        asset_id: req.assetId,
+        side: req.side,
+        units: req.units ?? Math.floor((req.amountUsd! / stamped!.priceUsd) * 1e4) / 1e4,
+        amount_usd: req.amountUsd,
+        status: 'filled' as const,
+        server_price_usd: stamped!.priceUsd,
+        server_ts: at.toISOString(),
+      };
+
+  const { data: inserted, error: dbError } = await admin
+    .from('trades')
+    .insert(row)
+    .select('id, status, units, server_price_usd, server_ts')
+    .single();
+
+  if (dbError) {
+    // Idempotency: aynı clientOrderId ikinci kez geldi — mevcut satır aynen döner.
+    if (dbError.code === '23505') {
+      const { data: existing } = await admin
+        .from('trades')
+        .select('id, status, units, server_price_usd, server_ts')
+        .eq('league_id', league.id)
+        .eq('user_id', user.id)
+        .eq('client_order_id', req.clientOrderId)
+        .single();
+      if (existing) return json(toResponse(existing));
+    }
+    console.error('[api/trade] insert hatası', dbError);
+    error(500, 'İşlem kaydedilemedi');
+  }
+
+  return json(toResponse(inserted));
+};
+
+function toResponse(row: {
+  id: string;
+  status: string;
+  units: number | null;
+  server_price_usd: number | null;
+  server_ts: string | null;
+}) {
+  if (row.status === 'filled')
+    return {
+      status: 'filled' as const,
+      orderId: row.id,
+      units: row.units,
+      priceUsd: row.server_price_usd,
+      serverTs: row.server_ts,
+    };
+  return { status: 'queued' as const, orderId: row.id };
+}
