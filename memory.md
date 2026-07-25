@@ -173,30 +173,44 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-22 — 25. oturum, **GRAFİK HOVER "YÜKLENİYOR" DÖNGÜSÜ FİX — main'e push edildi** — Sonnet→Fable)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-25 — 26. oturum, **FAZ 1 GATE İPTAL + SP2a LİG ÇEKİRDEĞİ PLANI YAZILDI** — Opus, kod yazılmadı)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (24. — ABD hisse grafiği "veri yok" fix'i) için: `git show <bu commit'in bir öncesi>:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (25. — grafik hover "yükleniyor" döngüsü fix'i) için: `git show <bu commit'in bir öncesi>:memory.md`.
 
-### A. Bu Oturumda Tamamlananlar — HOVER TOOLTIP'İNİ SİLEN REFETCH FIRTINASI KAPANDI (commit `1525c44`)
+### A. Bu Oturumda Alınan Kararlar
 
-1. Kullanıcı bildirdi: grafik büyütülünce hover tooltip'i 1 sn görünüp kayboluyor, ortada sürekli "yükleniyor". Sınıf: Keşif/bug → `systematic-debugging` + TDD.
-2. **Kök neden:** `liveGameStore.prices` $derived'ı her tick'te TÜM PriceRow'ları taze obje üretiyor; `createSeriesLoader`'ın $effect'i `params()` üzerinden bu referansı okuyunca değerler aynıyken bile yeniden fetch tetikliyordu. Canlıda ölçüldü: overlay açılınca **63ms'de 60+ tekrarlı `/api/series` isteği** (reaktif fırtına; kullanıcının kendi dev server'ını bile çökertti). İkincil: "yükleniyor…" overlay'i `pointer-events-none`'sız — her loading flaşı canvas'ta `pointerleave` tetikleyip tooltip'i siliyordu.
-3. **Düzeltme:** `useSeries.svelte.ts`'te id/source/period ayrı primitive `$derived` (value-equality churn'ü eler) + iki overlay'e (`AssetPopover`, `ChartOverlay`) `pointer-events-none`.
-4. **Test altyapısı yeniliği:** repo'da rune'ları ($effect) Vitest'te test eden altyapı yoktu (varsayılan `environment: 'node'` Svelte'i SSR derliyor, $effect hiç koşmuyor). `happy-dom` devDependency + dosyaya özel `@vitest-environment happy-dom` yönergesi (`useSeries.svelte.test.ts`) — diğer testler node'da kalıyor. Rune testinde `flushSync` YETMİYOR, `await tick()` gerekiyor (efekt ilk koşumu microtask'ta).
-5. **Doğrulama:** RED→GREEN TDD; 642/642 unit, `check` 0 hata, build OK. Canlı: VRT overlay'de hover 10 sn sabitlendi — tooltip 10/10 örnekte aynı kaldı, "yükleniyor" hiç görünmedi, hover boyunca 0 yeni istek (açılışta 2: popover+overlay).
-6. **Şeffaflık:** kullanıcının "hâlâ bozuk" ekran görüntüsü fix'siz koddan çıktı (muhtemelen prod ya da yenilenmemiş sekme) — lokalde kanıtla çürütüldü, sonra push kararı alındı.
+1. **Faz 1'in GATE'i İPTAL EDİLDİ.** Kurucu: *"Faz 1'deki kişi testlerini unutalım."* 10-15 kişilik GO/NO-GO deneyi (`docs/faz1-gonogo-runbook.md`) çalıştırılmayacak — dosya silinmedi, sadece rafta. Bu, 22. oturumdan beri SP2'yi bekleten TEK blokerdi. Kayıp "ölçüm" değil "lig öncesi ön-doğrulama": Faz 1'in kod tarafı zaten prod'da (`telemetry_events` funnel verisi topluyor).
+2. **SP2 ikiye bölündü** (`writing-plans` skill'inin scope check'i gereği): **SP2a lig çekirdeği** (bu oturumda planlandı) + **SP2b lig vitrini** (kendi planını bekliyor).
+3. **Üç tasarım kararı kurucuya soruldu, üçünde de öneri kabul edildi:**
+   - *Skor otoritesi:* sunucu damgalı işlem + kapanış replay'i. `saves` payload'u skorda HİÇ kullanılmaz (payload'u DevTools'tan düzenlemek skoru değiştiremez).
+   - *Lig kapsamı:* yalnız alım-satım (BIST + ABD + kripto + emtia/döviz). **Mevduat ve emlak skora girmez** — replay deterministik kalsın diye.
+   - *Oyun/lig ilişkisi:* CANLI SEANS = lig; pazartesi 00:00 TSİ herkes $1M'a döner, ayrı slot yok. Hafta sonu antrenman.
 
-### B. Blokerler & Kalan İşler
-- **Faz 1'in GATE'i hâlâ açılmadı** (22. oturumdan miras) — `docs/faz1-gonogo-runbook.md`; SP2 planlaması bunu bekliyor.
-- ABD borsası derinlik planının 3 açık sorusu hâlâ güçlü-model kararı bekliyor (auto-memory: `project_abd_borsasi_gece_piyasasi`).
-- Kullanıcının lokal dev server'ı fırtına sırasında çökmüştü — yeniden başlatması gerekebilir (fix push'landığı için artık tekrarlamaz).
+### B. Üretilen Artefakt
 
-### C. Değişiklik Geçmişi
-24. + 25. oturum commit'leri (ABD grafik fix + hover fix + memory) CHANGELOG'un Temmuz bölümüne henüz eklenmedi — bir sonraki toplu güncellemede.
+**`docs/superpowers/plans/2026-07-25-sp2a-lig-cekirdegi.md`** — 15 task + manuel Task 0. Mimari: her lig işlemi `/api/trade`'e gider, sunucu fiyatı kendi proxy kaynağından çeker, `trades`'e insert-only yazar, damgalı fiyatı yanıtta döner; istemci O fiyatla kendi state'ini günceller (ekran = otorite). Kapanışta replay **istemcinin çalıştırdığı aynı `buyAsset`/`sellAsset` reducer'larıyla** koşar — yuvarlama paritesinin tek garantisi bu.
+
+Kilit tasarım noktaları (plan içinde gerekçeleriyle):
+- `trades`'e `authenticated` INSERT **verilmiyor**; yalnız `service_role` yazar. Hile koruması GRANT katmanında, UI'da değil.
+- **Kapanış replay'i nihai otorite** — `/api/trade`'in bakiye kontrolü teorik olarak yarışabilir, replay bakiyeyi aşan işlemi reddedip skordan düşürür.
+- Cron: Vercel DEĞİL **pg_cron + pg_net**, `*/5 * * * *`, sırlar Supabase Vault'ta (Vercel Pro alınmadı; Hobby günde 1 cron veriyor). Bedeli: bekleyen emir açılıştan en geç 5 dk sonra dolar.
+- Bekleyen emirler ligde **sunucuda** settle edilir; yerel `settlePendingOrders` lig modunda tamamen devre dışı (yoksa aynı emir iki yerde dolardı — çift işlem).
+- Lig modu `isLeagueActive: () => boolean` getter'ıyla reaktif okunur: store `+page.svelte:97`'de SENKRON kuruluyor, katılım ASENKRON yükleniyor.
+- **3 bilinçli CLAUDE.md esnetmesi** planda ayrı bölümde listeli: service-role client, `domain/league` → `stores/gameState` importu, async işlem yolu.
+
+**Self-review 4 gerçek hata yakaladı ve düzeltti** (skill'in self-review adımı boş tik değildi): uydurulmuş E2E helper adı (`registerAndSignIn` yok), `baseOpts` yok (`setup(overrides)` var), senkron store kurulumuyla çelişen "önce await" talimatı, ölü değişken.
+
+### C. Blokerler & Kalan İşler
+- **SP2a uygulaması bekliyor** — ayrı Sonnet oturumu, `subagent-driven-development`. Başlangıç komutu §D'de.
+- **Task 0 kurucuda:** Vercel'e `CRON_SECRET`, Supabase Vault'a `league_tick_url` + `league_cron_secret`. Task 1-9 ve 11-15 bunsuz ilerler; yalnız Task 10'un doğrulaması bekler.
+- **SP2b planı yazılmadı:** leaderboard UI, hafta geri sayımı, geçen hafta arşivi, paylaşım kartı, küfür filtresi, 30-gün anonim temizliği, `/api/trade` Turnstile. Plan sonunda listeli.
+- **Bilinen kayıp:** Task 13'ün haftalık reset'i geçen haftanın sonucunu sessizce siliyor — arşivleme SP2b'ye kadar yok.
+- ABD borsası gece piyasası: açık soru daraldı. Kapalı piyasada bekleyen emir 21 Temmuz'da çıktı (kuyruk → açılışta dolar); gerçek extended-hours FİYATI (`includePrePost=true`) kodda hiç yok (grep'le doğrulandı). Soru artık "kuyruk yeterli mi, yoksa gece gerçek fiyattan işlem mi?" — ve ligle etkileşiyor (arbitraj yüzeyi).
+- Ertelenmiş güvenlik: B2 (rate-limit), B5 (CSP script-src) kendi planlarını bekliyor. SP3a (domain + KVKK) hâlâ Google OAuth prod consent'inin ön koşulu.
 
 ### D. Yeni Chat'te Başlangıç Rehberi
-1. Grafik zinciri artık iki fix'le sağlam: `source=us` yolu (24.) + loader referans-churn koruması (25.). Anahtar dosyalar: `src/lib/components/chart/useSeries.svelte.ts`, `src/lib/domain/series/series.ts`, `src/lib/api/seriesSource.ts`.
-2. Sıradaki iş seçenekleri kullanıcıya sorulmalı: (a) Faz 1 GATE deneyini koordine et (kullanıcının işi), (b) ABD borsası derinlik planının 3 açık sorusunu güçlü modelde karara bağla, (c) başka bir şey.
-3. Migration'lar 0001-0007 lokal+prod senkron; telemetri prod'da veri topluyor (funnel: MCP `execute_sql`).
-4. Emlak gizli; yeni yatırım aracı yok (lig verisi gelmeden).
+1. **Uygulama oturumu (Sonnet) için komut:** *"`docs/superpowers/plans/2026-07-25-sp2a-lig-cekirdegi.md` planını subagent-driven-development ile uygula. Task 0 manuel (Vercel CRON_SECRET + Supabase Vault) — kurucu yapacak, sen Task 1'den başla."*
+2. SP2 artık HİÇBİR ŞEYİ beklemiyor — GATE iptal, SP0/SP1/SP1.5/E2E hepsi canlı. Eski "GATE'i bekliyor" ifadesi geçersiz.
+3. Migration'lar 0001-0007 lokal+prod senkron; 0008/0009 planda, henüz yazılmadı.
+4. Emlak gizli; mevduat duruyor ama **lig skoruna girmiyor** (bilinçli).
 5. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
