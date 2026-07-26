@@ -1,3 +1,4 @@
+import { untrack } from 'svelte';
 import type { Money } from '../domain/money';
 import { usd } from '../domain/money';
 import type { GameState } from './gameState';
@@ -277,7 +278,10 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   // $derived: sayfa lige katılımı asenkron yüklüyor — mod kuruluş anında sabitlenemez.
   const leagueMode = $derived(stampTrade !== undefined && (opts.isLeagueActive?.() ?? true));
   let tradeBusy = $state(false);
-  let weekKey = $state(computeWeekKey(new Date(now())));
+  // untrack: bilinçli TEK SEFERLİK anlık görüntü (yüklenen kaydın kendi haftası) — game'e canlı
+  // abonelik DEĞİL (reset her hafta game.createdAt'i zaten değiştirir; weekKey ise SADECE
+  // tickWeek() içinde elle güncellenir). Sarmalanmazsa Svelte "state_referenced_locally" uyarısı verir.
+  let weekKey = $state(computeWeekKey(new Date(untrack(() => game.createdAt))));
 
   // WS canlı + tick var → WS; aksi halde Yahoo (fxCache); o da yoksa FALLBACK_FX.usdTry.
   const effectiveUsdTry = (): number =>

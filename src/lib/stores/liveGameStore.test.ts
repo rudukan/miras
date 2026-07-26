@@ -1360,4 +1360,76 @@ describe('haftalık reset', () => {
     store.tickWeek();
     expect(onWeekRollover).toHaveBeenCalledWith('2026-06-01', '2026-06-08');
   });
+
+  it('reload sonrası bayat kayıt kendi kendini düzeltir — weekKey duvar saatinden DEĞİL, kayıtlı oyunun createdAt\'inden tohumlanır', () => {
+    // Senaryo: kullanıcı sekmeyi Çarşamba (geçen hafta) kapattı, Pazartesi (yeni hafta) yeniden
+    // açtı. Store yeniden kurulurken duvar saati ZATEN yeni haftada — weekKey yanlışlıkla o anki
+    // now()'dan tohumlanırsa ilk tickWeek() hep "next === weekKey" görür ve reset asla tetiklenmez
+    // (bayat bakiye kalıcılaşır). Doğru tohum kaynağı: yüklenen kaydın game.createdAt'i.
+    const staleGame = {
+      playerId: 'p1',
+      scenarioId: 'canli' as const,
+      seed: 1,
+      clock: { day: 5, totalDays: 90, speed: 'realtime' as const, paused: false },
+      usdBalance: { amount: 500_000, currency: 'USD' as const },
+      holdings: [{ assetId: 'BTC', units: 2, avgCost: { amount: 60_000, currency: 'USD' as const } }],
+      createdAt: WEDNESDAY, // geçen haftanın (2026-06-01) jenerasyon damgası
+      updatedAt: WEDNESDAY,
+    };
+    const staleHistory = [
+      {
+        dateKey: '2026-06-03',
+        netWorthUsd: { amount: 500_000, currency: 'USD' as const },
+        vsUsdHoldUsd: { amount: -500_000, currency: 'USD' as const },
+        allocation: {},
+        recordedAt: WEDNESDAY,
+      },
+    ];
+    const onWeekRollover = vi.fn();
+    const { store } = setup({
+      now: () => NEXT_MONDAY, // duvar saati AÇILIŞ ANINDA zaten yeni haftada
+      initial: {
+        v: 1,
+        game: staleGame,
+        activeBist: [],
+        pendingOrders: [{ id: 'a', assetId: 'GARAN', side: 'buy', kind: 'units', units: 10, placedAt: 1 }],
+      },
+      initialHistory: staleHistory,
+      onWeekRollover,
+    });
+
+    // Kuruluş anında: weekKey kayıtlı oyunun (geçen) haftasını yansıtmalı, o anki duvar saatinin
+    // haftasını DEĞİL. Kayıt da hâlâ bayat/eski halinde.
+    expect(store.leagueWeekKey).toBe('2026-06-01');
+    expect(store.game.usdBalance.amount).toBe(500_000);
+    expect(store.pendingOrders).toHaveLength(1);
+    expect(store.history).toHaveLength(1);
+
+    store.tickWeek(); // start()'ın saniyelik interval'ının simülasyonu — ilk gerçek tick
+
+    expect(store.leagueWeekKey).toBe('2026-06-08');
+    expect(store.game.usdBalance.amount).toBe(1_000_000);
+    expect(store.game.holdings).toEqual([]);
+    expect(store.pendingOrders).toEqual([]);
+    expect(store.history).toEqual([]);
+    expect(store.game.createdAt).toBe(NEXT_MONDAY);
+    expect(onWeekRollover).toHaveBeenCalledTimes(1);
+    expect(onWeekRollover).toHaveBeenCalledWith('2026-06-01', '2026-06-08');
+  });
+
+  it('geçiş bir kez işlendikten sonra ikinci tickWeek çağrısı tekrar tetiklenmez (weekKey=next sırası regresyonu)', () => {
+    let clock = WEDNESDAY;
+    const onWeekRollover = vi.fn();
+    const { store } = setup({ now: () => clock, onWeekRollover });
+    clock = NEXT_MONDAY;
+
+    store.tickWeek(); // geçişi işler
+    expect(onWeekRollover).toHaveBeenCalledTimes(1);
+    const afterFirstCross = store.game;
+
+    store.tickWeek(); // now() İLERLETİLMEDEN ikinci çağrı — aynı haftada tekrar tetiklenmemeli
+    expect(onWeekRollover).toHaveBeenCalledTimes(1); // ikinci kez ÇAĞRILMADI
+    expect(store.game).toBe(afterFirstCross); // state'e ikinci kez dokunulmadı (aynı referans)
+    expect(store.leagueWeekKey).toBe('2026-06-08');
+  });
 });
