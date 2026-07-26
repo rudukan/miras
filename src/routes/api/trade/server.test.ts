@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseTradeRequest } from './+server';
+import { parseTradeRequest, validateAgainstReplay, withinRateLimit, RATE_LIMIT_MAX } from './+server';
+import type { StampedTrade } from '$lib/domain/league/replay';
 
 describe('parseTradeRequest', () => {
   it('geçerli units emrini kabul eder', () => {
@@ -37,5 +38,39 @@ describe('parseTradeRequest', () => {
   it('clientOrderId yoksa/biçimsizse reddeder', () => {
     expect(parseTradeRequest({ assetId: 'BTC', side: 'buy', units: 1 }).ok).toBe(false);
     expect(parseTradeRequest({ assetId: 'BTC', side: 'buy', units: 1, clientOrderId: 'x'.repeat(80) }).ok).toBe(false);
+  });
+});
+
+describe('validateAgainstReplay', () => {
+  const prior: StampedTrade[] = [
+    { assetId: 'THYAO', side: 'buy', units: 100, priceUsd: 10, ts: 1 },
+  ];
+
+  it('bakiyeye sığan alımı kabul eder', () => {
+    const r = validateAgainstReplay(prior, { assetId: 'BTC', side: 'buy', units: 1, priceUsd: 95000, ts: 2 }, 0, 'u1');
+    expect(r.ok).toBe(true);
+  });
+
+  it('bakiyeyi aşan alımı reddeder', () => {
+    const r = validateAgainstReplay(prior, { assetId: 'BTC', side: 'buy', units: 100, priceUsd: 95000, ts: 2 }, 0, 'u1');
+    expect(r).toEqual({ ok: false, reason: 'Yetersiz bakiye' });
+  });
+
+  it('elde olmayanı satmayı reddeder', () => {
+    const r = validateAgainstReplay(prior, { assetId: 'BTC', side: 'sell', units: 1, priceUsd: 95000, ts: 2 }, 0, 'u1');
+    expect(r).toEqual({ ok: false, reason: 'Yetersiz pozisyon' });
+  });
+
+  it('elde olanı satmayı kabul eder', () => {
+    const r = validateAgainstReplay(prior, { assetId: 'THYAO', side: 'sell', units: 50, priceUsd: 11, ts: 2 }, 0, 'u1');
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe('withinRateLimit', () => {
+  it('sınırın altında geçirir, sınırda/üstünde reddeder', () => {
+    expect(withinRateLimit(0)).toBe(true);
+    expect(withinRateLimit(RATE_LIMIT_MAX - 1)).toBe(true);
+    expect(withinRateLimit(RATE_LIMIT_MAX)).toBe(false);
   });
 });

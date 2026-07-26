@@ -3,7 +3,8 @@ import type { RequestHandler } from './$types';
 import { isSameOrigin } from '$lib/server/csrf';
 import { createAdminClient } from '$lib/server/league/admin';
 import { stampPrices } from '$lib/server/league/prices';
-import { leagueWeekKey, leagueLockMoment } from '$lib/domain/league/week';
+import { leagueWeekKey, leagueLockMoment, leagueWeekStart } from '$lib/domain/league/week';
+import { replayTrades, type StampedTrade } from '$lib/domain/league/replay';
 
 const SYMBOL_RE = /^[A-Z0-9]{1,12}$/;
 const ORDER_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
@@ -57,6 +58,32 @@ export function parseTradeRequest(body: unknown): ParseResult {
   };
 }
 
+/** Kullanıcı başına, kayan 10 saniyelik pencerede izin verilen azami işlem sayısı. */
+export const RATE_LIMIT_MAX = 20;
+export const RATE_LIMIT_WINDOW_MS = 10_000;
+
+export function withinRateLimit(recentCount: number): boolean {
+  return recentCount < RATE_LIMIT_MAX;
+}
+
+/** Aday işlemi, o ana kadarki damgalı işlemlerin replay'i üstünde dener.
+ *  Not: Bu kontrol eşzamanlı iki istekte teorik olarak yarışabilir — nihai otorite
+ *  kapanış replay'idir (bakiyeyi aşan işlem orada da reddedilir ve skora girmez). */
+export function validateAgainstReplay(
+  prior: readonly StampedTrade[],
+  candidate: StampedTrade,
+  startedAt: number,
+  userId: string,
+): { ok: true } | { ok: false; reason: string } {
+  const { rejected } = replayTrades([...prior, candidate], { userId, startedAt });
+  const failed = rejected.find((r) => r.trade === candidate);
+  if (!failed) return { ok: true };
+  return {
+    ok: false,
+    reason: failed.reason.includes('units') ? 'Yetersiz pozisyon' : 'Yetersiz bakiye',
+  };
+}
+
 /** `trades` insert satırının tek düz şekli — iki dal (queued/filled) FARKLI anahtar
  *  kümeleriyle ayrık union üretirse supabase-js'in generic `insert<T>()` çözümlemesi
  *  T'yi tek bir union üyesinden sabitleyip tüm union'ı ona karşı denetliyor (`status`
@@ -107,10 +134,46 @@ export const POST: RequestHandler = async ({ request, locals, url, fetch }) => {
     .maybeSingle();
   if (!entry) error(403, 'Lige katılmadınız');
 
+  const { count: recentCount } = await admin
+    .from('trades')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .gte('placed_at', new Date(at.getTime() - RATE_LIMIT_WINDOW_MS).toISOString());
+  if (!withinRateLimit(recentCount ?? 0)) error(429, 'Çok hızlı işlem — biraz bekleyin');
+
   const stamped = (await stampPrices([req.assetId], fetch, at))[req.assetId];
 
   // Fiyat yok ya da bayat/kapalı → emir kuyruğa girer (kapalı piyasa mekaniğinin sunucu ikizi).
   const queued = stamped === undefined || !stamped.fresh;
+
+  // Anlık dolacak emirler bakiyeye karşı doğrulanır. Kuyruğa giren emir doğrulanmaz:
+  // dolum anındaki fiyat/bakiye bilinmiyor — settle sırasında (Task 8) denenir ve
+  // yetmezse iptal edilir (istemcideki settlePendingOrders ile aynı semantik).
+  if (!queued) {
+    const units = req.units ?? Math.floor((req.amountUsd! / stamped!.priceUsd) * 1e4) / 1e4;
+    if (!(units > 0)) error(400, 'Tutar bu fiyatta işleme yetmiyor');
+    const { data: priorRows } = await admin
+      .from('trades')
+      .select('asset_id, side, units, server_price_usd, server_ts')
+      .eq('league_id', league.id)
+      .eq('user_id', user.id)
+      .eq('status', 'filled')
+      .order('server_ts', { ascending: true });
+    const prior: StampedTrade[] = (priorRows ?? []).map((r) => ({
+      assetId: r.asset_id as string,
+      side: r.side as 'buy' | 'sell',
+      units: Number(r.units),
+      priceUsd: Number(r.server_price_usd),
+      ts: Date.parse(r.server_ts as string),
+    }));
+    const verdict = validateAgainstReplay(
+      prior,
+      { assetId: req.assetId, side: req.side, units, priceUsd: stamped!.priceUsd, ts: at.getTime() },
+      leagueWeekStart(at).getTime(),
+      user.id,
+    );
+    if (!verdict.ok) error(422, verdict.reason);
+  }
 
   const row: TradeRow = queued
     ? {
