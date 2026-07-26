@@ -74,4 +74,12 @@ describe('settleDecision', () => {
       reason: 'Yetersiz pozisyon',
     });
   });
+
+  it('taze fiyatta tutar 1 adede bile yetmiyorsa iptal eder', () => {
+    const o = { asset_id: 'BTC', side: 'buy' as const, units: null, amount_usd: 0.01 };
+    expect(settleDecision(o, { priceUsd: 95000, fresh: true }, emptyState())).toEqual({
+      action: 'cancel',
+      reason: 'Tutar bu fiyatta işleme yetmiyor',
+    });
+  });
 });
