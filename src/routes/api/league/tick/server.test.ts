@@ -83,3 +83,39 @@ describe('settleDecision', () => {
     });
   });
 });
+
+import { _rankScores as rankScores } from './+server';
+
+describe('rankScores', () => {
+  it('skora göre azalan sıralar, 1\'den başlar', () => {
+    expect(
+      rankScores([
+        { userId: 'a', scoreUsd: 1_000_000 },
+        { userId: 'b', scoreUsd: 1_200_000 },
+        { userId: 'c', scoreUsd: 900_000 },
+      ]),
+    ).toEqual([
+      { userId: 'b', scoreUsd: 1_200_000, rank: 1 },
+      { userId: 'a', scoreUsd: 1_000_000, rank: 2 },
+      { userId: 'c', scoreUsd: 900_000, rank: 3 },
+    ]);
+  });
+
+  it('eşit skorlara aynı rank verir, sonraki rank atlanır (standart rekabet sıralaması)', () => {
+    expect(
+      rankScores([
+        { userId: 'a', scoreUsd: 1_000_000 },
+        { userId: 'b', scoreUsd: 1_000_000 },
+        { userId: 'c', scoreUsd: 900_000 },
+      ]),
+    ).toEqual([
+      { userId: 'a', scoreUsd: 1_000_000, rank: 1 },
+      { userId: 'b', scoreUsd: 1_000_000, rank: 1 },
+      { userId: 'c', scoreUsd: 900_000, rank: 3 },
+    ]);
+  });
+
+  it('boş listede boş döner', () => {
+    expect(rankScores([])).toEqual([]);
+  });
+});

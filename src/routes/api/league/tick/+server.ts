@@ -4,7 +4,7 @@ import { CRON_SECRET } from '$env/static/private';
 import { createAdminClient } from '$lib/server/league/admin';
 import { leagueWeekKey, leagueWeekStart, leagueLockMoment } from '$lib/domain/league/week';
 import { stampPrices, type StampedPrice } from '$lib/server/league/prices';
-import { replayTrades, type StampedTrade } from '$lib/domain/league/replay';
+import { replayTrades, valuate, type StampedTrade } from '$lib/domain/league/replay';
 import { buyAsset, sellAsset, type GameState } from '$lib/stores/gameState';
 import { usd } from '$lib/domain/money';
 
@@ -66,6 +66,22 @@ export function _settleDecision(
     return { action: 'cancel', reason: msg.includes('units') ? 'Yetersiz pozisyon' : 'Yetersiz bakiye' };
   }
   return { action: 'fill', units, priceUsd };
+}
+
+export interface ScoreEntry {
+  userId: string;
+  scoreUsd: number;
+}
+
+/** Standart rekabet sıralaması (1,1,3): eşit skorlar aynı rank alır, sonraki rank atlanır. */
+export function _rankScores(entries: readonly ScoreEntry[]): (ScoreEntry & { rank: number })[] {
+  const sorted = [...entries].sort((a, b) => b.scoreUsd - a.scoreUsd);
+  const out: (ScoreEntry & { rank: number })[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const rank = i > 0 && sorted[i].scoreUsd === sorted[i - 1].scoreUsd ? out[i - 1].rank : i + 1;
+    out.push({ ...sorted[i], rank });
+  }
+  return out;
 }
 
 export const POST: RequestHandler = async ({ request, fetch }) => {
@@ -164,5 +180,78 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
     }
   }
 
-  return json({ opened: row.week_key, settled, closed: null });
+  // 3) Kilit anı geçmiş ve henüz mühürlenmemiş haftaları kapat. GEÇMİŞ haftalar da taranır:
+  //    tick bir süre çalışmazsa (deploy, kesinti) kapanış atlanmaz.
+  let closed: string | null = null;
+  const { data: due } = await admin
+    .from('leagues')
+    .select('id, week_key, opens_at')
+    .eq('status', 'open')
+    .lte('locks_at', at.toISOString())
+    .order('locks_at', { ascending: true })
+    .limit(1);
+
+  const league = due?.[0];
+  if (league) {
+    const { data: entries } = await admin
+      .from('league_entries')
+      .select('user_id')
+      .eq('league_id', league.id);
+    const { data: allTrades } = await admin
+      .from('trades')
+      .select('user_id, asset_id, side, units, server_price_usd, server_ts')
+      .eq('league_id', league.id)
+      .eq('status', 'filled')
+      .order('server_ts', { ascending: true });
+
+    const startedAt = Date.parse(league.opens_at as string);
+    const tradesByUser = new Map<string, StampedTrade[]>();
+    for (const r of allTrades ?? []) {
+      const list = tradesByUser.get(r.user_id as string) ?? [];
+      list.push({
+        assetId: r.asset_id as string,
+        side: r.side as 'buy' | 'sell',
+        units: Number(r.units),
+        priceUsd: Number(r.server_price_usd),
+        ts: Date.parse(r.server_ts as string),
+      });
+      tradesByUser.set(r.user_id as string, list);
+    }
+
+    // Kapanış fiyatları SUNUCUDAN çekilir; tüm katılımcıların pozisyonları tek turda.
+    const heldAssets = new Set<string>();
+    for (const list of tradesByUser.values()) for (const t of list) heldAssets.add(t.assetId);
+    const closePrices: Record<string, number> = {};
+    if (heldAssets.size > 0) {
+      const stamped = await stampPrices(Array.from(heldAssets), fetch, at);
+      for (const [id, s] of Object.entries(stamped)) closePrices[id] = s.priceUsd;
+    }
+
+    const scores: ScoreEntry[] = (entries ?? []).map((e) => {
+      const userId = e.user_id as string;
+      const { state, rejected } = replayTrades(tradesByUser.get(userId) ?? [], { userId, startedAt });
+      if (rejected.length > 0)
+        console.warn(`[api/league/tick] ${league.week_key}/${userId}: ${rejected.length} işlem replay'de reddedildi`);
+      const { scoreUsd, complete } = valuate(state, closePrices);
+      if (!complete)
+        console.warn(`[api/league/tick] ${league.week_key}/${userId}: kapanış fiyatı eksik pozisyon var`);
+      return { userId, scoreUsd };
+    });
+
+    for (const s of _rankScores(scores)) {
+      await admin
+        .from('league_entries')
+        .update({ final_score_usd: s.scoreUsd, rank: s.rank })
+        .eq('league_id', league.id)
+        .eq('user_id', s.userId);
+    }
+    await admin
+      .from('leagues')
+      .update({ status: 'closed', closed_at: at.toISOString() })
+      .eq('id', league.id)
+      .eq('status', 'open'); // idempotency: eşzamanlı ikinci tick tekrar kapatmaz
+    closed = league.week_key as string;
+  }
+
+  return json({ opened: row.week_key, settled, closed });
 };
