@@ -36,6 +36,7 @@ import { computeAllocation, upsertSnapshot, type DailySnapshot } from '../domain
 import { currentValueTry, type ActiveDeposit } from '../domain/deposit/deposit';
 import { accruedRentTry, type OwnedProperty } from '../domain/property/property';
 import type { StampRequest, StampResult } from '../api/leagueClient';
+import { leagueWeekKey as computeWeekKey } from '../domain/league/week';
 
 /** PriceList satırı — canlı katalog fiyatı + market-açık rozeti + günlük % değişim. */
 export interface PriceRow {
@@ -90,6 +91,8 @@ export interface LiveGameStoreOptions {
    *  yükleniyor; bu yüzden mod kuruluş anında sabitlenemez, çağrı anında sorulur.
    *  Verilmezse `stampTrade` varlığı tek başına yeterlidir (testler için). */
   isLeagueActive?: () => boolean;
+  /** Hafta döndüğünde (pazartesi 00:00 TSİ) çağrılır — sayfa bulut kaydını/arşivi buradan tazeler. */
+  onWeekRollover?: (prev: string, next: string) => void;
 }
 
 export interface LiveGameStore {
@@ -122,6 +125,10 @@ export interface LiveGameStore {
   readonly leagueMode: boolean;
   /** Uçuşta bir lig işlemi var mı — UI butonları bununla kilitler (çift gönderim önleme). */
   readonly tradeBusy: boolean;
+  /** İçinde bulunulan lig haftasının kimliği ('YYYY-MM-DD', pazartesi). */
+  readonly leagueWeekKey: string;
+  /** Hafta sınırını kontrol eder; geçildiyse oyunu $1M'a döndürür. start() saniyede bir çağırır. */
+  tickWeek(): void;
   /** Bir varlıkta şu an işlem anlık mı gerçekleşir yoksa kuyruğa mı girer? 'queued' bir hata
    *  DEĞİL, yönlendirmedir. Guard (buy/sell/buyAmountUsd içi) ve UI (TradeForm) TEK bu kaynağı okur. */
   tradeMode(assetId: string): 'instant' | 'queued';
@@ -270,6 +277,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   // $derived: sayfa lige katılımı asenkron yüklüyor — mod kuruluş anında sabitlenemez.
   const leagueMode = $derived(stampTrade !== undefined && (opts.isLeagueActive?.() ?? true));
   let tradeBusy = $state(false);
+  let weekKey = $state(computeWeekKey(new Date(now())));
 
   // WS canlı + tick var → WS; aksi halde Yahoo (fxCache); o da yoksa FALLBACK_FX.usdTry.
   const effectiveUsdTry = (): number =>
@@ -621,6 +629,26 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
       persist();
     }
   }
+  /** Haftalık lig reset'i: pazartesi 00:00 TSİ'de herkes $1M'a döner (spec kararı — CANLI
+   *  SEANS = lig, ayrı slot yok). Bekleyen emirler de silinir: geçen haftanın kuyruğu yeni
+   *  haftaya taşınırsa oyuncu hiç vermediği bir emirle karşılaşır. */
+  function tickWeek(): void {
+    const next = computeWeekKey(new Date(now()));
+    if (next === weekKey) return;
+    const prev = weekKey;
+    weekKey = next;
+    game = createGameState('canli', seed, playerId, now());
+    pendingOrders = [];
+    history = [];
+    orderNotice = `Yeni lig haftası başladı — herkes $1.000.000 ile eşit başlıyor.`;
+    lastError = null;
+    persist();
+    try {
+      opts.onWeekRollover?.(prev, next);
+    } catch {
+      /* sayfa tarafı best-effort — oyunu bozmaz */
+    }
+  }
   const openDepositAction = (usdAmount: number) =>
     apply(() => openDeposit(game, sealedUsdTry(), usdAmount, now()), opts.onFirstTrade);
   const breakDepositAction = () => apply(() => breakDeposit(game, sealedUsdTry(), now()));
@@ -807,6 +835,7 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     feed = makeFeed({ symbols: [...CRYPTO_SYMBOLS], fxPairs: ['USDTTRY'], onPrice, onStatus, onFxRate });
     tickTimer = setInterval(() => {
       nowMsTick = now();
+      tickWeek();
     }, 1000);
     await pollFx(); // ilk çekim
     if (started) scheduleNextPoll();
@@ -887,6 +916,10 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     get tradeBusy() {
       return tradeBusy;
     },
+    get leagueWeekKey() {
+      return weekKey;
+    },
+    tickWeek,
     buy,
     sell,
     buyAmountUsd: buyAmountUsdAction,

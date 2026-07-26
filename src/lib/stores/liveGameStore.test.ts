@@ -1319,3 +1319,45 @@ describe('lig modu (stampTrade)', () => {
     ]);
   });
 });
+
+describe('haftalık reset', () => {
+  // FIXED_NOW (2026-06-01 12:00 TSİ) pazartesidir; bu blok kendi mutable saatini kurar.
+  const WEDNESDAY = new Date('2026-06-03T12:00:00+03:00').getTime();
+  const NEXT_MONDAY = new Date('2026-06-08T08:00:00+03:00').getTime();
+
+  it('hafta değişince oyunu $1M\'a döndürür ve kuyruğu temizler', async () => {
+    let clock = WEDNESDAY;
+    const { store } = setup({ now: () => clock });
+    expect(store.leagueWeekKey).toBe('2026-06-01');
+
+    // Store başlatılmadığı için feed stale → emir kuyruğa girer (deterministik durum).
+    await store.buy('BTC', 1);
+    expect(store.pendingOrders).toHaveLength(1);
+
+    clock = NEXT_MONDAY;
+    store.tickWeek();
+
+    expect(store.leagueWeekKey).toBe('2026-06-08');
+    expect(store.game.usdBalance.amount).toBe(1_000_000);
+    expect(store.game.holdings).toEqual([]);
+    expect(store.pendingOrders).toEqual([]);
+    expect(store.game.createdAt).toBe(NEXT_MONDAY); // yeni jenerasyon damgası
+  });
+
+  it('aynı hafta içinde tickWeek state\'e dokunmaz', () => {
+    const { store } = setup({ now: () => WEDNESDAY });
+    const before = store.game;
+    store.tickWeek();
+    expect(store.game).toBe(before);
+    expect(store.leagueWeekKey).toBe('2026-06-01');
+  });
+
+  it('hafta dönüşünde onWeekRollover çağrılır', () => {
+    let clock = WEDNESDAY;
+    const onWeekRollover = vi.fn();
+    const { store } = setup({ now: () => clock, onWeekRollover });
+    clock = NEXT_MONDAY;
+    store.tickWeek();
+    expect(onWeekRollover).toHaveBeenCalledWith('2026-06-01', '2026-06-08');
+  });
+});
