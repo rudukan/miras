@@ -6,6 +6,7 @@ import type { BinanceFeedOptions, BinanceFeed } from '../api/binance';
 import type { SaveEnvelopeV1 } from './savegame';
 import { usd } from '../domain/money';
 import { sessionOpenMs } from '../domain/calendar/calendar';
+import type { StampResult } from '../api/leagueClient';
 
 // 2026-06-01 12:00 Europe/Istanbul = Pazartesi, BIST açık saat
 const FIXED_NOW = new Date('2026-06-01T12:00:00+03:00').getTime();
@@ -1293,5 +1294,28 @@ describe('lig modu (stampTrade)', () => {
     await store.sell('BTC', 10);
     expect(store.game.usdBalance.amount).toBe(1_000_000 + 20);
     expect(store.game.holdings).toEqual([]);
+  });
+
+  it('tradeBusy: uçuştaki lig işlemi bitmeden ikinci çağrı no-op olur (çift gönderim koruması)', async () => {
+    let resolveFn: ((v: StampResult) => void) | undefined;
+    const stampTrade = vi.fn(() => new Promise<StampResult>((resolve) => { resolveFn = resolve; }));
+    const { store } = setup({ stampTrade });
+
+    const p1 = store.buy('BTC', 10); // uçuşa çıkar, henüz çözülmedi
+    expect(store.tradeBusy).toBe(true);
+
+    const p2 = store.buy('BTC', 10); // ikinci çağrı uçuştayken gelir — no-op olmalı
+    await p2;
+    expect(stampTrade).toHaveBeenCalledTimes(1); // ikinci çağrı stampTrade'i TEKRAR çağırmadı
+
+    resolveFn!({ status: 'filled', orderId: 'o1', units: 10, priceUsd: 7 });
+    await p1;
+
+    expect(store.tradeBusy).toBe(false);
+    // Yalnız TEK işlem gerçekleşti (10 adet @ $7) — ikinci çağrı sessizce yutuldu, tekrar uygulanmadı.
+    expect(store.game.usdBalance.amount).toBe(1_000_000 - 70);
+    expect(store.game.holdings).toEqual([
+      { assetId: 'BTC', units: 10, avgCost: { amount: 7, currency: 'USD' } },
+    ]);
   });
 });
