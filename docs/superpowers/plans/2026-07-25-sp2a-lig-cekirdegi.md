@@ -32,6 +32,14 @@ Kullanıcı kuralı: kanonlar tavan değil zemin — esnetmeler planda AÇIKÇA 
 2. **"Her `domain/<sistem>/` klasörü sadece `money.ts` + kendi type'larına bağımlı"** → `src/lib/domain/league/replay.ts` `src/lib/stores/gameState.ts`'ten import eder. Gerekçe: replay'in istemcinin çalıştırdığı **birebir aynı** `buyAsset`/`sellAsset`/`netWorthPartsUsd` fonksiyonlarını kullanması, skor ile ekranın kuruşu kuruşuna aynı olmasının tek yolu. `gameState.ts` rune içermeyen saf TS'tir; `stores/` altında olması tarihsel bir yerleşim hatası, bu planda taşınmıyor (ayrı refactor).
 3. **"Fiyat update'leri `$derived` ya da rAF"** → lig işlemi artık ağ gidiş-dönüşü (async). Yalnız lige katılmış kullanıcı için geçerli; misafir/antrenman yolu bugünkü senkron davranışta kalır.
 
+## Uygulama Sırasında Bulunan Düzeltmeler
+
+Plan yazımından sonra, uygulama sırasında ortaya çıkan ve geriye dönük birden çok task'ı etkileyen bulgular. CLAUDE.md esnetmesi değil (proje kuralı değil, framework kısıtı) — ayrı tutuluyor.
+
+1. **SvelteKit `+server.ts` export whitelist'i.** Task 5'in uygulanmasından sonra (Task 6 sırasında) keşfedildi: SvelteKit, route `+server.ts` dosyalarından yalnız HTTP verb handler'larının (`GET`/`POST`/...), birkaç config adının (`prerender`, `trailingSlash`, ...) ya da **`_` önekli isimlerin** export edilmesine izin veriyor — `npm run build` (Vite/SvelteKit'in kendi analiz adımı) bunu sert hata olarak reddediyor. `npm run check` (svelte-check, tip kontrolü) bunu YAKALAMIYOR — ayrı bir mekanizma. Bu yüzden Task 5'in `parseTradeRequest` export'u (test edilebilirlik için, planın kendi Interfaces bölümünde istendiği gibi) merge olduktan sonra bile fark edilmeden kaldı; Task 6'nın kendi yeni export'larıyla (`RATE_LIMIT_MAX`, `withinRateLimit`, `validateAgainstReplay`) `npm run build` ilk kez koşulunca ortaya çıktı.
+   **Karar (kurucu onayı, 2026-07-26):** test edilebilirlik için bir route dosyasından export edilen saf yardımcı fonksiyon/sabitler `_` öneki alır (ör. `_parseTradeRequest`); ilgili `*.test.ts` dosyası `import { _parseTradeRequest as parseTradeRequest } from './+server';` şeklinde takma adla içe aktarır, böylece test gövdeleri değişmez. Yalnızca `interface`/`type` export'ları (derleme anında silindiği, SvelteKit'in çalışma-zamanı export kontrolüne hiç girmediği için) önek ALMAZ. Task 5+6 bu desenle düzeltildi (commit `bc9bc53`).
+   **Etki:** Task 7 (`authorizeTick`, `weekRowFor`), Task 8 (`settleDecision`), Task 9 (`rankScores`) — hepsi `src/routes/api/league/tick/+server.ts`'ten aynı şekilde export edilecek plan metninde; bu task'lar dispatch edilirken export isimleri baştan `_` önekiyle verilecek (planın kod bloklarındaki önek'siz isimler yerine). Ayrıca **her task'ın kendi doğrulama adımına `npm run build` eklendi** — yalnız Task 9'un/kapanışın sonunda değil, önce fark edilmesi için.
+
 ## Tasarım Kararları (kurucu onayı, 2026-07-25)
 
 | Konu | Karar |
