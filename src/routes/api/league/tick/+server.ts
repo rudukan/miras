@@ -193,64 +193,77 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 
   const league = due?.[0];
   if (league) {
-    const { data: entries } = await admin
+    const { data: entries, error: entriesError } = await admin
       .from('league_entries')
       .select('user_id')
       .eq('league_id', league.id);
-    const { data: allTrades } = await admin
+    const { data: allTrades, error: tradesError } = await admin
       .from('trades')
       .select('user_id, asset_id, side, units, server_price_usd, server_ts')
       .eq('league_id', league.id)
       .eq('status', 'filled')
       .order('server_ts', { ascending: true });
 
-    const startedAt = Date.parse(league.opens_at as string);
-    const tradesByUser = new Map<string, StampedTrade[]>();
-    for (const r of allTrades ?? []) {
-      const list = tradesByUser.get(r.user_id as string) ?? [];
-      list.push({
-        assetId: r.asset_id as string,
-        side: r.side as 'buy' | 'sell',
-        units: Number(r.units),
-        priceUsd: Number(r.server_price_usd),
-        ts: Date.parse(r.server_ts as string),
+    // Okuma hatasında bu ligi BU turda ATLA: league.status hâlâ 'open' kaldığı için
+    // bir sonraki tick aynı `due` sorgusuyla tekrar dener. Yanlış puanla (entries/
+    // allTrades sessizce [] gibi görünüp) kapatıp bir daha asla dönülmemesindense
+    // (closed lig bu sorguda hiç görünmez) burada durmak tercih edilir.
+    if (entriesError || tradesError) {
+      console.error(
+        `[api/league/tick] ${league.week_key}: kapanış verisi okunamadı, bu tick atlanır — bir sonrakine bırakılır`,
+        entriesError ?? tradesError,
+      );
+    } else {
+      const startedAt = Date.parse(league.opens_at as string);
+      const tradesByUser = new Map<string, StampedTrade[]>();
+      for (const r of allTrades ?? []) {
+        const list = tradesByUser.get(r.user_id as string) ?? [];
+        list.push({
+          assetId: r.asset_id as string,
+          side: r.side as 'buy' | 'sell',
+          units: Number(r.units),
+          priceUsd: Number(r.server_price_usd),
+          ts: Date.parse(r.server_ts as string),
+        });
+        tradesByUser.set(r.user_id as string, list);
+      }
+
+      // Kapanış fiyatları SUNUCUDAN çekilir; tüm katılımcıların pozisyonları tek turda.
+      const heldAssets = new Set<string>();
+      for (const list of tradesByUser.values()) for (const t of list) heldAssets.add(t.assetId);
+      const closePrices: Record<string, number> = {};
+      if (heldAssets.size > 0) {
+        const stamped = await stampPrices(Array.from(heldAssets), fetch, at);
+        for (const [id, s] of Object.entries(stamped)) closePrices[id] = s.priceUsd;
+      }
+
+      const scores: ScoreEntry[] = (entries ?? []).map((e) => {
+        const userId = e.user_id as string;
+        const { state, rejected } = replayTrades(tradesByUser.get(userId) ?? [], { userId, startedAt });
+        if (rejected.length > 0)
+          console.warn(`[api/league/tick] ${league.week_key}/${userId}: ${rejected.length} işlem replay'de reddedildi`);
+        const { scoreUsd, complete } = valuate(state, closePrices);
+        if (!complete)
+          console.warn(`[api/league/tick] ${league.week_key}/${userId}: kapanış fiyatı eksik pozisyon var`);
+        return { userId, scoreUsd };
       });
-      tradesByUser.set(r.user_id as string, list);
-    }
 
-    // Kapanış fiyatları SUNUCUDAN çekilir; tüm katılımcıların pozisyonları tek turda.
-    const heldAssets = new Set<string>();
-    for (const list of tradesByUser.values()) for (const t of list) heldAssets.add(t.assetId);
-    const closePrices: Record<string, number> = {};
-    if (heldAssets.size > 0) {
-      const stamped = await stampPrices(Array.from(heldAssets), fetch, at);
-      for (const [id, s] of Object.entries(stamped)) closePrices[id] = s.priceUsd;
+      for (const s of _rankScores(scores)) {
+        await admin
+          .from('league_entries')
+          .update({ final_score_usd: s.scoreUsd, rank: s.rank })
+          .eq('league_id', league.id)
+          .eq('user_id', s.userId);
+      }
+      // count: bu invocation'ın CAS'i GERÇEKTEN eşleşip satırı kapattıysa 1, başka biri
+      // (ya da başka bir tick) zaten kapattıysa 0 döner — closed yalnız gerçek kapanışta set edilir.
+      const { count: closedCount } = await admin
+        .from('leagues')
+        .update({ status: 'closed', closed_at: at.toISOString() }, { count: 'exact' })
+        .eq('id', league.id)
+        .eq('status', 'open'); // idempotency: eşzamanlı ikinci tick tekrar kapatmaz
+      if (closedCount) closed = league.week_key as string;
     }
-
-    const scores: ScoreEntry[] = (entries ?? []).map((e) => {
-      const userId = e.user_id as string;
-      const { state, rejected } = replayTrades(tradesByUser.get(userId) ?? [], { userId, startedAt });
-      if (rejected.length > 0)
-        console.warn(`[api/league/tick] ${league.week_key}/${userId}: ${rejected.length} işlem replay'de reddedildi`);
-      const { scoreUsd, complete } = valuate(state, closePrices);
-      if (!complete)
-        console.warn(`[api/league/tick] ${league.week_key}/${userId}: kapanış fiyatı eksik pozisyon var`);
-      return { userId, scoreUsd };
-    });
-
-    for (const s of _rankScores(scores)) {
-      await admin
-        .from('league_entries')
-        .update({ final_score_usd: s.scoreUsd, rank: s.rank })
-        .eq('league_id', league.id)
-        .eq('user_id', s.userId);
-    }
-    await admin
-      .from('leagues')
-      .update({ status: 'closed', closed_at: at.toISOString() })
-      .eq('id', league.id)
-      .eq('status', 'open'); // idempotency: eşzamanlı ikinci tick tekrar kapatmaz
-    closed = league.week_key as string;
   }
 
   return json({ opened: row.week_key, settled, closed });
