@@ -28,7 +28,7 @@ function positiveFinite(n: unknown, max: number): n is number {
 }
 
 /** Girdi şema doğrulaması — endpoint'ten ayrı export edilir ki test edilebilsin. */
-export function parseTradeRequest(body: unknown): ParseResult {
+export function _parseTradeRequest(body: unknown): ParseResult {
   if (body === null || typeof body !== 'object') return { ok: false, reason: 'Geçersiz istek' };
   const b = body as Record<string, unknown>;
 
@@ -59,17 +59,17 @@ export function parseTradeRequest(body: unknown): ParseResult {
 }
 
 /** Kullanıcı başına, kayan 10 saniyelik pencerede izin verilen azami işlem sayısı. */
-export const RATE_LIMIT_MAX = 20;
-export const RATE_LIMIT_WINDOW_MS = 10_000;
+export const _RATE_LIMIT_MAX = 20;
+const RATE_LIMIT_WINDOW_MS = 10_000;
 
-export function withinRateLimit(recentCount: number): boolean {
-  return recentCount < RATE_LIMIT_MAX;
+export function _withinRateLimit(recentCount: number): boolean {
+  return recentCount < _RATE_LIMIT_MAX;
 }
 
 /** Aday işlemi, o ana kadarki damgalı işlemlerin replay'i üstünde dener.
  *  Not: Bu kontrol eşzamanlı iki istekte teorik olarak yarışabilir — nihai otorite
  *  kapanış replay'idir (bakiyeyi aşan işlem orada da reddedilir ve skora girmez). */
-export function validateAgainstReplay(
+export function _validateAgainstReplay(
   prior: readonly StampedTrade[],
   candidate: StampedTrade,
   startedAt: number,
@@ -108,7 +108,7 @@ export const POST: RequestHandler = async ({ request, locals, url, fetch }) => {
   if (!user) error(401, 'Oturum gerekli');
   if (user.is_anonymous === true) error(403, 'Lig işlemi için kayıtlı hesap gerekli');
 
-  const parsed = parseTradeRequest(await request.json().catch(() => null));
+  const parsed = _parseTradeRequest(await request.json().catch(() => null));
   if (!parsed.ok) error(400, parsed.reason);
   const req = parsed.value;
 
@@ -139,7 +139,7 @@ export const POST: RequestHandler = async ({ request, locals, url, fetch }) => {
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id)
     .gte('placed_at', new Date(at.getTime() - RATE_LIMIT_WINDOW_MS).toISOString());
-  if (!withinRateLimit(recentCount ?? 0)) error(429, 'Çok hızlı işlem — biraz bekleyin');
+  if (!_withinRateLimit(recentCount ?? 0)) error(429, 'Çok hızlı işlem — biraz bekleyin');
 
   const stamped = (await stampPrices([req.assetId], fetch, at))[req.assetId];
 
@@ -166,7 +166,7 @@ export const POST: RequestHandler = async ({ request, locals, url, fetch }) => {
       priceUsd: Number(r.server_price_usd),
       ts: Date.parse(r.server_ts as string),
     }));
-    const verdict = validateAgainstReplay(
+    const verdict = _validateAgainstReplay(
       prior,
       { assetId: req.assetId, side: req.side, units, priceUsd: stamped!.priceUsd, ts: at.getTime() },
       leagueWeekStart(at).getTime(),

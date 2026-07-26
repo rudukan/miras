@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseTradeRequest, validateAgainstReplay, withinRateLimit, RATE_LIMIT_MAX } from './+server';
+import {
+  _parseTradeRequest as parseTradeRequest,
+  _validateAgainstReplay as validateAgainstReplay,
+  _withinRateLimit as withinRateLimit,
+  _RATE_LIMIT_MAX as RATE_LIMIT_MAX,
+} from './+server';
 import type { StampedTrade } from '$lib/domain/league/replay';
 
 describe('parseTradeRequest', () => {
