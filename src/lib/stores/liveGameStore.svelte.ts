@@ -35,6 +35,7 @@ import { istanbulParts } from '../domain/calendar/calendar';
 import { computeAllocation, upsertSnapshot, type DailySnapshot } from '../domain/snapshot/dailySnapshot';
 import { currentValueTry, type ActiveDeposit } from '../domain/deposit/deposit';
 import { accruedRentTry, type OwnedProperty } from '../domain/property/property';
+import type { StampRequest, StampResult } from '../api/leagueClient';
 
 /** PriceList satırı — canlı katalog fiyatı + market-açık rozeti + günlük % değişim. */
 export interface PriceRow {
@@ -81,6 +82,14 @@ export interface LiveGameStoreOptions {
   /** Gün içi mühür-yenileme eşiği (oran, örn. 0.0075 = %0.75). Canlı kur mühürden bu kadar
    *  saparsa aynı gün (dateKey değişmeden) reseal edilir — gürültüde sakin, gerçek harekette hızlı. */
   resealThresholdPct?: number;
+  /** Verilirse LİG MODU mümkün olur: buy/sell yerel fiyatla değil, sunucunun damgaladığı
+   *  fiyatla uygulanır. Verilmezse mevcut (yerel/anlık) davranış aynen korunur. */
+  stampTrade?: (req: StampRequest) => Promise<StampResult>;
+  /** Lig modunun O ANDA açık olup olmadığı — her okumada çağrılır (reaktif).
+   *  Sayfa store'u SENKRON kuruyor (`+page.svelte:97`), lige katılım ise ASENKRON
+   *  yükleniyor; bu yüzden mod kuruluş anında sabitlenemez, çağrı anında sorulur.
+   *  Verilmezse `stampTrade` varlığı tek başına yeterlidir (testler için). */
+  isLeagueActive?: () => boolean;
 }
 
 export interface LiveGameStore {
@@ -104,11 +113,15 @@ export interface LiveGameStore {
   readonly pendingOrders: PendingOrder[];
   /** Son settle turunun dolum/iptal bildirimi — okunduktan sonra clearOrderNotice() ile kapatılır. */
   readonly orderNotice: string | null;
-  buy(assetId: string, units: number): void;
-  sell(assetId: string, units: number): void;
+  buy(assetId: string, units: number): Promise<void>;
+  sell(assetId: string, units: number): Promise<void>;
   /** Tutar bazlı alım (yalnız buy) — anlıkta adet o an fiyattan, kuyrukta dolum anındaki
    *  (açılış) fiyattan hesaplanır (bayat fiyatla boyutlanmaz). */
-  buyAmountUsd(assetId: string, amountUsd: Money): void;
+  buyAmountUsd(assetId: string, amountUsd: Money): Promise<void>;
+  /** Lig modu açık mı — UI "işlem sunucuya gidiyor" durumunu bundan bilir. */
+  readonly leagueMode: boolean;
+  /** Uçuşta bir lig işlemi var mı — UI butonları bununla kilitler (çift gönderim önleme). */
+  readonly tradeBusy: boolean;
   /** Bir varlıkta şu an işlem anlık mı gerçekleşir yoksa kuyruğa mı girer? 'queued' bir hata
    *  DEĞİL, yönlendirmedir. Guard (buy/sell/buyAmountUsd içi) ve UI (TradeForm) TEK bu kaynağı okur. */
   tradeMode(assetId: string): 'instant' | 'queued';
@@ -252,6 +265,11 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
   let pendingOrders = $state<PendingOrder[]>(initial?.pendingOrders ?? []);
   // Son settle turunun dolum/iptal bildirimi — kullanıcı okuyup clearOrderNotice() ile kapatır.
   let orderNotice = $state<string | null>(null);
+
+  const stampTrade = opts.stampTrade;
+  // $derived: sayfa lige katılımı asenkron yüklüyor — mod kuruluş anında sabitlenemez.
+  const leagueMode = $derived(stampTrade !== undefined && (opts.isLeagueActive?.() ?? true));
+  let tradeBusy = $state(false);
 
   // WS canlı + tick var → WS; aksi halde Yahoo (fxCache); o da yoksa FALLBACK_FX.usdTry.
   const effectiveUsdTry = (): number =>
@@ -456,21 +474,76 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     lastError = null;
     persist();
   }
-  const buy = (assetId: string, units: number) => {
+  /** Lig modunda tek işlem yolu: sunucuya damgalat → dönen fiyatla uygula.
+   *  Sunucu 'queued' derse yerel kuyruğa aynı emri yansıtırız (UI'da "bekliyor" görünür);
+   *  dolum sunucuda gerçekleşir, yerel settle bu emirlere DOKUNMAZ (bkz. settlePendingOrders). */
+  async function stampAndApply(
+    req: StampRequest,
+    mkOrder: (orderId: string) => PendingOrder,
+    applyFilled: (units: number, priceUsd: number) => GameState,
+  ): Promise<void> {
+    if (tradeBusy) return; // çift tık koruması
+    tradeBusy = true;
+    try {
+      const result = await stampTrade!(req);
+      if (result.status === 'queued') {
+        pendingOrders = [...pendingOrders, mkOrder(result.orderId)];
+        lastError = null;
+        persist();
+        return;
+      }
+      apply(() => applyFilled(result.units, result.priceUsd), opts.onFirstTrade);
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+    } finally {
+      tradeBusy = false;
+    }
+  }
+
+  /** Sunucunun damgaladığı fiyatı zorlayan tek-atımlık oracle. */
+  function stampedOracle(priceUsd: number): UsdPriceOracle {
+    return { assetUsd: () => usd(priceUsd) };
+  }
+
+  const buy = async (assetId: string, units: number): Promise<void> => {
+    if (leagueMode) {
+      await stampAndApply(
+        { assetId, side: 'buy', units },
+        (orderId) => ({ id: orderId, assetId, side: 'buy', kind: 'units', units, placedAt: now() }),
+        (u, p) => buyAsset(game, stampedOracle(p), assetId, u),
+      );
+      return;
+    }
     if (tradeMode(assetId) === 'queued') {
       enqueueOrder({ id: nextOrderId(), assetId, side: 'buy', kind: 'units', units, placedAt: now() });
       return;
     }
     apply(() => buyAsset(game, oracle, assetId, units), opts.onFirstTrade);
   };
-  const sell = (assetId: string, units: number) => {
+  const sell = async (assetId: string, units: number): Promise<void> => {
+    if (leagueMode) {
+      await stampAndApply(
+        { assetId, side: 'sell', units },
+        (orderId) => ({ id: orderId, assetId, side: 'sell', kind: 'units', units, placedAt: now() }),
+        (u, p) => sellAsset(game, stampedOracle(p), assetId, u),
+      );
+      return;
+    }
     if (tradeMode(assetId) === 'queued') {
       enqueueOrder({ id: nextOrderId(), assetId, side: 'sell', kind: 'units', units, placedAt: now() });
       return;
     }
     apply(() => sellAsset(game, oracle, assetId, units), opts.onFirstTrade);
   };
-  const buyAmountUsdAction = (assetId: string, amountUsd: Money) => {
+  const buyAmountUsdAction = async (assetId: string, amountUsd: Money): Promise<void> => {
+    if (leagueMode) {
+      await stampAndApply(
+        { assetId, side: 'buy', amountUsd: amountUsd.amount },
+        (orderId) => ({ id: orderId, assetId, side: 'buy', kind: 'amountUsd', amountUsd, placedAt: now() }),
+        (u, p) => buyAsset(game, stampedOracle(p), assetId, u),
+      );
+      return;
+    }
     if (tradeMode(assetId) === 'queued') {
       enqueueOrder({ id: nextOrderId(), assetId, side: 'buy', kind: 'amountUsd', amountUsd, placedAt: now() });
       return;
@@ -508,6 +581,9 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
    *  Çağrı noktaları (2): pollFx() sonu (ensureSeal() sonrası) ve WS throttle tick'i
    *  (flushPending() sonu) — yeni bir timer AÇILMAZ. */
   function settlePendingOrders(): void {
+    // LİG MODU: kuyruğun sahibi sunucudur (tick settle eder). Yerel settle çalışırsa
+    // aynı emir hem burada hem sunucuda dolar — çift işlem. Bu yüzden tamamen devre dışı.
+    if (leagueMode) return;
     if (pendingOrders.length === 0) return;
     const remaining: PendingOrder[] = [];
     for (const order of pendingOrders) {
@@ -804,6 +880,12 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     },
     get orderNotice() {
       return orderNotice;
+    },
+    get leagueMode() {
+      return leagueMode;
+    },
+    get tradeBusy() {
+      return tradeBusy;
     },
     buy,
     sell,

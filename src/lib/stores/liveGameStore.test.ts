@@ -1233,3 +1233,65 @@ describe('onFirstTrade (Faz 1 funnel aktivasyonu)', () => {
     expect(t.store.positions.find((p) => p.assetId === 'THYAO')?.units).toBe(100);
   });
 });
+
+describe('lig modu (stampTrade)', () => {
+  it('lig modunda buy sunucu fiyatını uygular, yerel oracle fiyatını DEĞİL', async () => {
+    const stampTrade = vi.fn().mockResolvedValue({ status: 'filled', orderId: 'o1', units: 10, priceUsd: 7 });
+    const { store } = setup({ stampTrade });
+    expect(store.leagueMode).toBe(true);
+    await store.buy('BTC', 10);
+    // Fixture'da BTC 60000 USD; lig yolu onu YOK SAYIP sunucu fiyatını (7) uygulamalı.
+    expect(store.game.usdBalance.amount).toBe(1_000_000 - 70);
+    expect(store.game.holdings).toEqual([
+      { assetId: 'BTC', units: 10, avgCost: { amount: 7, currency: 'USD' } },
+    ]);
+    expect(stampTrade).toHaveBeenCalledWith({ assetId: 'BTC', side: 'buy', units: 10 });
+  });
+
+  it('lig modunda sunucu queued dönerse yerel bakiye değişmez, emir kuyruğa yansır', async () => {
+    const stampTrade = vi.fn().mockResolvedValue({ status: 'queued', orderId: 'o2' });
+    const { store } = setup({ stampTrade });
+    await store.buy('BTC', 10);
+    expect(store.game.usdBalance.amount).toBe(1_000_000);
+    expect(store.pendingOrders).toHaveLength(1);
+    expect(store.pendingOrders[0].assetId).toBe('BTC');
+    expect(store.pendingOrders[0].id).toBe('o2'); // kuyruk kimliği SUNUCUnun verdiği id
+  });
+
+  it('lig modunda sunucu reddederse lastError dolar, state bozulmaz', async () => {
+    const stampTrade = vi.fn().mockRejectedValue(new Error('Yetersiz bakiye'));
+    const { store } = setup({ stampTrade });
+    await store.buy('BTC', 10);
+    expect(store.lastError).toBe('Yetersiz bakiye');
+    expect(store.game.usdBalance.amount).toBe(1_000_000);
+    expect(store.game.holdings).toEqual([]);
+  });
+
+  it('stampTrade verilmezse eski (yerel) davranış korunur — store başlatılmadan feed stale, emir kuyruğa girer', async () => {
+    const { store } = setup();
+    expect(store.leagueMode).toBe(false);
+    await store.buy('BTC', 1);
+    expect(store.pendingOrders).toHaveLength(1);
+  });
+
+  it('isLeagueActive false iken damgalama YAPILMAZ — misafir/antrenman yolu korunur', async () => {
+    const stampTrade = vi.fn();
+    const { store } = setup({ stampTrade, isLeagueActive: () => false });
+    expect(store.leagueMode).toBe(false);
+    await store.buy('BTC', 1);
+    expect(stampTrade).not.toHaveBeenCalled();
+    expect(store.pendingOrders).toHaveLength(1); // yerel kuyruk yolu
+  });
+
+  it('lig modunda satım da sunucu fiyatından geçer', async () => {
+    const stampTrade = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 'filled', orderId: 'o1', units: 10, priceUsd: 7 })
+      .mockResolvedValueOnce({ status: 'filled', orderId: 'o2', units: 10, priceUsd: 9 });
+    const { store } = setup({ stampTrade });
+    await store.buy('BTC', 10);
+    await store.sell('BTC', 10);
+    expect(store.game.usdBalance.amount).toBe(1_000_000 + 20);
+    expect(store.game.holdings).toEqual([]);
+  });
+});
