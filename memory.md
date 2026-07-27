@@ -90,7 +90,7 @@ Yukarıdaki B-H'nin aksine, aşağıdakiler mevcut SvelteKit kod tabanında ger�
 * **Al/Sat miktar girişi:** Adet ve Tutar ($) alanları yazarken binlik virgülüyle canlı gruplanır, imleç konumu korunur.
 * **Emlak (süper sade, 2026-07-03):** 3 emlak (`src/lib/domain/property/property.ts`) — tapu anında geçer, rüşvet/vergi yok. Kira **kasaya** birikir (zaman-damgası tabanlı, offline da işler), 48 saatlik kira dolunca birikim durur (bağımlılık döngüsü — TAHSİL ET ile boşalt). SAT: bedel (TL sabit) + kasa birlikte USD'ye.
 * **Hesap altyapısı (SP1):** Google+misafir auth, bulut kayıt senkronu, takma ad, KVKK silme — canlı.
-* **Haftalık lig (SP2a, 2026-07-27):** CANLI SEANS artık lig — sunucu damgalı `/api/trade` (istemci fiyat GÖNDERMEZ) + kapanışta `/api/league/tick` replay'i (istemcinin çalıştırdığı AYNI `buyAsset`/`sellAsset` reducer'larıyla), `saves` payload'u skorda hiç kullanılmıyor. Kod tarafı main'de, CI yeşil, 15/15 task + final review tamam. **Prod'da henüz devrede değil** — Vercel'in `CRON_SECRET` ortam değişkeni eksik (Task 0, kullanıcı adımı). Detay: Bölüm 6.
+* **Haftalık lig (SP2a, 2026-07-27):** CANLI SEANS artık lig — sunucu damgalı `/api/trade` (istemci fiyat GÖNDERMEZ) + kapanışta `/api/league/tick` replay'i (istemcinin çalıştırdığı AYNI `buyAsset`/`sellAsset` reducer'larıyla), `saves` payload'u skorda hiç kullanılmıyor. **PROD'DA CANLI VE DOĞRULANMIŞ**: Vercel `CRON_SECRET` env'i girildi, Supabase Vault sırları eklendi, migration 0008-0010 prod'a basıldı, `/api/league/tick` elle tetiklenip `{"opened":"2026-07-27",...}` ile doğrulandı. Detay: Bölüm 6.
 * Tapu bekleme/rüşvet katmanı, kira vergisi denetimi, Tech Agent — **henüz yok** (bkz. Bölüm 4 aktif plan).
 
 ---
@@ -127,7 +127,7 @@ Alt projeler:
   **Vercel env eklendi, deploy edildi — ardından 3 ayrı runtime-only hata bulunup düzeltildi** (hiçbiri vitest/svelte-check/build'de yakalanamazdı, yalnız gerçek Vercel serverless ortamında ortaya çıktı): Supabase client'ı her yerde arka planda bir RealtimeClient kuruyor, o da native WebSocket arıyor — Vercel'in bu proje için fiilen çalıştırdığı Node sürümü (proje ayarı 24.x olsa da) bunu sağlamıyor, üç ayrı çağrı noktası aynı sebeple çöküyordu: (1) `hooks.server.ts` (her istekte 500), (2) `+layout.ts`'in universal `load()`'u (SSR sırasında sunucuda da çalışıyor, isme rağmen), (3) `/api/account/delete`'in kendi admin `createClient()`'ı (kullanıcının GERÇEK hesap silme denemesinde yakalandı). Üçü de `ws` paketini transport olarak vererek düzeltildi (hiçbiri gerçekten bağlanmıyor, yalnız crash'i önlüyor) — commit'ler `0561cdc`, `832c0bc`, `c3966c9`. Ayrıca dördüncü bir hata: `+layout.svelte`'deki `onAuthStateChange` ayrım yapmadan her event'te `invalidate` çağırıyordu → `INITIAL_SESSION` event'i her yeni client'ta yeniden tetiklenip sonsuz döngü yaratıyordu (binlerce başarısız istek, local preview'da yakalandı, `INITIAL_SESSION` filtrelenerek düzeltildi, aynı commit `0561cdc`).
   **Sonuç:** kullanıcı prod'da gerçek bir hesap sildi, `POST /api/account/delete 200` loglarda doğrulandı — Task 9'un en riskli manuel kontrol maddesi fiilen geçti. `npm audit`'teki 10 zafiyet build/dev araçlarında (Vite/Vitest/SvelteKit adapter), prod koduna girmiyor; `ws` listede yok. Commit aralığı: `edba7bf`..`c3966c9` (19 commit), plan: `docs/superpowers/plans/2026-07-04-sp1-hesap-altyapisi.md`, üç WebSocket + döngü hatasının detaylı analizi bu sohbetin transkriptinde (kod içinde bir dosya izi yok, yalnız `ws` bağımlılığı + inline yorum satırları var).
   **Kalanlar:** Task 9'un geri kalan manuel maddeleri (Google bağlama gerçek OAuth akışı, çapraz-kullanıcı RLS impersonate testi — hesap silme test edildiği için düşük öncelik). Ertelenen küçük bulgular: `.superpowers/sdd/progress.md`'de.
-- **SP2 Haftalık lig** — planı bilinçli yazılmadı (SP0+SP1 merge olmadan yazılırsa çürür); onlar bitince kısa güçlü-model oturumunda yazılacak. 30-gün anonim hesap temizliği de SP2'de.
+- **SP2a Haftalık lig çekirdeği — TAMAMLANDI VE PROD'DA CANLI (2026-07-27).** Plan: `docs/superpowers/plans/2026-07-25-sp2a-lig-cekirdegi.md` (15 task + final review, subagent-driven-development). Sunucu damgalı işlem + kapanış replay'i, `saves` skorda kullanılmıyor. Detay: Bölüm 6. **SP2b (leaderboard UI, hafta arşivi, paylaşım kartı, küfür filtresi, 30-gün anonim temizliği)** planı henüz yazılmadı.
 - **SP3b Yayın cilası + işe-alım vitrini (2026-07-07 genişletildi)** — paylaşım kartı (hafta kapanışı "mahkeme beratı"nı LLM'le kişiselleştirilmiş satirik metne çevirme fikri eklendi — tek completion, agent sistemi DEĞİL; bilinçli anlatı parçası), landing/OG, Sentry, güvenlik başlıkları, `/api/yahoo` CDN cache. Vitrin eklemeleri:
   - **E2E Playwright critical path** (onboarding → işlem → hafta kapanışı) — "test disiplini" iddiasının dürüstlük ön koşulu.
   - **GitHub Actions CI** (test + check + README rozeti) — bağımsız/blokersiz, istenirse SP1'den önce bile öne çekilebilir.
@@ -174,44 +174,41 @@ Projeyi koordine etmek, en yüksek kalitede kod yazmak ve matematiksel dengeyi k
 
 ---
 
-## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-25 — 26. oturum, **FAZ 1 GATE İPTAL + SP2a LİG ÇEKİRDEĞİ PLANI YAZILDI** — Opus, kod yazılmadı)
+## 6. Son Oturum Geliştirme Özeti & Kaldığımız Yer (2026-07-27 — 27. oturum, **SP2a LİG ÇEKİRDEĞİ UYGULANDI, PUSH EDİLDİ, PROD'A DEPLOY EDİLDİ VE CANLI DOĞRULANDI** — Sonnet, subagent-driven-development)
 
-> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (25. — grafik hover "yükleniyor" döngüsü fix'i) için: `git show <bu commit'in bir öncesi>:memory.md`.
+> Her "s" (save) komutunda bu bölüm üzerine yazılır (kümülatif değil). Önceki oturum özeti (26. — SP2a planı yazıldı, kod yazılmadı) için: `git show <bu commit'in bir öncesi>:memory.md`.
 
-### A. Bu Oturumda Alınan Kararlar
+### A. Bu Oturumda Yapılanlar
 
-1. **Faz 1'in GATE'i İPTAL EDİLDİ.** Kurucu: *"Faz 1'deki kişi testlerini unutalım."* 10-15 kişilik GO/NO-GO deneyi (`docs/faz1-gonogo-runbook.md`) çalıştırılmayacak — dosya silinmedi, sadece rafta. Bu, 22. oturumdan beri SP2'yi bekleten TEK blokerdi. Kayıp "ölçüm" değil "lig öncesi ön-doğrulama": Faz 1'in kod tarafı zaten prod'da (`telemetry_events` funnel verisi topluyor).
-2. **SP2 ikiye bölündü** (`writing-plans` skill'inin scope check'i gereği): **SP2a lig çekirdeği** (bu oturumda planlandı) + **SP2b lig vitrini** (kendi planını bekliyor).
-3. **Üç tasarım kararı kurucuya soruldu, üçünde de öneri kabul edildi:**
-   - *Skor otoritesi:* sunucu damgalı işlem + kapanış replay'i. `saves` payload'u skorda HİÇ kullanılmaz (payload'u DevTools'tan düzenlemek skoru değiştiremez).
-   - *Lig kapsamı:* yalnız alım-satım (BIST + ABD + kripto + emtia/döviz). **Mevduat ve emlak skora girmez** — replay deterministik kalsın diye.
-   - *Oyun/lig ilişkisi:* CANLI SEANS = lig; pazartesi 00:00 TSİ herkes $1M'a döner, ayrı slot yok. Hafta sonu antrenman.
+1. **15 task + final whole-branch review + 3 fix turu — hepsi main'de.** `docs/superpowers/plans/2026-07-25-sp2a-lig-cekirdegi.md` subagent-driven-development ile uçtan uca uygulandı (Task 1-12 önceki oturumda, Task 13-15 + final review + fix'ler bu oturumda). Her task ayrı implementer+reviewer subagent çiftiyle geçti; final review opus'ta koşuldu.
+2. **Final review 1 gerçek veri-bütünlüğü hatası buldu, düzeltildi:** `/api/league/tick`'in kapanış fazı per-user skor yazma hatalarını hiç kontrol etmiyordu — sessiz bir yazma hatası, lig zaten `'closed'` olduğu için BİR DAHA ASLA düzeltilemeyen kalıcı NULL skorla sonuçlanabilirdi. Task 9'un okuma-hatası guard deseninin simetriği uygulanarak düzeltildi (commit `9c66846`).
+3. **2 Important bulgu daha, kullanıcı onayıyla düzeltildi:** leagueMode Cuma kilidinde hiç kapanmıyordu (hafta sonu antrenman modu ölüydü) → `isLeagueOpen(nowMs)` da kontrol edilecek şekilde düzeltildi — cross-module Svelte 5 reactivity (`nowMs` başka bir modülde yaşayan `$state`) EMPİRİK testle kanıtlandı. `cancelOrder` lig modunda yalnız yereldi → `settlePendingOrders`'ın aynı guard deseni uygulandı (commit `5d3b60c`).
+4. **CI'da 2 boşluk bulundu ve düzeltildi:** `.github/workflows/ci.yml`'nin hem `test` hem `e2e` job'ında `CRON_SECRET` yoktu. Gerçek bir prod secret gerekmiyordu (CI-lokal round-trip), ~4 satır YAML ile kapatıldı (commit `dc974f6`), **gerçek GitHub Actions run'ında canlı doğrulandı** (`gh run watch`, ikisi de ✓).
+5. **`origin/main`'e push edildi** (`a110d81..5d3b60c`, 28 commit). CI yeşil.
+6. **Vercel prod deploy İLK denemede BAŞARISIZ oldu** — `CRON_SECRET` Vercel'in kendi proje env değişkenlerinde hiç yoktu (Task 0, kullanıcı adımı, o ana kadar yapılmamıştı). Build logları MCP ile canlı okunup teşhis edildi; prod etkilenmedi (Vercel başarısız build'i asla canlıya almaz).
+7. **Kullanıcı Task 0'ı bu oturumda tamamladı, ekran paylaşarak adım adım yürütüldü:** Vercel'e `CRON_SECRET` eklendi (rastgele üretildi, "Sensitive" + Development kombinasyonu Vercel'de desteklenmiyor — bilinçli olarak Sensitive kapatıldı, risk yok çünkü değişken zaten `PUBLIC_` önekli değil) → redeploy → **READY** (`dpl_GPMCsAKPt2LwqQmA79UWCirgka8K`, `miras-one.vercel.app` alias'ı MCP ile bağımsız doğrulandı). Supabase Vault'a `league_tick_url` + `league_cron_secret` (aynı değer) eklendi.
+8. **Migration push'tan önce gerçek bir tracking-drift bulundu ve güvenle düzeltildi:** `supabase migration list` prod'da 0001-0007 için boş (`remote:""`) gösteriyordu, onun yerine 7 tane zaman-damgalı (ör. `20260708090556`) eşleşmeyen kayıt vardı — muhtemelen geçmişte bu migration'lar MCP `apply_migration` ile uygulandığı için kendi otomatik isimleriyle kaydedilmiş. KÖRLEMESİNE düzeltilmedi: `supabase db dump --linked` (Docker Desktop kullanıcı tarafından açıldı) ile canlı şema bağımsız okundu — yalnız `profiles`/`saves`/`telemetry_events` vardı (0001-0007'nin doğru içeriği), `leagues`/`league_entries`/`trades` YOK (beklenen, 0008 henüz uygulanmamıştı) — hipotez doğrulanınca `migration repair --status applied 0001..0007` + `--status reverted <7 zaman-damgası>` ile tracking düzeltildi, `db push --dry-run` SADECE 0008/0009/0010'u gösterdi, kullanıcı onayıyla gerçek push çalıştırıldı.
+9. **Migration 0008/0009/0010 prod'a basıldı, `/api/league/tick` canlıda elle curl ile tetiklendi:** `{"opened":"2026-07-27","settled":0,"closed":null}` HTTP 200 — hafta doğru açıldı, RLS+GRANT (0008+0010) uçtan uca çalışıyor.
 
-### B. Üretilen Artefakt
+**SONUÇ: SP2a kod tarafı VE prod deploy'u TAMAMEN BİTTİ.** Lig şu an gerçekten oynanabilir durumda.
 
-**`docs/superpowers/plans/2026-07-25-sp2a-lig-cekirdegi.md`** — 15 task + manuel Task 0. Mimari: her lig işlemi `/api/trade`'e gider, sunucu fiyatı kendi proxy kaynağından çeker, `trades`'e insert-only yazar, damgalı fiyatı yanıtta döner; istemci O fiyatla kendi state'ini günceller (ekran = otorite). Kapanışta replay **istemcinin çalıştırdığı aynı `buyAsset`/`sellAsset` reducer'larıyla** koşar — yuvarlama paritesinin tek garantisi bu.
+### B. Bilinçli Ertelenen (SP2b Adayları, backlog)
 
-Kilit tasarım noktaları (plan içinde gerekçeleriyle):
-- `trades`'e `authenticated` INSERT **verilmiyor**; yalnız `service_role` yazar. Hile koruması GRANT katmanında, UI'da değil.
-- **Kapanış replay'i nihai otorite** — `/api/trade`'in bakiye kontrolü teorik olarak yarışabilir, replay bakiyeyi aşan işlemi reddedip skordan düşürür.
-- Cron: Vercel DEĞİL **pg_cron + pg_net**, `*/5 * * * *`, sırlar Supabase Vault'ta (Vercel Pro alınmadı; Hobby günde 1 cron veriyor). Bedeli: bekleyen emir açılıştan en geç 5 dk sonra dolar.
-- Bekleyen emirler ligde **sunucuda** settle edilir; yerel `settlePendingOrders` lig modunda tamamen devre dışı (yoksa aynı emir iki yerde dolardı — çift işlem).
-- Lig modu `isLeagueActive: () => boolean` getter'ıyla reaktif okunur: store `+page.svelte:97`'de SENKRON kuruluyor, katılım ASENKRON yükleniyor.
-- **3 bilinçli CLAUDE.md esnetmesi** planda ayrı bölümde listeli: service-role client, `domain/league` → `stores/gameState` importu, async işlem yolu.
+- Task 9'un eşzamanlı çift-kapanış yarışı (advisory lock fix'i, plan dosyasında zaten belgeli)
+- leagueMode hafta sonu rozet/buton yanlış etiketleniyor (zaten katılmış oyuncuya "LİGE KATIL" + "lig henüz açılmadı" yanlış alarm-kırmızı mesajı gösteriyor) — 3. bir buton/rozet durumu ("katıldın, şu an antrenman") gerekiyor
+- `0011` hijyen migration'ı (ambient TRUNCATE/REFERENCES/TRIGGER, Task 10'dan miras, 0007'nin aynı deseni)
+- Task 9'un eski read-error-skip yolu için regresyon testi (implementer'ın spawn ettiği `task_11a93b73`, kullanıcı AYRI bir oturumda başlattı — bu oturumun parçası değil)
+- **Supabase `get_advisors` (security lint) henüz koşulmadı** — bu oturumda Supabase MCP yetkisiz kaldı, CLI eşdeğeri yok. Bloklayıcı değil (0008/0010'un RLS+GRANT tasarımı Task 3/10 review'larında zaten canlı doğrulanmıştı) ama kullanıcı isterse Dashboard → Database → Advisors'tan kendi bakabilir.
 
-**Self-review 4 gerçek hata yakaladı ve düzeltti** (skill'in self-review adımı boş tik değildi): uydurulmuş E2E helper adı (`registerAndSignIn` yok), `baseOpts` yok (`setup(overrides)` var), senkron store kurulumuyla çelişen "önce await" talimatı, ölü değişken.
+### C. Kalan İşler
 
-### C. Blokerler & Kalan İşler
-- **SP2a uygulaması bekliyor** — ayrı Sonnet oturumu, `subagent-driven-development`. Başlangıç komutu §D'de.
-- **Task 0 kurucuda:** Vercel'e `CRON_SECRET`, Supabase Vault'a `league_tick_url` + `league_cron_secret`. Task 1-9 ve 11-15 bunsuz ilerler; yalnız Task 10'un doğrulaması bekler.
-- **SP2b planı yazılmadı:** leaderboard UI, hafta geri sayımı, geçen hafta arşivi, paylaşım kartı, küfür filtresi, 30-gün anonim temizliği, `/api/trade` Turnstile. Plan sonunda listeli.
-- **Bilinen kayıp:** Task 13'ün haftalık reset'i geçen haftanın sonucunu sessizce siliyor — arşivleme SP2b'ye kadar yok.
-- ABD borsası gece piyasası: açık soru daraldı. Kapalı piyasada bekleyen emir 21 Temmuz'da çıktı (kuyruk → açılışta dolar); gerçek extended-hours FİYATI (`includePrePost=true`) kodda hiç yok (grep'le doğrulandı). Soru artık "kuyruk yeterli mi, yoksa gece gerçek fiyattan işlem mi?" — ve ligle etkileşiyor (arbitraj yüzeyi).
-- Ertelenmiş güvenlik: B2 (rate-limit), B5 (CSP script-src) kendi planlarını bekliyor. SP3a (domain + KVKK) hâlâ Google OAuth prod consent'inin ön koşulu.
+- **SP2b planı hâlâ yazılmadı:** leaderboard UI, hafta geri sayımı, geçen hafta arşivi, paylaşım kartı, küfür filtresi, 30-gün anonim temizliği, `/api/trade` Turnstile + yukarıdaki B bölümündeki backlog.
+- ABD borsası gece piyasası: açık soru hâlâ duruyor (kuyruk mekanizması mı yeterli, yoksa gece gerçek fiyattan işlem mi — ligle etkileşiyor, arbitraj yüzeyi).
+- Ertelenmiş güvenlik: B2 (rate-limit), B5 (CSP script-src) kendi planlarını bekliyor.
 
 ### D. Yeni Chat'te Başlangıç Rehberi
-1. **Uygulama oturumu (Sonnet) için komut:** *"`docs/superpowers/plans/2026-07-25-sp2a-lig-cekirdegi.md` planını subagent-driven-development ile uygula. Task 0 manuel (Vercel CRON_SECRET + Supabase Vault) — kurucu yapacak, sen Task 1'den başla."*
-2. SP2 artık HİÇBİR ŞEYİ beklemiyor — GATE iptal, SP0/SP1/SP1.5/E2E hepsi canlı. Eski "GATE'i bekliyor" ifadesi geçersiz.
-3. Migration'lar 0001-0007 lokal+prod senkron; 0008/0009 planda, henüz yazılmadı.
+1. SP2a TAMAMEN BİTTİ VE PROD'DA CANLI — bu plana geri dönüp task dispatch ETME. Yalnız yukarıdaki backlog (B) ayrı bir plan/task olarak ele alınır.
+2. SP2b planı bir sonraki doğal adım (güçlü model oturumunda, `writing-plans` skill'iyle) — B bölümündeki backlog'u da kapsama alması düşünülebilir.
+3. Migration'lar artık 0001-0010 lokal+prod tam senkron (bu oturumda doğrulandı).
 4. Emlak gizli; mevduat duruyor ama **lig skoruna girmiyor** (bilinçli).
 5. **"s" kısayolu:** kullanıcı "s" yazarsa: git durumu kontrol + commit/push + bu bölümü (6) o oturum özetiyle güncelle.
