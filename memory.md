@@ -90,6 +90,7 @@ Yukarıdaki B-H'nin aksine, aşağıdakiler mevcut SvelteKit kod tabanında ger�
 * **Al/Sat miktar girişi:** Adet ve Tutar ($) alanları yazarken binlik virgülüyle canlı gruplanır, imleç konumu korunur.
 * **Emlak (süper sade, 2026-07-03):** 3 emlak (`src/lib/domain/property/property.ts`) — tapu anında geçer, rüşvet/vergi yok. Kira **kasaya** birikir (zaman-damgası tabanlı, offline da işler), 48 saatlik kira dolunca birikim durur (bağımlılık döngüsü — TAHSİL ET ile boşalt). SAT: bedel (TL sabit) + kasa birlikte USD'ye.
 * **Hesap altyapısı (SP1):** Google+misafir auth, bulut kayıt senkronu, takma ad, KVKK silme — canlı.
+* **Haftalık lig (SP2a, 2026-07-27):** CANLI SEANS artık lig — sunucu damgalı `/api/trade` (istemci fiyat GÖNDERMEZ) + kapanışta `/api/league/tick` replay'i (istemcinin çalıştırdığı AYNI `buyAsset`/`sellAsset` reducer'larıyla), `saves` payload'u skorda hiç kullanılmıyor. Kod tarafı main'de, CI yeşil, 15/15 task + final review tamam. **Prod'da henüz devrede değil** — Vercel'in `CRON_SECRET` ortam değişkeni eksik (Task 0, kullanıcı adımı). Detay: Bölüm 6.
 * Tapu bekleme/rüşvet katmanı, kira vergisi denetimi, Tech Agent — **henüz yok** (bkz. Bölüm 4 aktif plan).
 
 ---
