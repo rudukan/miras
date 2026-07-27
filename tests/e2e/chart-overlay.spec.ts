@@ -28,3 +28,24 @@ test('grafik overlay: popover → ⤢ BÜYÜT → dialog + etiketler + TradeForm
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
 });
+
+test.describe('dar viewport (laptop)', () => {
+  test.use({ viewport: { width: 1280, height: 650 } });
+
+  test('BÜYÜT dialogu: AL/SAT scroll gerekmeden tamamen görünür kalır', async ({ page }) => {
+    await enterOffline(page);
+
+    await page.getByText('Bitcoin').first().hover();
+    const expandBtn = page.getByRole('button', { name: '⤢ BÜYÜT' });
+    await expect(expandBtn).toBeVisible({ timeout: 5_000 });
+    await expandBtn.click();
+
+    const dialog = page.getByRole('dialog', { name: 'Bitcoin grafiği' });
+    const alBtn = dialog.getByRole('button', { name: 'AL', exact: true });
+    const satBtn = dialog.getByRole('button', { name: 'SAT', exact: true });
+    await expect(alBtn).toBeVisible();
+
+    await expect(alBtn).toBeInViewport({ ratio: 1 });
+    await expect(satBtn).toBeInViewport({ ratio: 1 });
+  });
+});
