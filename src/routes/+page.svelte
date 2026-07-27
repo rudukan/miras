@@ -20,9 +20,11 @@
 	import { authErrorMessage } from '$lib/api/authErrors';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
 	import { daysElapsed, dailyBreakdown } from '$lib/domain/snapshot/dailySnapshot';
+	import { leagueWeekKey } from '$lib/domain/league/week';
 	import { buildClosingCardModel } from '$lib/components/closingCard';
 	import type { ShareResult } from '$lib/share/share';
 	import { sendTelemetry, pingDailyVisit, pingFirstTrade } from '$lib/api/telemetry';
+	import { createTradeStamper } from '$lib/api/leagueClient';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import NetWorthMirror from '$lib/components/NetWorthMirror.svelte';
@@ -89,6 +91,13 @@
 				// playerId SAYFADAN okunur, store'un iç playerId'sinden DEĞİL — kayıtlı oyunda
 				// store'un playerId'si 'restored' olur (share handler'larıyla aynı kalıp, :214).
 				if (browser && playerId) pingFirstTrade(localStorage, playerId);
+			},
+			stampTrade: createTradeStamper(fetch, () => crypto.randomUUID()),
+			// Store SENKRON kuruluyor ama lig katılımı ASENKRON yükleniyor — bu yüzden mod
+			// her işlemde sorulur, kuruluşta sabitlenmez.
+			isLeagueActive: () => leagueEntry !== null,
+			onWeekRollover: () => {
+				void loadLeagueEntry();
 			},
 		});
 	}
@@ -464,6 +473,77 @@
 		location.reload();
 	}
 
+	// Haftalık lig: katılım durumu + katılma aksiyonu.
+	let leagueEntry = $state<{ leagueId: string } | null>(null);
+	let leagueJoining = $state(false);
+	let leagueError = $state<string | null>(null);
+
+	/** Bu haftanın açık ligini ve kullanıcının katılım kaydını okur. Misafir hesapta
+	 *  entry OLUŞTURULAMAZ (RLS is_anonymous kuralı) — UI da bunu göstermelidir. */
+	async function loadLeagueEntry(): Promise<void> {
+		const {
+			data: { user },
+		} = await data.supabase.auth.getUser();
+		if (!user || user.is_anonymous === true) {
+			leagueEntry = null;
+			return;
+		}
+		const weekKey = leagueWeekKey(new Date());
+		const { data: league } = await data.supabase
+			.from('leagues')
+			.select('id')
+			.eq('week_key', weekKey)
+			.eq('status', 'open')
+			.maybeSingle();
+		if (!league) {
+			leagueEntry = null;
+			return;
+		}
+		const { data: entry } = await data.supabase
+			.from('league_entries')
+			.select('league_id')
+			.eq('league_id', league.id)
+			.eq('user_id', user.id)
+			.maybeSingle();
+		leagueEntry = entry ? { leagueId: league.id } : null;
+	}
+
+	async function joinLeague(): Promise<void> {
+		leagueJoining = true;
+		leagueError = null;
+		try {
+			const {
+				data: { user },
+			} = await data.supabase.auth.getUser();
+			if (!user || user.is_anonymous === true) {
+				leagueError = 'Lige katılmak için kayıtlı hesap gerekli.';
+				return;
+			}
+			const weekKey = leagueWeekKey(new Date());
+			const { data: league } = await data.supabase
+				.from('leagues')
+				.select('id')
+				.eq('week_key', weekKey)
+				.eq('status', 'open')
+				.maybeSingle();
+			if (!league) {
+				leagueError = 'Bu haftanın ligi henüz açılmadı.';
+				return;
+			}
+			const { error: joinError } = await data.supabase
+				.from('league_entries')
+				.insert({ league_id: league.id, user_id: user.id });
+			// 23505 = zaten katılmış; hata değil.
+			if (joinError && joinError.code !== '23505') {
+				leagueError = 'Lige katılınamadı.';
+				return;
+			}
+			leagueEntry = { leagueId: league.id };
+		} finally {
+			leagueJoining = false;
+		}
+	}
+
 	onDestroy(() => {
 		store?.stop();
 		if (tick) clearInterval(tick);
@@ -529,6 +609,7 @@
 					console.error('[cloud] hidrasyon kontrolü başarısız — local ile devam', err);
 				}
 				cloudPush.enable(); // uzlaşma bitti — push kapısı açık (spec §4.D)
+				void loadLeagueEntry();
 				if (phase === 'boot') phase = 'intro';
 			} catch (err) {
 				// getSession() (veya üstündeki adımlar) beklenmedik şekilde reddederse boot kilitlenmesin —
@@ -760,6 +841,24 @@
 							vsUsdHoldUsd={store.vsUsdHoldUsd}
 							cashUsd={store.game.usdBalance}
 						/>
+
+						{#if store.leagueMode}
+							<div class="text-xs font-mono text-term-blue">
+								LİG HAFTASI {store.leagueWeekKey} — işlemler sunucuda damgalanıyor
+							</div>
+						{:else}
+							<button
+								type="button"
+								class="text-xs font-mono text-term-amber underline disabled:opacity-50"
+								disabled={leagueJoining}
+								onclick={() => void joinLeague()}
+							>
+								{leagueJoining ? 'KATILINIYOR…' : 'LİGE KATIL'}
+							</button>
+							{#if leagueError}
+								<div class="text-xs font-mono text-term-red">{leagueError}</div>
+							{/if}
+						{/if}
 
 						<AccountPanel
 							supabase={data.supabase}
