@@ -1,3 +1,5 @@
+import { lttbIndices } from './downsample';
+
 /** Tek fiyat noktası — t: epoch ms, price: ham birim (TRY/USD; grafik şekli için birim önemsiz). */
 export interface PricePoint {
 	readonly t: number;
@@ -31,7 +33,14 @@ export function sliceLast(points: ReadonlyArray<PricePoint>, windowMs: number): 
 }
 
 export interface ChartGeometry {
+	/** TAM çözünürlüklü ekran koordinatları — her kaynak noktası için bir giriş.
+	 *  Hover/crosshair ve zaman ekseni bunu ORİJİNAL indeksle adresler (PriceChart),
+	 *  bu yüzden seyreltilemez. */
 	readonly points: ReadonlyArray<{ x: number; y: number }>;
+	/** Çizim için seyreltilmiş alt küme (LTTB) — canvas stroke'u bunu kullanır.
+	 *  Seyreltme gerekmiyorsa `points` ile aynı. */
+	readonly line: ReadonlyArray<{ x: number; y: number }>;
+	/** Serinin GERÇEK uç değerleri — dikey pay bunları kaydırmaz (etiketler dürüst kalır). */
 	readonly min: number;
 	readonly max: number;
 	readonly first: number;
@@ -40,7 +49,17 @@ export interface ChartGeometry {
 	readonly rising: boolean;
 }
 
-/** Noktaları (w×h) çizim alanına ölçekler. <2 nokta → null. y ekseni ters (yüksek fiyat = küçük y). */
+/** Y ekseninde alt+üst dikey pay (span oranı). Dar aralıklı serilerde (ör. FX'in %0.4'lük
+ *  günü) çizgi kenarlara yapışmasın, genlik biraz yumuşasın diye. Fiyatı DEĞİŞTİRMEZ —
+ *  yalnızca ölçek sınırlarını genişletir. */
+const Y_PAD_RATIO = 0.08;
+
+/** Çizim noktası başına hedef piksel. Altına inince alt-piksel mürekkep ("gürültü") başlar:
+ *  1G serisi FX'te ~1140 noktaya çıkıyor, popover canvas'ı 274px → 4 nokta/piksel. */
+const PX_PER_LINE_POINT = 1.5;
+
+/** Noktaları (w×h) çizim alanına ölçekler. <2 nokta → null. y ekseni ters (yüksek fiyat = küçük y).
+ *  Çizgi için LTTB ile piksel bütçesine seyreltilmiş `line` de üretir (bkz. downsample.ts). */
 export function computeChartGeometry(
 	points: ReadonlyArray<PricePoint>,
 	w: number,
@@ -53,16 +72,25 @@ export function computeChartGeometry(
 		if (p.price < min) min = p.price;
 		if (p.price > max) max = p.price;
 	}
-	const span = max - min;
+	// Ölçek sınırları paylı; min/max alanları ham kalır.
+	const pad = (max - min) * Y_PAD_RATIO;
+	const lo = min - pad;
+	const span = max + pad - lo;
 	const n = points.length;
 	const xy = points.map((p, i) => ({
 		x: (i / (n - 1)) * w,
-		y: span === 0 ? h / 2 : h - ((p.price - min) / span) * h,
+		y: span === 0 ? h / 2 : h - ((p.price - lo) / span) * h,
 	}));
+	const budget = Math.max(2, Math.ceil(w / PX_PER_LINE_POINT));
+	const keep = lttbIndices(
+		points.map((p) => p.price),
+		budget,
+	);
+	const line = keep.length === n ? xy : keep.map((i) => xy[i]);
 	const first = points[0].price;
 	const last = points[n - 1].price;
 	const changePct = first === 0 ? 0 : ((last - first) / first) * 100;
-	return { points: xy, min, max, first, last, changePct, rising: last >= first };
+	return { points: xy, line, min, max, first, last, changePct, rising: last >= first };
 }
 
 /** Grafik zaman-ekseni etiketi — index çizgiyle aynı ölçekte (x eşit aralıklı). */

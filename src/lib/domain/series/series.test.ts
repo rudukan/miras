@@ -51,8 +51,11 @@ describe('computeChartGeometry', () => {
 		expect(g.min).toBe(10);
 		expect(g.max).toBe(20);
 		expect(g.changePct).toBeCloseTo(100, 5);
-		expect(g.points[0]).toEqual({ x: 0, y: 50 });   // min fiyat → alt (y=h)
-		expect(g.points[1]).toEqual({ x: 100, y: 0 });  // max fiyat → üst (y=0)
+		expect(g.points[0].x).toBe(0);
+		expect(g.points[1].x).toBe(100);
+		// y: %8 dikey pay nedeniyle uçlar kenara YAPIŞMAZ (min→h değil, max→0 değil).
+		expect(g.points[0].y).toBeCloseTo(46.552, 2); // min fiyat → alta yakın
+		expect(g.points[1].y).toBeCloseTo(3.448, 2);  // max fiyat → üste yakın
 	});
 	it('düşen seri: rising=false', () => {
 		const g = computeChartGeometry([{ t: 0, price: 20 }, { t: 1, price: 10 }], 100, 50)!;
@@ -63,6 +66,33 @@ describe('computeChartGeometry', () => {
 		const g = computeChartGeometry([{ t: 0, price: 5 }, { t: 1, price: 5 }], 100, 50)!;
 		expect(g.points.every((p) => Number.isFinite(p.y))).toBe(true);
 		expect(g.changePct).toBe(0);
+	});
+
+	// --- Seyreltme (gürültü fix'i) ---
+	const many = (n: number): PricePoint[] =>
+		Array.from({ length: n }, (_, i) => ({ t: i * 60_000, price: 50 + Math.sin(i / 3) }));
+
+	it('line: çizim noktaları piksel bütçesine indirilir (~1 nokta / 1.5px)', () => {
+		const g = computeChartGeometry(many(1000), 100, 50)!;
+		expect(g.line).toHaveLength(Math.ceil(100 / 1.5)); // 67
+	});
+	it('points: TAM çözünürlükte kalır — hover ve zaman ekseni orijinal indeksle erişiyor', () => {
+		const g = computeChartGeometry(many(1000), 100, 50)!;
+		expect(g.points).toHaveLength(1000);
+	});
+	it('line noktaları x ekseninde orijinal yerlerinde durur (uçlar 0 ve w)', () => {
+		const g = computeChartGeometry(many(1000), 100, 50)!;
+		expect(g.line[0].x).toBe(0);
+		expect(g.line[g.line.length - 1].x).toBe(100);
+	});
+	it('bütçenin altındaki seri seyreltilmez (line === points)', () => {
+		const g = computeChartGeometry(many(20), 100, 50)!;
+		expect(g.line).toEqual(g.points);
+	});
+	it('min/max GERÇEK uç değerler kalır — pay etiketleri kaydırmaz', () => {
+		const g = computeChartGeometry([{ t: 0, price: 10 }, { t: 1, price: 20 }], 100, 50)!;
+		expect(g.min).toBe(10);
+		expect(g.max).toBe(20);
 	});
 });
 

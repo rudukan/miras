@@ -32,17 +32,21 @@ export function renderChart(canvas: HTMLCanvasElement, g: ChartGeometry | null, 
 	if (!ctx) return;
 	ctx.setTransform(o.dpr, 0, 0, o.dpr, 0, 0);
 	ctx.clearRect(0, 0, o.w, o.h);
-	if (!g || g.points.length === 0) return;
+	if (!g || g.line.length === 0) return;
 
-	const first = g.points[0];
-	const last = g.points[g.points.length - 1];
+	// Çizim HER ZAMAN g.line üzerinden — g.points tam çözünürlüklüdür ve yalnız hover/eksen
+	// adreslemesi için vardır; onu stroke etmek piksel başına birden çok nokta çizip
+	// "gürültü" üretir (bkz. series.ts PX_PER_LINE_POINT).
+	const line = g.line;
+	const first = line[0];
+	const last = line[line.length - 1];
 
 	// 1) Çizgi altı degrade dolgu (%18 → 0 alfa).
 	const grad = ctx.createLinearGradient(0, 0, 0, o.h);
 	grad.addColorStop(0, withAlpha(o.lineColor, 0.18));
 	grad.addColorStop(1, withAlpha(o.lineColor, 0));
 	ctx.beginPath();
-	g.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+	line.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
 	ctx.lineTo(last.x, o.h);
 	ctx.lineTo(first.x, o.h);
 	ctx.closePath();
@@ -61,7 +65,7 @@ export function renderChart(canvas: HTMLCanvasElement, g: ChartGeometry | null, 
 
 	// 3) Fiyat çizgisi.
 	ctx.beginPath();
-	g.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+	line.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
 	ctx.strokeStyle = o.lineColor;
 	ctx.lineWidth = 1.5;
 	ctx.stroke();
