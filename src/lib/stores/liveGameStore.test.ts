@@ -7,6 +7,8 @@ import type { SaveEnvelopeV1 } from './savegame';
 import { usd } from '../domain/money';
 import { sessionOpenMs } from '../domain/calendar/calendar';
 import type { StampResult } from '../api/leagueClient';
+import { leagueWeekKey, leagueLockMoment, isLeagueOpen } from '../domain/league/week';
+import { createTestClock } from './testReactiveClock.svelte';
 
 // 2026-06-01 12:00 Europe/Istanbul = Pazartesi, BIST açık saat
 const FIXED_NOW = new Date('2026-06-01T12:00:00+03:00').getTime();
@@ -1317,6 +1319,78 @@ describe('lig modu (stampTrade)', () => {
     expect(store.game.holdings).toEqual([
       { assetId: 'BTC', units: 10, avgCost: { amount: 7, currency: 'USD' } },
     ]);
+  });
+});
+
+describe('final review fix #2: lig modunda cancelOrder no-op (kuyruğun sahibi sunucudur)', () => {
+  it('sunucu-sahipli kuyruk emri yerelden silinmez, persist tetiklenmez', async () => {
+    // Kuyruktaki emir sunucu 'queued' dediği için oraya girdi (trades.status='pending', sunucu
+    // satırı) — yerel cancel yalnız EKRANDAN silerse tick/settle yine dolduracak ve skora girecek,
+    // ekran "iptal edildi" gösterirken otorite dolduracak (mimarinin "ekran=otorite" ilkesini ihlal).
+    const stampTrade = vi.fn().mockResolvedValue({ status: 'queued', orderId: 'srv-order-1' });
+    const onPersist = vi.fn();
+    const { store } = setup({ stampTrade, onPersist });
+
+    await store.buy('BTC', 1);
+    expect(store.pendingOrders).toHaveLength(1);
+    expect(store.pendingOrders[0].id).toBe('srv-order-1');
+    const callsBeforeCancel = onPersist.mock.calls.length;
+
+    store.cancelOrder('srv-order-1');
+
+    expect(store.pendingOrders).toHaveLength(1); // hâlâ kuyrukta — sunucu hâlâ tek sahip
+    expect(store.pendingOrders[0].id).toBe('srv-order-1');
+    expect(onPersist.mock.calls.length).toBe(callsBeforeCancel); // persist TEKRAR tetiklenmedi (no-op)
+  });
+});
+
+describe('final review fix #1: leagueMode hafta kilidinde (isLeagueOpen) yeniden değerlendiriliyor', () => {
+  it('BUG (final review bulgusu): eski wiring deseni (yalnız katılım, isLeagueOpen YOK) kilitten sonra da leagueMode=true bırakır — trade sunucuya gitmeye devam eder', async () => {
+    // +page.svelte:98'in FIX'TEN ÖNCEKİ hali: `isLeagueActive: () => leagueEntry !== null`.
+    // Zaman/kilit hiç sorulmuyor — bu test o deseni birebir taklit edip bug'ı belgeliyor.
+    const weekKey = leagueWeekKey(new Date(FIXED_NOW));
+    const lockMs = leagueLockMoment(weekKey).getTime();
+    const clock = createTestClock(FIXED_NOW);
+    const stampTrade = vi.fn().mockResolvedValue({ status: 'filled', orderId: 'o1', units: 1, priceUsd: 60000 });
+    const { store } = setup({
+      stampTrade,
+      now: () => clock.ms,
+      isLeagueActive: () => true, // eski desen: yalnız "katıldım mı" — zaman kontrolü yok
+    });
+
+    clock.set(lockMs + 60_000); // Cuma kilidinden 1dk sonrası — hafta sonu antrenman zamanı
+    expect(store.leagueMode).toBe(true); // BUG: hâlâ lig modunda
+
+    await store.buy('BTC', 1);
+    expect(stampTrade).toHaveBeenCalledTimes(1); // BUG: trade sunucuya gidiyor → orada 409 ile reddedilecek
+  });
+
+  it('FIX: isLeagueActive artık isLeagueOpen(nowMs) da kontrol ediyor — kilit anını geçince leagueMode store YENİDEN KURULMADAN false olur, buy() yerel kuyruğa düşer', async () => {
+    // +page.svelte'nin YENİ closure'ının birebir aynı deseni: leagueEntry !== null && isLeagueOpen(new Date(nowMs)).
+    // `clock` burada nowMs'in yerini tutuyor — GERÇEK bir Svelte $state (testReactiveClock.svelte.ts),
+    // liveGameStore.svelte.ts'ten TAMAMEN AYRI bir modülde tanımlı. Bu, Svelte 5'in sinyal takibinin
+    // modül/closure sınırından bağımsız, yalnız "hangi $derived o an senkron olarak evalüe ediliyor"
+    // sorusuna bağlı olduğunu kanıtlıyor — leagueMode'un $derived'ı store hiç yeniden kurulmadan,
+    // yalnız store.leagueMode TEKRAR OKUNDUĞUNDA (yeni bir render/aksiyon ile) güncel değeri yansıtıyor.
+    const weekKey = leagueWeekKey(new Date(FIXED_NOW));
+    const lockMs = leagueLockMoment(weekKey).getTime();
+    const clock = createTestClock(FIXED_NOW); // kilitten ÖNCE
+    const stampTrade = vi.fn().mockResolvedValue({ status: 'filled', orderId: 'o1', units: 1, priceUsd: 60000 });
+    const { store } = setup({
+      stampTrade,
+      now: () => clock.ms,
+      isLeagueActive: () => isLeagueOpen(new Date(clock.ms)),
+    });
+
+    expect(store.leagueMode).toBe(true); // kilitten önce: lig modu açık
+
+    clock.set(lockMs + 60_000); // kilitten 1dk sonrasına atla — store YENİDEN KURULMADI, tek değişen clock
+
+    expect(store.leagueMode).toBe(false); // reaktif olarak flip etmiş olmalı (yeniden okuma tetikledi)
+
+    await store.buy('BTC', 1);
+    expect(stampTrade).not.toHaveBeenCalled(); // artık lig modunda değil — sunucuya gitmiyor
+    expect(store.pendingOrders).toHaveLength(1); // hafta sonu antrenman modu: yerel kuyruğa düşüyor (store başlatılmadı → feed stale)
   });
 });
 

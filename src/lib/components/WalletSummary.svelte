@@ -19,6 +19,10 @@
 		orderNotice?: string | null;
 		/** Reaktif "şimdi" damgası — ETA hesapları ve settle bildirimi bunu okur. */
 		nowMs?: number;
+		/** Lig modu açık mı — açıksa kuyruktaki emrin sahibi sunucudur (final review fix #2);
+		 *  İPTAL butonu bunu bilip devre dışı kalmalı, aksi halde ekran "iptal edildi" gösterirken
+		 *  sunucu emri yine doldurur (store.cancelOrder zaten no-op, bu yalnız UI geri bildirimi). */
+		leagueMode?: boolean;
 		onCancelOrder?: (orderId: string) => void;
 		onClearNotice?: () => void;
 		/** Bekleyen emrin kategorisini çözmek için — Task 3'ün TEK doğru kaynağı (store.prices). */
@@ -35,6 +39,7 @@
 		pendingOrders = [],
 		orderNotice = null,
 		nowMs = Date.now(),
+		leagueMode = false,
 		onCancelOrder,
 		onClearNotice,
 		prices = [],
@@ -141,8 +146,10 @@
 						<button
 							type="button"
 							onclick={() => onCancelOrder?.(o.id)}
+							disabled={leagueMode}
+							title={leagueMode ? 'Lig modunda emirler sunucuda kuyrukta — buradan iptal edilemez' : undefined}
 							class="shrink-0 px-1.5 py-0.5 bg-term-bg border border-term-red text-term-red text-[10px]
-							       hover:bg-term-panelLight transition-colors"
+							       hover:bg-term-panelLight transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							İPTAL
 						</button>

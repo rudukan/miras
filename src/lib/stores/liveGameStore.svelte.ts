@@ -571,6 +571,12 @@ export function createLiveGameStore(opts: LiveGameStoreOptions = {}): LiveGameSt
     }, opts.onFirstTrade);
   };
   function cancelOrderAction(orderId: string): void {
+    // LİG MODU: kuyruktaki emrin sahibi sunucudur (tick settle eder, bkz. settlePendingOrders'ın
+    // AYNI gerekçeyle koyduğu guard). Yerel iptal yalnız EKRANDAN silerse sunucudaki trades satırı
+    // hâlâ durur ve tick onu doldurur — kullanıcı "iptal edildi" görürken emir yine skora girer
+    // (mimarinin "ekran=otorite" ilkesini ihlal eder, final review fix #2). Gerçek bir sunucu-taraflı
+    // iptal endpoint'i bu planın kapsamı DIŞINDA — bu yüzden lig modunda tamamen devre dışı bırakılır.
+    if (leagueMode) return;
     const next = pendingOrders.filter((o) => o.id !== orderId);
     if (next.length === pendingOrders.length) return; // bilinmeyen id — no-op
     pendingOrders = next;

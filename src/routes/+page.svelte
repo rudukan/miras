@@ -20,7 +20,7 @@
 	import { authErrorMessage } from '$lib/api/authErrors';
 	import { istanbulParts } from '$lib/domain/calendar/calendar';
 	import { daysElapsed, dailyBreakdown } from '$lib/domain/snapshot/dailySnapshot';
-	import { leagueWeekKey } from '$lib/domain/league/week';
+	import { leagueWeekKey, isLeagueOpen } from '$lib/domain/league/week';
 	import { buildClosingCardModel } from '$lib/components/closingCard';
 	import type { ShareResult } from '$lib/share/share';
 	import { sendTelemetry, pingDailyVisit, pingFirstTrade } from '$lib/api/telemetry';
@@ -94,8 +94,15 @@
 			},
 			stampTrade: createTradeStamper(fetch, () => crypto.randomUUID()),
 			// Store SENKRON kuruluyor ama lig katılımı ASENKRON yükleniyor — bu yüzden mod
-			// her işlemde sorulur, kuruluşta sabitlenmez.
-			isLeagueActive: () => leagueEntry !== null,
+			// her işlemde sorulur, kuruluşta sabitlenmez. `isLeagueOpen(nowMs)`: hafta kilidi
+			// (Cuma NYSE kapanışı / BIST tatil fallback'i) geçtiyse sekme açık kalsa bile lig modu
+			// OTOMATİK kapanır (final review fix #1 — reload gerekmez). `nowMs` (satır ~121) her
+			// saniye tetiklenen reaktif $state; leagueMode'un $derived'ı (liveGameStore.svelte.ts,
+			// AYRI modül) bu closure üzerinden onu okuduğu için kilit anında kendiliğinden yeniden
+			// hesaplanır — mekanizma liveGameStore.test.ts'teki "final review fix #1" bloğunda
+			// store seviyesinde bağımsız kanıtlandı (nowMs benzeri dış-modül $state, store hiç
+			// yeniden kurulmadan leagueMode'u flip ediyor).
+			isLeagueActive: () => leagueEntry !== null && isLeagueOpen(new Date(nowMs)),
 			onWeekRollover: () => {
 				void loadLeagueEntry();
 			},
@@ -882,6 +889,7 @@
 							pendingOrders={store.pendingOrders}
 							orderNotice={store.orderNotice}
 							nowMs={nowMs}
+							leagueMode={store.leagueMode}
 							onCancelOrder={(id) => store?.cancelOrder(id)}
 							onClearNotice={() => store?.clearOrderNotice()}
 							prices={store.prices}
