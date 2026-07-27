@@ -248,21 +248,37 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
         return { userId, scoreUsd };
       });
 
+      // Yazma hatasında CAS'ı ATLA: bir/kaç kullanıcının skoru yazılamadıysa league'i yine de
+      // 'closed' yapmak o kullanıcıyı final_score_usd (muhtemelen NULL) ile kalıcı olarak
+      // mahsur bırakır — due sorgusu yalnız status='open' arar, kapanmış lig bir daha hiç
+      // görünmez. Yazımlar (league_id, user_id) üzerinde idempotent overwrite olduğundan bir
+      // sonraki tick'te tüm kapanış fazını (skorlama dahil) tekrar denemek güvenlidir —
+      // yukarıdaki okuma-hatası atlamasıyla AYNI desen.
+      let writeFailed = false;
       for (const s of _rankScores(scores)) {
-        await admin
+        const { error: writeError } = await admin
           .from('league_entries')
           .update({ final_score_usd: s.scoreUsd, rank: s.rank })
           .eq('league_id', league.id)
           .eq('user_id', s.userId);
+        if (writeError) {
+          writeFailed = true;
+          console.error(
+            `[api/league/tick] ${league.week_key}/${s.userId}: skor yazılamadı, kapanış bu tick'te atlanır — bir sonrakine bırakılır`,
+            writeError,
+          );
+        }
       }
-      // count: bu invocation'ın CAS'i GERÇEKTEN eşleşip satırı kapattıysa 1, başka biri
-      // (ya da başka bir tick) zaten kapattıysa 0 döner — closed yalnız gerçek kapanışta set edilir.
-      const { count: closedCount } = await admin
-        .from('leagues')
-        .update({ status: 'closed', closed_at: at.toISOString() }, { count: 'exact' })
-        .eq('id', league.id)
-        .eq('status', 'open'); // idempotency: eşzamanlı ikinci tick tekrar kapatmaz
-      if (closedCount) closed = league.week_key as string;
+      if (!writeFailed) {
+        // count: bu invocation'ın CAS'i GERÇEKTEN eşleşip satırı kapattıysa 1, başka biri
+        // (ya da başka bir tick) zaten kapattıysa 0 döner — closed yalnız gerçek kapanışta set edilir.
+        const { count: closedCount } = await admin
+          .from('leagues')
+          .update({ status: 'closed', closed_at: at.toISOString() }, { count: 'exact' })
+          .eq('id', league.id)
+          .eq('status', 'open'); // idempotency: eşzamanlı ikinci tick tekrar kapatmaz
+        if (closedCount) closed = league.week_key as string;
+      }
     }
   }
 
