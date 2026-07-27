@@ -15,6 +15,7 @@ jobs:
       PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
       PUBLIC_TURNSTILE_SITE_KEY: placeholder-turnstile-site-key
       SUPABASE_SECRET_KEY: sb_secret_placeholder
+      CRON_SECRET: placeholder-cron-secret
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -40,6 +41,10 @@ jobs:
           version: 2.109.1 # lokal geliştirme sürümüyle eşit — bilinçli bump'la yükselt
       - run: supabase start
       - run: npx playwright install --with-deps chromium
+      # league-trade.spec.ts /api/league/tick'i cagirmak icin CRON_SECRET okur (tests/e2e/helpers/localEnv.ts).
+      # Gercek bir prod/repo secret degil: bu deger hem test process'i hem Vite'in $env/static/private'tan
+      # okudugu ayni .env.local dosyasindan geliyor, ikisi CI-ici round-trip'te otomatik eslesiyor.
+      - run: echo "CRON_SECRET=ci-placeholder-cron-secret" > .env.local
       - run: npm run e2e
       - uses: actions/upload-artifact@v4
         if: failure()
