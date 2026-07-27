@@ -134,6 +134,16 @@
 	let popoverVariant = $state<'desktop' | 'mobile'>('desktop');
 	let popoverPinned = $state(false);
 	let desktopPopoverEl: HTMLElement | null = $state(null);
+	// Gerçek render yüksekliği — konumlandırma bunu kullanır (bkz. popoverStyle). ResizeObserver
+	// içerik boyu sonradan değişirse de (pozisyon özeti satırı, hata/kuyruk bandı) günceller.
+	let popoverHeight = $state(0);
+	$effect(() => {
+		if (!desktopPopoverEl) return;
+		const el = desktopPopoverEl;
+		const ro = new ResizeObserver(() => (popoverHeight = el.offsetHeight));
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 
 	let toastMessage = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -191,13 +201,16 @@
 		overlayAssetId = null;
 	}
 
-	// Masaüstü konumlandırma: satırın sağına, ekran taşarsa soluna.
+	// Masaüstü konumlandırma: satırın sağına, ekran taşarsa soluna. Dikeyde gerçek ölçülen
+	// yükseklik kullanılır (ilk render'da henüz ölçülmediyse kaba tahmin) — AL/SAT ekran dışına
+	// taşmasın (bkz. popoverHeight/ResizeObserver). max-height güvenlik ağı AssetPopover'da.
 	const popoverStyle = $derived.by(() => {
 		if (!popoverAnchor || popoverVariant === 'mobile') return '';
 		const W = 300, GAP = 8;
 		const a = popoverAnchor;
 		const left = a.right + GAP + W > window.innerWidth ? a.left - GAP - W : a.right + GAP;
-		const top = Math.min(a.top, window.innerHeight - 320);
+		const h = popoverHeight || 320;
+		const top = Math.min(a.top, window.innerHeight - GAP - h);
 		return `position:fixed;left:${Math.max(8, left)}px;top:${Math.max(8, top)}px;z-index:50;`;
 	});
 

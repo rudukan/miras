@@ -28,8 +28,8 @@
 </script>
 
 <div
-	class="bg-term-panel border border-term-borderGlow font-mono text-xs p-3 space-y-2
-	       {variant === 'mobile' ? 'w-full rounded-t-lg' : 'w-[300px] shadow-lg'}"
+	class="bg-term-panel border border-term-borderGlow font-mono text-xs p-3 space-y-2 overflow-y-auto
+	       {variant === 'mobile' ? 'w-full rounded-t-lg max-h-[85vh]' : 'w-[300px] shadow-lg max-h-[calc(100vh-16px)]'}"
 >
 	<!-- Başlık + büyüt + kapat -->
 	<div class="flex items-start justify-between gap-2 border-b border-term-border pb-1">
