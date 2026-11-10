@@ -12,6 +12,12 @@ const t = (over: Partial<StampedTrade> = {}): StampedTrade => ({
 });
 
 describe('replayTrades', () => {
+  it('küçük alışlar replay sırasında da ücretsiz stok üretmez', () => {
+    const buys = Array.from({ length: 100 }, (_, i) => t({ units: 0.0001, priceUsd: 40, ts: i }));
+    const { state, rejected } = replayTrades(buys, { userId: 'u1', startedAt: 0 });
+    expect(rejected).toEqual([]);
+    expect(state.usdBalance.amount).toBe(STARTING_USD - 1);
+  });
   it('boş listede $1M nakit ve pozisyonsuz başlar', () => {
     const { state, rejected } = replayTrades([], { userId: 'u1', startedAt: 0 });
     expect(state.usdBalance.amount).toBe(STARTING_USD);

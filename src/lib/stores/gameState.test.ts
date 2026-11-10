@@ -60,6 +60,63 @@ describe('createGameState', () => {
 });
 
 describe('varlık al/sat (USD oto-takas)', () => {
+  it('küçük alışların her biri en az bir sent tutar ve ücretsiz stok oluşturmaz', () => {
+    const oracle = stubOracle({ A: 40 });
+    let s = createGameState('vasiyet', 1, 'p', 0);
+    for (let i = 0; i < 100; i++) s = buyAsset(s, oracle, 'A', 0.0001);
+    expect(s.usdBalance.amount).toBe(STARTING_USD - 1);
+    s = sellAsset(s, oracle, 'A', s.holdings[0].units);
+    expect(s.usdBalance.amount).toBeLessThanOrEqual(STARTING_USD);
+  });
+
+  it('bölünmüş satışlar yuvarlama ile kazanç üretmez', () => {
+    const oracle = stubOracle({ A: 6 });
+    let s = createGameState('vasiyet', 1, 'p', 0);
+    s = buyAsset(s, oracle, 'A', 0.01);
+    for (let i = 0; i < 9; i++) s = sellAsset(s, oracle, 'A', 0.001);
+    s = sellAsset(s, oracle, 'A', s.holdings[0].units);
+    expect(s.usdBalance.amount).toBeLessThanOrEqual(STARTING_USD);
+  });
+
+  it.each([{ price: 0.29, cost: 29 }, { price: 0.07, cost: 7 }])('tam sent bedeli $price fiyatında fazladan sent kaybetmez', ({ price, cost }) => {
+    const oracle = stubOracle({ A: price });
+    const initial = createGameState('vasiyet', 1, 'p', 0);
+    const bought = buyAsset(initial, oracle, 'A', 100);
+    expect(bought.usdBalance.amount).toBe(STARTING_USD - cost);
+    expect(sellAsset(bought, oracle, 'A', 100).usdBalance.amount).toBe(STARTING_USD);
+  });
+
+  it('yukarı yuvarlanmış alış bedeli bakiyeyi aşarsa reddeder', () => {
+    const s = { ...createGameState('vasiyet', 1, 'p', 0), usdBalance: usd(0) };
+    expect(() => buyAsset(s, stubOracle({ A: 40 }), 'A', 0.0001)).toThrow('Insufficient USD');
+  });
+
+  it.each([0, -1, NaN, Infinity])('geçersiz fiyat %s alış ve satışta reddedilir', (price) => {
+    const s = createGameState('vasiyet', 1, 'p', 0);
+    const owned = buyAsset(s, stubOracle({ A: 1 }), 'A', 100);
+    const oracle = stubOracle({ A: price });
+    expect(() => buyAsset(s, oracle, 'A', 100)).toThrow('price');
+    expect(() => sellAsset(owned, oracle, 'A', 100)).toThrow('price');
+  });
+
+  it('sıfıra yuvarlanmış canlı fiyatla ücretsiz stok alınamaz', () => {
+    const s = createGameState('vasiyet', 1, 'p', 0);
+    expect(() => buyAsset(s, stubOracle({ A: 0.004 }), 'A', 100)).toThrow('price');
+  });
+
+  it('çarpımı sıfıra düşen pozitif alış bile en az bir sent tutar', () => {
+    const s = createGameState('vasiyet', 1, 'p', 0);
+    const bought = buyAsset(s, stubOracle({ A: 0.01 }), 'A', Number.MIN_VALUE);
+    expect(bought.usdBalance.amount).toBe(STARTING_USD - 0.01);
+  });
+
+  it.each([NaN, Infinity, -Infinity])('sonlu olmayan adet %s alış ve satışta reddedilir', (units) => {
+    const s = createGameState('vasiyet', 1, 'p', 0);
+    const owned = buyAsset(s, ORACLE, 'THYAO', 1);
+    expect(() => buyAsset(s, ORACLE, 'THYAO', units)).toThrow('positive');
+    expect(() => sellAsset(owned, ORACLE, 'THYAO', units)).toThrow('positive');
+  });
+
   it('buyAsset: USD düşer, holding eklenir, avgCost = USD alış fiyatı', () => {
     const s0 = createGameState('vasiyet', 12345, 'p', 0);
     const s2 = buyAsset(s0, ORACLE, 'THYAO', 100); // 100 × $7.5 = $750
