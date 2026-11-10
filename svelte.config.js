@@ -8,7 +8,7 @@ const config = {
 		// fra1 ZORUNLU: Binance ABD bölgelerine (vercel varsayılanı iad1) HTTP 451 döner,
 		// bu /api/crypto'yu kırar. Tarayıcı WS'i (kullanıcı TR IP) bu ayardan etkilenmez.
 		adapter: adapter({
-			runtime: 'nodejs20.x',
+			runtime: 'nodejs22.x',
 			regions: ['fra1']
 		})
 	}

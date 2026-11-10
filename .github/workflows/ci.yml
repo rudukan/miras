@@ -28,7 +28,8 @@ jobs:
       - run: npm run build
 
   e2e:
-    runs-on: ubuntu-latest
+    # Kilitli Playwright sürümünün Chromium desteği; ubuntu-latest artık 26.04 kullanıyor.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
