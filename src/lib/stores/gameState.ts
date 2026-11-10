@@ -52,15 +52,26 @@ export function createGameState(
 
 // NOT: reducer'lar saf kalsın diye updatedAt'i DEĞİŞTİRMEZ; store/persistence damgalar.
 
+// İşlem bedelini sentte alışta yukarı, satışta aşağı yuvarla. Tam sentlerdeki
+// kayan nokta artığını gider; sıfıra yakın pozitif alışları sıfıra sabitleme.
+function settlementUsd(price: Money, units: number, side: 'buy' | 'sell'): Money {
+  if (!Number.isFinite(price.amount) || price.amount <= 0) throw new Error('Invalid price');
+  const cents = price.amount * units * 100;
+  const nearest = Math.round(cents);
+  const tolerance = Number.EPSILON * Math.max(1, Math.abs(cents)) * 4;
+  const adjusted = nearest > 0 && Math.abs(cents - nearest) <= tolerance ? nearest : cents;
+  return usd((side === 'buy' ? Math.max(1, Math.ceil(adjusted)) : Math.floor(adjusted)) / 100);
+}
+
 export function buyAsset(
   state: GameState,
   oracle: UsdPriceOracle,
   assetId: string,
   units: number,
 ): GameState {
-  if (units <= 0) throw new Error('Units must be positive');
+  if (!Number.isFinite(units) || units <= 0) throw new Error('Units must be positive');
   const price = oracle.assetUsd(assetId); // fiyatsız/bilinmeyen -> throw
-  const cost = multiply(price, units);
+  const cost = settlementUsd(price, units, 'buy');
   if (!gte(state.usdBalance, cost)) throw new Error('Insufficient USD');
 
   const existing = state.holdings.find((h) => h.assetId === assetId);
@@ -83,11 +94,11 @@ export function sellAsset(
   assetId: string,
   units: number,
 ): GameState {
-  if (units <= 0) throw new Error('Units must be positive');
+  if (!Number.isFinite(units) || units <= 0) throw new Error('Units must be positive');
   const existing = state.holdings.find((h) => h.assetId === assetId);
   if (!existing || existing.units < units) throw new Error('Insufficient units');
   const price = oracle.assetUsd(assetId);
-  const proceeds = multiply(price, units);
+  const proceeds = settlementUsd(price, units, 'sell');
   const remaining = existing.units - units;
   const holdings =
     remaining > 0
